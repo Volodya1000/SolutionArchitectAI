@@ -1,0 +1,30 @@
+@startuml
+!include <archimate/Archimate>
+left to right direction
+skinparam defaultFontName DejaVu Sans
+skinparam shadowing false
+skinparam nodesep 40
+skinparam ranksep 55
+title Потоки данных
+
+Application_Component(SYS_SALES, "SYS-SALES\nПродажи")
+Application_Component(SYS_UNITS, "SYS-UNITS\nПодразделения")
+Application_Component(SYS_IAM, "SYS-IAM\nКорпоративный доступ")
+Application_Component(SYS_REPORTS, "SYS-REPORTS\nСистема отчётности")
+Application_Component(SYS_BROWSER, "SYS-BROWSER\nБраузер аналитика")
+Application_DataObject(D_SNAPSHOT, "D-SNAPSHOT\nОпубликованные дневные срезы\nХранение: 30 календарных дней")
+
+Rel_Flow(SYS_SALES, SYS_REPORTS, "F-01: D-SALES\nПродажи за предыдущий день")
+Rel_Flow(SYS_UNITS, SYS_REPORTS, "F-02: D-UNITS\nСправочник за тот же день")
+Rel_Flow(SYS_IAM, SYS_REPORTS, "F-06: D-ACCESS\nРезультат проверки доступа")
+Rel_Access_w(SYS_REPORTS, D_SNAPSHOT, "F-03: публикация\nцелого дневного среза")
+Rel_Access_r(SYS_REPORTS, D_SNAPSHOT, "F-04: чтение\nвыбранного дня")
+Rel_Flow(SYS_REPORTS, SYS_BROWSER, "F-05: D-REPORT\nСводка или CSV")
+
+legend bottom
+  Flow: откуда и куда передаются данные.
+  Access: запись или чтение объекта данных.
+  SYS-REPORTS — новое приложение; остальные приложения уже существуют.
+  Направления технических вызовов показаны на отдельной диаграмме.
+endlegend
+@enduml
