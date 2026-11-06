@@ -1,0 +1,33 @@
+@startuml
+!include <archimate/Archimate>
+top to bottom direction
+skinparam defaultFontName DejaVu Sans
+skinparam shadowing false
+skinparam nodesep 35
+skinparam ranksep 45
+title Потоки данных системы отчётности
+
+Application_Component(sales, "Система продаж")
+Application_Component(units, "Система учёта\nподразделений")
+Application_Component(access, "Система корпоративного\nдоступа")
+Application_Component(broker, "Корпоративный брокер\nсообщений Apache Kafka")
+Application_Component(delivery, "Система передачи\nотчётов")
+Application_Component(recipient, "Внешняя система-\nполучатель")
+Application_Component(browser, "Браузер сотрудника")
+
+rectangle "Система отчётности" {
+  Application_Component(loader, "Сервис загрузки данных\nПроверка и сохранение")
+  Application_DataObject(report_data, "Данные отчётности\nв базе данных")
+  Application_Component(reporting, "Сервис формирования отчётности\nПодсчёт итогов")
+}
+
+Rel_Flow_Down(sales, broker, "Данные о новых продажах")
+Rel_Flow(broker, loader, "Данные о продажах")
+Rel_Flow(units, loader, "Справочник подразделений\nпо расписанию")
+Rel_Access_w(loader, report_data, "Проверенные продажи,\nсправочник и состояние загрузки")
+Rel_Access_r(reporting, report_data, "Данные для сводки\nи состояния загрузки")
+Rel_Flow(access, reporting, "Результат проверки\nправ сотрудника")
+Rel_Flow(reporting, browser, "Сводка, CSV, состояние загрузки\nи результат передачи")
+Rel_Flow(reporting, delivery, "Конфиденциальная сводка\nв CSV")
+Rel_Flow(delivery, recipient, "Отчёт по защищённому каналу")
+@enduml

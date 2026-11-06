@@ -1,0 +1,35 @@
+@startuml
+!include <archimate/Archimate>
+top to bottom direction
+skinparam defaultFontName DejaVu Sans
+skinparam shadowing false
+skinparam nodesep 35
+skinparam ranksep 45
+title Межсистемные взаимодействия системы отчётности
+
+Application_Component(sales, "Система продаж")
+Application_Component(units, "Система учёта\nподразделений")
+Application_Component(access, "Система корпоративного\nдоступа")
+Application_Component(broker, "Корпоративный брокер\nсообщений Apache Kafka")
+Application_Component(delivery, "Система передачи\nотчётов")
+Application_Component(recipient, "Внешняя система-\nполучатель")
+Application_Component(browser, "Браузер сотрудника")
+rectangle "Существующая платформа PostgreSQL" {
+  Technology_SystemSoftware(database, "Создаваемая база\nданных отчётности")
+}
+
+rectangle "Система отчётности" {
+  Application_Component(loader, "Сервис загрузки данных")
+  Application_Component(reporting, "Сервис формирования\nотчётности")
+}
+
+Rel_Association_dir(sales, broker, "Передача новых продаж\nKafka поверх TLS\nПорт 9093")
+Rel_Association_dir(loader, broker, "Получение продаж\nKafka поверх TLS\nПорт 9093")
+Rel_Association_dir(loader, units, "Получение справочника\nHTTPS, порт 443")
+Rel_Association_dir(loader, database, "Сохранение данных\nPostgreSQL поверх TLS\nПорт 5432")
+Rel_Association_dir(reporting, database, "Чтение данных для сводки\nPostgreSQL поверх TLS\nПорт 5432")
+Rel_Association_Up(reporting, access, "Проверка прав сотрудника\nHTTPS, порт 443")
+Rel_Association_dir(browser, reporting, "Просмотр, скачивание\nи передача отчёта\nHTTPS, порт 443")
+Rel_Association_dir(reporting, delivery, "Передача отчёта\nи подтверждение\nКлиентский сертификат\nHTTPS, порт 443")
+Rel_Association_dir(delivery, recipient, "Доставка отчёта\nи подтверждение приёма\nКлиентский сертификат\nHTTPS, порт 443")
+@enduml

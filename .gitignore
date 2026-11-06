@@ -1,0 +1,4 @@
+# Temporary PDF publishing files; editable TeX and final PDFs are committed.
+.build/
+__pycache__/
+*.pyc
