@@ -35,7 +35,7 @@ python3 scripts/build_documents.py --refresh-tex
 
 ```sh
 sudo apt-get update
-sudo apt-get install -y texlive-xetex texlive-latex-extra texlive-lang-cyrillic fonts-dejavu inkscape
+sudo apt-get install -y texlive-xetex texlive-latex-extra texlive-lang-cyrillic texlive-fonts-recommended fonts-dejavu inkscape
 # Только для регенерации LaTeX из Markdown:
 sudo apt-get install -y pandoc
 ```
