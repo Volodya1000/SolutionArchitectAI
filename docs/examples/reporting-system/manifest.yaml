@@ -1,0 +1,159 @@
+# Ручной предметный эталон. Схема программной модели пока не фиксируется.
+id: reporting-reference
+model_revision: reporting-model-1
+kind: manual_reference
+review_status: pending
+input: ../reporting-system.md
+input_revision: reporting-input-1
+rules_revision: reporting-input-1
+timezone: UTC
+requirements: [R-01, R-02, R-03, R-04, R-05, N-01, N-02, N-03]
+
+systems:
+  SYS-BROWSER: {name: Браузер аналитика, type: application_component, origin: existing}
+  SYS-REPORTS: {name: Система отчётности, type: application_component, origin: new}
+  SYS-SALES: {name: Продажи, type: application_component, origin: existing}
+  SYS-UNITS: {name: Подразделения, type: application_component, origin: existing}
+  SYS-IAM: {name: Корпоративный доступ, type: application_component, origin: existing}
+  DB-REPORTS: {name: PostgreSQL отчётности, type: system_software, origin: existing}
+
+data:
+  D-SALES:
+    fields: [sale_id, sale_date, unit_id, amount]
+    classification: internal
+  D-UNITS:
+    fields: [unit_id, unit_name]
+    classification: internal
+  D-SNAPSHOT:
+    type: data_object
+    contains: [D-SALES, D-UNITS]
+    classification: internal
+    stored_in: DB-REPORTS
+    retention_calendar_days: 30
+    publication: atomic_per_day
+  D-REPORT:
+    fields: [date, unit_name, sale_count, total_amount]
+    classification: internal
+    delivery: browser_csv_or_preview
+    stored: false
+  D-ACCESS:
+    fields: [active, roles]
+    classification: internal
+    stored: false
+
+flows:
+  F-01: {from: SYS-SALES, to: SYS-REPORTS, data: [D-SALES], interaction: I-02}
+  F-02: {from: SYS-UNITS, to: SYS-REPORTS, data: [D-UNITS], interaction: I-03}
+  F-03: {from: SYS-REPORTS, to: D-SNAPSHOT, data: [D-SNAPSHOT], interaction: I-05, access: write}
+  F-04: {from: D-SNAPSHOT, to: SYS-REPORTS, data: [D-SNAPSHOT], interaction: I-05, access: read}
+  F-05: {from: SYS-REPORTS, to: SYS-BROWSER, data: [D-REPORT], interaction: I-01}
+  F-06: {from: SYS-IAM, to: SYS-REPORTS, data: [D-ACCESS], interaction: I-04}
+
+interactions:
+  I-01:
+    caller: SYS-BROWSER
+    receiver: SYS-REPORTS
+    protocol: HTTPS
+    port: 443
+    operations: [view_summary, download_csv, view_load_state_and_dates]
+    access: active_token_and_analyst_role
+  I-02:
+    caller: SYS-REPORTS
+    receiver: SYS-SALES
+    protocol: HTTPS
+    port: 443
+    interface: GET /exports/sales?date=…
+    access: service_account_read_only
+  I-03:
+    caller: SYS-REPORTS
+    receiver: SYS-UNITS
+    protocol: HTTPS
+    port: 443
+    interface: GET /exports/units?date=…
+    access: service_account_read_only
+  I-04:
+    caller: SYS-REPORTS
+    receiver: SYS-IAM
+    protocol: HTTPS
+    port: 443
+    interface: POST /token/introspect
+    access: service_account
+  I-05:
+    caller: SYS-REPORTS
+    receiver: DB-REPORTS
+    protocol: PostgreSQL+TLS
+    port: 5432
+    access: application_account_read_write
+
+behavior:
+  ingestion: {daily_at: '06:00', deadline: '06:15', date: previous_calendar_day}
+  first_run: previous_calendar_day_only
+  snapshot:
+    validate: [unique_sale_id, all_unit_ids_known, both_exports_complete]
+    replace: atomic_per_day
+    failure: keep_published_snapshots
+    empty_sales: valid_snapshot
+    missing_date: show_data_not_loaded
+  report:
+    group_by: unit_id
+    output: [date, unit_name, sale_count, total_amount]
+    include_units: with_sales_only
+    csv_when_empty: header_only
+  status_display:
+    last_load: latest_attempt_outcome
+    available_dates: published_snapshot_dates
+  authorization:
+    every_user_request: true
+    require: [active_token, analyst_role]
+    iam_unavailable: deny
+  logging:
+    record: [load_status, available_dates]
+    exclude: [tokens, report_contents]
+
+targets:
+  max_sales_per_day: 5000
+  max_units: 20
+  concurrent_analysts: 10
+  response_seconds: 5
+  availability: {weekdays_utc: '08:00-18:00', percent: 99.5}
+  recovery_hours: 4
+  maximum_data_loss_hours: 24
+  operational_verification: not_performed
+
+decisions:
+  DEC-01:
+    proposal: Одно приложение со встроенной ночной задачей
+    rationale: Загрузка заканчивается до пользовательского времени
+    alternative: Отдельный загрузчик добавляет компонент без необходимости для данного расписания
+    based_on: [R-01, N-02, ARCH-02]
+    status: proposed
+  DEC-02:
+    proposal: Атомарная публикация дневных срезов в готовой БД
+    rationale: Согласованный срез сохраняется при сбое источника и заменяется без дублей
+    alternative: Прямые запросы к источникам при каждом отчёте не обеспечивают сохранённый срез
+    based_on: [R-02, R-05]
+    status: proposed
+  DEC-03:
+    proposal: Переиспользование управляемой PostgreSQL
+    rationale: По контексту платформа поддерживает нужный объём и восстановление
+    alternative: Собственная платформа БД создаёт лишнюю инфраструктуру
+    based_on: [ARCH-01, N-02]
+    status: proposed
+  DEC-04:
+    proposal: Готовый SYS-IAM без кэширования проверки доступа
+    rationale: Проверка доступа актуальна для каждого пользовательского запроса
+    alternative: Новый сервис доступа или кэш создаёт лишние компоненты и риск устаревшего доступа
+    based_on: [N-03, SEC-02, SEC-03]
+    status: proposed
+
+views:
+  data_flow:
+    elements: [SYS-BROWSER, SYS-REPORTS, SYS-SALES, SYS-UNITS, SYS-IAM, D-SNAPSHOT]
+    flows: [F-01, F-02, F-03, F-04, F-05, F-06]
+    source: data-flow.puml
+    image: data-flow.svg
+  interactions:
+    elements: [SYS-BROWSER, SYS-REPORTS, SYS-SALES, SYS-UNITS, SYS-IAM, DB-REPORTS]
+    interactions: [I-01, I-02, I-03, I-04, I-05]
+    source: interactions.puml
+    image: interactions.svg

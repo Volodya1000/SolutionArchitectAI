@@ -1,0 +1,29 @@
+@startuml
+!include <archimate/Archimate>
+left to right direction
+skinparam defaultFontName DejaVu Sans
+skinparam shadowing false
+skinparam nodesep 40
+skinparam ranksep 55
+title Межсистемные взаимодействия
+
+Application_Component(SYS_BROWSER, "SYS-BROWSER\nБраузер аналитика")
+Application_Component(SYS_REPORTS, "SYS-REPORTS\nСистема отчётности")
+Application_Component(SYS_SALES, "SYS-SALES\nПродажи")
+Application_Component(SYS_UNITS, "SYS-UNITS\nПодразделения")
+Application_Component(SYS_IAM, "SYS-IAM\nКорпоративный доступ")
+Technology_SystemSoftware(DB_REPORTS, "DB-REPORTS\nГотовая платформа PostgreSQL")
+
+Rel_Association_dir(SYS_BROWSER, SYS_REPORTS, "I-01: HTTPS / 443\nСводка и CSV; токен + analyst")
+Rel_Association_dir(SYS_REPORTS, SYS_SALES, "I-02: HTTPS / 443\nGET /exports/sales; только чтение")
+Rel_Association_dir(SYS_REPORTS, SYS_UNITS, "I-03: HTTPS / 443\nGET /exports/units; только чтение")
+Rel_Association_dir(SYS_REPORTS, SYS_IAM, "I-04: HTTPS / 443\nPOST /token/introspect")
+Rel_Association_dir(SYS_REPORTS, DB_REPORTS, "I-05: PostgreSQL + TLS / 5432\nЧтение и атомарная запись")
+
+legend bottom
+  Association с направлением: инициатор обращения → получатель.
+  Application Component: приложения; System Software: готовая СУБД.
+  Все соединения защищены TLS. Точки доступа заданы вводным контекстом.
+  Физическое размещение, IP и настройки платформ здесь не проектируются.
+endlegend
+@enduml
