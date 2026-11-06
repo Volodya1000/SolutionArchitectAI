@@ -1,0 +1,64 @@
+% Shared editable typography for both document editions.
+\usepackage{fontspec}
+\setmainfont{DejaVu Serif}
+\setsansfont{DejaVu Sans}
+\setmonofont{DejaVu Sans Mono}[Scale=.86]
+\usepackage{polyglossia}
+\setdefaultlanguage{russian}
+\setotherlanguage{english}
+\usepackage[a4paper,margin=18mm,top=21mm,bottom=21mm,headheight=15pt]{geometry}
+\usepackage{xcolor}
+\definecolor{Accent}{HTML}{185A86}
+\definecolor{Muted}{HTML}{526573}
+\usepackage{graphicx}
+\usepackage{longtable,booktabs,array,calc}
+\usepackage{fvextra}
+\usepackage{pdflscape}
+\usepackage{titlesec}
+\usepackage{fancyhdr}
+\usepackage{enumitem}
+\usepackage{etoolbox}
+\usepackage[unicode,colorlinks=true,linkcolor=Accent,urlcolor=Accent,bookmarksnumbered=false]{hyperref}
+\usepackage{bookmark}
+\usepackage{microtype}
+\AtBeginDocument{\raggedright}
+\setcounter{secnumdepth}{0}
+\setcounter{tocdepth}{1}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{4pt plus 1pt}
+\linespread{1.0}
+\setlength{\emergencystretch}{3em}
+\setlength{\tabcolsep}{4pt}
+\renewcommand{\arraystretch}{1.16}
+\AtBeginEnvironment{longtable}{\small}
+\setlist{leftmargin=1.5em,itemsep=2pt,topsep=3pt}
+\providecommand{\tightlist}{\setlength{\itemsep}{1pt}\setlength{\parskip}{0pt}}
+\titleformat{\section}{\Large\sffamily\bfseries\color{Accent}}{}{0pt}{}
+\titleformat{\subsection}{\large\sffamily\bfseries\color{Accent}}{}{0pt}{}
+\titleformat{\subsubsection}{\normalsize\sffamily\bfseries\color{Accent}}{}{0pt}{}
+\titlespacing*{\section}{0pt}{18pt}{8pt}
+\titlespacing*{\subsection}{0pt}{13pt}{6pt}
+\titlespacing*{\subsubsection}{0pt}{10pt}{5pt}
+\pagestyle{fancy}
+\fancyhf{}
+\fancyfoot[C]{\small\color{Muted}\thepage}
+\renewcommand{\headrulewidth}{.35pt}
+\renewcommand{\footrulewidth}{0pt}
+\newcommand{\DocumentTitle}[3]{%
+  \begin{titlepage}
+  \vspace*{12mm}
+  {\sffamily\color{Accent}\small АРХИТЕКТУРНОЕ ПРОЕКТИРОВАНИЕ\par}
+  \vspace{8mm}
+  {\sffamily\bfseries\fontsize{29}{36}\selectfont #1\par}
+  \vspace{5mm}
+  {\sffamily\Large\color{Muted}#2\par}
+  \vspace{7mm}
+  {\color{Accent}\rule{\linewidth}{1.2pt}\par}
+  \vspace{5mm}
+  {\large #3\par}
+  \vfill
+  \tableofcontents
+  \vfill
+  {\small\color{Muted}SolutionArchitectAI\par}
+  \end{titlepage}
+}

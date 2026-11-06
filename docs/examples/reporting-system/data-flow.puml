@@ -1,6 +1,6 @@
 @startuml
 !include <archimate/Archimate>
-left to right direction
+top to bottom direction
 skinparam defaultFontName DejaVu Sans
 skinparam shadowing false
 skinparam nodesep 35
@@ -11,6 +11,8 @@ Application_Component(sales, "Система продаж")
 Application_Component(units, "Система учёта\nподразделений")
 Application_Component(access, "Система корпоративного\nдоступа")
 Application_Component(broker, "Корпоративный брокер\nсообщений Apache Kafka")
+Application_Component(delivery, "Система передачи\nотчётов")
+Application_Component(recipient, "Внешняя система-\nполучатель")
 Application_Component(browser, "Браузер сотрудника")
 
 rectangle "Система отчётности" {
@@ -25,5 +27,7 @@ Rel_Flow(units, loader, "Справочник подразделений\nпо �
 Rel_Access_w(loader, report_data, "Проверенные продажи,\nсправочник и состояние загрузки")
 Rel_Access_r(reporting, report_data, "Данные для сводки\nи состояния загрузки")
 Rel_Flow(access, reporting, "Результат проверки\nправ сотрудника")
-Rel_Flow(reporting, browser, "Сводка, CSV\nи состояние загрузки")
+Rel_Flow(reporting, browser, "Сводка, CSV, состояние загрузки\nи результат передачи")
+Rel_Flow(reporting, delivery, "Конфиденциальная сводка\nв CSV")
+Rel_Flow(delivery, recipient, "Отчёт по защищённому каналу")
 @enduml
