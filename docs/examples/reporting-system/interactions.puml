@@ -3,27 +3,27 @@
 left to right direction
 skinparam defaultFontName DejaVu Sans
 skinparam shadowing false
-skinparam nodesep 40
-skinparam ranksep 55
-title Межсистемные взаимодействия
+skinparam nodesep 35
+skinparam ranksep 45
+title Межсистемные взаимодействия системы отчётности
 
-Application_Component(SYS_BROWSER, "SYS-BROWSER\nБраузер аналитика")
-Application_Component(SYS_REPORTS, "SYS-REPORTS\nСистема отчётности")
-Application_Component(SYS_SALES, "SYS-SALES\nПродажи")
-Application_Component(SYS_UNITS, "SYS-UNITS\nПодразделения")
-Application_Component(SYS_IAM, "SYS-IAM\nКорпоративный доступ")
-Technology_SystemSoftware(DB_REPORTS, "DB-REPORTS\nГотовая платформа PostgreSQL")
+Application_Component(sales, "Система продаж")
+Application_Component(units, "Система учёта\nподразделений")
+Application_Component(access, "Система корпоративного\nдоступа")
+Application_Component(broker, "Корпоративный брокер\nсообщений Apache Kafka")
+Application_Component(browser, "Браузер сотрудника")
+Technology_SystemSoftware(database, "База данных отчётности\nPostgreSQL")
 
-Rel_Association_dir(SYS_BROWSER, SYS_REPORTS, "I-01: HTTPS / 443\nСводка и CSV; токен + analyst")
-Rel_Association_dir(SYS_REPORTS, SYS_SALES, "I-02: HTTPS / 443\nGET /exports/sales; только чтение")
-Rel_Association_dir(SYS_REPORTS, SYS_UNITS, "I-03: HTTPS / 443\nGET /exports/units; только чтение")
-Rel_Association_dir(SYS_REPORTS, SYS_IAM, "I-04: HTTPS / 443\nPOST /token/introspect")
-Rel_Association_dir(SYS_REPORTS, DB_REPORTS, "I-05: PostgreSQL + TLS / 5432\nЧтение и атомарная запись")
+rectangle "Система отчётности" {
+  Application_Component(loader, "Сервис загрузки данных")
+  Application_Component(reporting, "Сервис формирования\nотчётности")
+}
 
-legend bottom
-  Association с направлением: инициатор обращения → получатель.
-  Application Component: приложения; System Software: готовая СУБД.
-  Все соединения защищены TLS. Точки доступа заданы вводным контекстом.
-  Физическое размещение, IP и настройки платформ здесь не проектируются.
-endlegend
+Rel_Association_dir(sales, broker, "Передача новых продаж\nKafka поверх TLS, порт 9093")
+Rel_Association_dir(loader, broker, "Получение продаж\nKafka поверх TLS, порт 9093")
+Rel_Association_dir(loader, units, "Получение справочника\nHTTPS, порт 443")
+Rel_Association_dir(loader, database, "Сохранение данных\nPostgreSQL поверх TLS, порт 5432")
+Rel_Association_dir(reporting, database, "Чтение данных для сводки\nPostgreSQL поверх TLS, порт 5432")
+Rel_Association_dir(reporting, access, "Проверка прав сотрудника\nHTTPS, порт 443")
+Rel_Association_dir(browser, reporting, "Просмотр сводки и скачивание CSV\nHTTPS, порт 443")
 @enduml

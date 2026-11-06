@@ -3,28 +3,27 @@
 left to right direction
 skinparam defaultFontName DejaVu Sans
 skinparam shadowing false
-skinparam nodesep 40
-skinparam ranksep 55
-title Потоки данных
+skinparam nodesep 35
+skinparam ranksep 45
+title Потоки данных системы отчётности
 
-Application_Component(SYS_SALES, "SYS-SALES\nПродажи")
-Application_Component(SYS_UNITS, "SYS-UNITS\nПодразделения")
-Application_Component(SYS_IAM, "SYS-IAM\nКорпоративный доступ")
-Application_Component(SYS_REPORTS, "SYS-REPORTS\nСистема отчётности")
-Application_Component(SYS_BROWSER, "SYS-BROWSER\nБраузер аналитика")
-Application_DataObject(D_SNAPSHOT, "D-SNAPSHOT\nОпубликованные дневные срезы\nХранение: 30 календарных дней")
+Application_Component(sales, "Система продаж")
+Application_Component(units, "Система учёта\nподразделений")
+Application_Component(access, "Система корпоративного\nдоступа")
+Application_Component(broker, "Корпоративный брокер\nсообщений Apache Kafka")
+Application_Component(browser, "Браузер сотрудника")
 
-Rel_Flow(SYS_SALES, SYS_REPORTS, "F-01: D-SALES\nПродажи за предыдущий день")
-Rel_Flow(SYS_UNITS, SYS_REPORTS, "F-02: D-UNITS\nСправочник за тот же день")
-Rel_Flow(SYS_IAM, SYS_REPORTS, "F-06: D-ACCESS\nРезультат проверки доступа")
-Rel_Access_w(SYS_REPORTS, D_SNAPSHOT, "F-03: публикация\nцелого дневного среза")
-Rel_Access_r(SYS_REPORTS, D_SNAPSHOT, "F-04: чтение\nвыбранного дня")
-Rel_Flow(SYS_REPORTS, SYS_BROWSER, "F-05: D-REPORT\nСводка или CSV")
+rectangle "Система отчётности" {
+  Application_Component(loader, "Сервис загрузки данных\nПроверка и сохранение")
+  Application_DataObject(report_data, "Данные отчётности\nв базе данных")
+  Application_Component(reporting, "Сервис формирования отчётности\nПодсчёт итогов")
+}
 
-legend bottom
-  Flow: откуда и куда передаются данные.
-  Access: запись или чтение объекта данных.
-  SYS-REPORTS — новое приложение; остальные приложения уже существуют.
-  Направления технических вызовов показаны на отдельной диаграмме.
-endlegend
+Rel_Flow_Down(sales, broker, "Данные о новых продажах")
+Rel_Flow(broker, loader, "Данные о продажах")
+Rel_Flow(units, loader, "Справочник подразделений\nпо расписанию")
+Rel_Access_w(loader, report_data, "Проверенные продажи,\nсправочник и состояние загрузки")
+Rel_Access_r(reporting, report_data, "Данные для сводки\nи состояния загрузки")
+Rel_Flow(access, reporting, "Результат проверки\nправ сотрудника")
+Rel_Flow(reporting, browser, "Сводка, CSV\nи состояние загрузки")
 @enduml
