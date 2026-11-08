@@ -9,9 +9,10 @@ title Потоки данных системы отчётности
 
 Application_Component(sales, "Система продаж")
 Application_Component(units, "Система учёта\nподразделений")
-Application_Component(access, "Система корпоративного\nдоступа")
+Application_Component(access, "Система корпоративного\nдоступа · 2FA")
 Application_Component(broker, "Корпоративный брокер\nсообщений Apache Kafka")
 Application_Component(delivery, "Система передачи\nотчётов")
+Application_Component(proxy, "Технологический прокси\nСквозной TLS-туннель")
 Application_Component(recipient, "Внешняя система-\nполучатель")
 Application_Component(browser, "Браузер сотрудника")
 
@@ -26,8 +27,19 @@ Rel_Flow(broker, loader, "Данные о продажах")
 Rel_Flow(units, loader, "Справочник подразделений\nпо расписанию")
 Rel_Access_w(loader, report_data, "Проверенные продажи,\nсправочник и состояние загрузки")
 Rel_Access_r(reporting, report_data, "Данные для сводки\nи состояния загрузки")
-Rel_Flow(access, reporting, "Результат проверки\nправ сотрудника")
+Rel_Flow(access, reporting, "Роль и подтверждение\nвторого фактора")
 Rel_Flow(reporting, browser, "Сводка, CSV, состояние загрузки\nи результат передачи")
 Rel_Flow(reporting, delivery, "Конфиденциальная сводка\nв CSV")
-Rel_Flow(delivery, recipient, "Отчёт по защищённому каналу")
+Rel_Flow(delivery, proxy, "CSV в сквозном TLS\nКлиентский сертификат")
+Rel_Flow(proxy, recipient, "CSV в защищённом туннеле")
+Rel_Flow(recipient, proxy, "Подтверждение приёма")
+Rel_Flow(proxy, delivery, "Подтверждение приёма")
+Rel_Flow(delivery, reporting, "Результат передачи")
+Rel_Flow(browser, access, "Контекст двухфакторного входа")
+Rel_Flow(access, browser, "Подтверждённая сессия 2FA")
+legend bottom
+  ArchiMate · профиль VIEW-01. Flow — направление данных; Access — чтение/запись.
+  Бизнес-прокси — актив вне среза; текущий профиль — внутренний сервис в рабочие часы.
+  Черновик: открытые вопросы D-01–D-03 приведены в A-01 и A-07.
+endlegend
 @enduml

@@ -27,6 +27,15 @@ python3 scripts/build_documents.py --refresh-tex
 
 **Эта команда перезаписывает `brd.tex` и `example.tex`, включая ручные правки в них.** `common.tex` сохраняется. Перед обновлением сохраните нужные правки в Git и проверьте полученный diff. Источники регенерации: `docs/BRD.md`, `docs/examples/reporting-system.md` и `docs/examples/reporting-system/expected-result.md`. Относительные ссылки превращаются в понятные подписи; диаграммы и YAML включаются в документ.
 
+Перед сборкой после изменения `.puml` пересоздайте обе SVG из исходников. Для текущего комплекта использован PlantUML 1.2026.9 и Graphviz; например, с локальным JAR:
+
+```sh
+java -Djava.awt.headless=true -jar /path/to/plantuml-1.2026.9.jar -charset UTF-8 -tsvg docs/examples/reporting-system/data-flow.puml docs/examples/reporting-system/interactions.puml
+python3 scripts/build_documents.py --refresh-tex
+```
+
+Обычная PDF-сборка использует сохранённые SVG и сама не запускает PlantUML. После пересборки проверьте таблицы, переносы и обе диаграммы визуально; экспорт кода `.puml` обязателен для A-03 и A-05.
+
 ## Инструменты
 
 Нужны Python 3, XeLaTeX, Inkscape и шрифты DejaVu с поддержкой кириллицы. Pandoc требуется только для `--refresh-tex`.
