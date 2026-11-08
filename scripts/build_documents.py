@@ -79,7 +79,14 @@ def normalize(value: object) -> object:
         if len(columns) == 2:
             widths = [.25, .75]
         elif len(columns) == 3:
-            widths = [.14, .28, .58] if 'ID' in header else [.31, .35, .34]
+            if 'Признак приёмки' in header:
+                widths = [.09, .21, .70]
+            elif 'Условие обнаружения' in header:
+                widths = [.23, .45, .32]
+            elif 'Результат в Git' in header:
+                widths = [.25, .45, .30]
+            else:
+                widths = [.14, .28, .58] if 'ID' in header else [.31, .35, .34]
         elif len(columns) == 4:
             widths = [.25, .44, .22, .09] if 'Порт' in header else [.24, .24, .30, .22]
         elif len(columns) == 5:
@@ -106,8 +113,35 @@ def convert(path: Path, *, first_heading: str | None = None) -> str:
                 if block['t'] == 'Header':
                     block['c'][0] -= 1
     ast['blocks'] = normalize(blocks)
-    return run(['pandoc', '--from=json', '--to=latex', '--wrap=none'],
-               input=json.dumps(ast, ensure_ascii=False), capture_output=True, text=True).stdout
+    latex = run(['pandoc', '--from=json', '--to=latex', '--wrap=none'],
+                input=json.dumps(ast, ensure_ascii=False), capture_output=True, text=True).stdout
+    return keep_table_starts(latex)
+
+
+def keep_table_starts(latex: str) -> str:
+    """Reserve the measured header + first row, without keeping whole tables.
+
+    Include an immediately preceding heading in the reservation, so moving a
+    table cannot leave its section title alone at the bottom of a page.
+    """
+    pattern = re.compile(
+        r'(?P<headings>(?:\\(?:sub)*section\{[^\n]+\}\s*)*)'
+        r'\\begin\{longtable\}(?:\[[^\]]*\])?(?P<columns>.*?)'
+        r'(?P<header>\\toprule.*?)\\endhead\s*'
+        r'.*?\\endlastfoot\s*(?P<row>.*?\\\\)\s*', re.S)
+
+    def reserve(match: re.Match) -> str:
+        # Pandoc may emit a separate first-page header; measure it only once.
+        header = match['header'].split(r'\endfirsthead')[0]
+        headings = match['headings']
+        heading_count = len(re.findall(r'\\(?:sub)*section\{', headings))
+        sample = (r'\begin{tabular}' + match['columns'] + header
+                  + match['row'] + '\n' + r'\end{tabular}')
+        guard = (r'\KeepTableStart{' + str(heading_count) + '}{%\n'
+                 + sample + '%\n}\n')
+        return guard + match[0]
+
+    return pattern.sub(reserve, latex)
 
 
 def source(title: str, subtitle: str, description: str, body: str) -> str:
@@ -131,10 +165,9 @@ def refresh() -> None:
         'Назначение, этапы проектирования, результаты и критерии приёмки первой версии.', brd))
     example = convert(ROOT / 'docs' / 'examples' / 'reporting-system.md',
                       first_heading='Исходные требования и контекст')
-    example += '\n' + r'\clearpage' + '\n'
+    example += '\n'
     example += convert(EXAMPLE / 'expected-result.md', first_heading='Ожидаемый архитектурный результат')
-    example += '\n' + r'''\clearpage
-\section{Полный архитектурный манифест}
+    example += '\n' + r'''\section{Полный архитектурный манифест}
 \label{manifest-appendix}
 Ниже приведён полный YAML-манифест системы формирования отчётности.
 Он описывает контекст, системы, наборы данных, потоки и технические взаимодействия.

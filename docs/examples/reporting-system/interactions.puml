@@ -32,12 +32,7 @@ Rel_Association_dir(reporting, database, "Чтение данных для св�
 Rel_Association_Up(reporting, access, "Проверка роли и 2FA\nHTTPS, порт 443")
 Rel_Association_dir(browser, reporting, "Просмотр, скачивание\nи передача отчёта\nHTTPS, порт 443")
 Rel_Association_dir(reporting, delivery, "Передача отчёта\nи подтверждение\nКлиентский сертификат\nHTTPS, порт 443")
-Rel_Association_dir(delivery, proxy, "Туннель к получателю\nHTTPS CONNECT, порт 443")
+Rel_Association_dir(delivery, proxy, "Туннель к получателю\nHTTPS/TLS, порт 443\nМетод HTTP CONNECT\nСквозной TLS внутри туннеля")
 Rel_Association_dir(proxy, recipient, "Отчёт и подтверждение\nСквозной TLS, сертификат\nсистемы передачи\nHTTPS, порт 443")
 Rel_Association_dir(browser, access, "Двухфакторный вход\nHTTPS, порт 443")
-legend bottom
-  ArchiMate · профиль VIEW-01. Направленная Association — инициатор обращения.
-  Ответ идёт по тому же соединению; прокси не расшифровывает сквозной TLS.
-  Бизнес-прокси — актив вне среза. Черновик: вопросы D-01–D-03 остаются открытыми.
-endlegend
 @enduml

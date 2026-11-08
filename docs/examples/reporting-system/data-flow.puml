@@ -37,9 +37,4 @@ Rel_Flow(proxy, delivery, "Подтверждение приёма")
 Rel_Flow(delivery, reporting, "Результат передачи")
 Rel_Flow(browser, access, "Контекст двухфакторного входа")
 Rel_Flow(access, browser, "Подтверждённая сессия 2FA")
-legend bottom
-  ArchiMate · профиль VIEW-01. Flow — направление данных; Access — чтение/запись.
-  Бизнес-прокси — актив вне среза; текущий профиль — внутренний сервис в рабочие часы.
-  Черновик: открытые вопросы D-01–D-03 приведены в A-01 и A-07.
-endlegend
 @enduml
