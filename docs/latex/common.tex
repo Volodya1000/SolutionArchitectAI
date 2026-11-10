@@ -18,6 +18,7 @@
 \usepackage{fancyhdr}
 \usepackage{enumitem}
 \usepackage{etoolbox}
+\usepackage{needspace}
 \usepackage[unicode,colorlinks=true,linkcolor=Accent,urlcolor=Accent,bookmarksnumbered=false]{hyperref}
 \usepackage{bookmark}
 \usepackage{microtype}
@@ -31,6 +32,19 @@
 \setlength{\tabcolsep}{4pt}
 \renewcommand{\arraystretch}{1.16}
 \AtBeginEnvironment{longtable}{\small}
+% Measure only a table's header and first data row. The generator emits this
+% guard before the table and any directly preceding section heading.
+\newsavebox{\DocumentTableStart}
+\newcommand{\KeepTableStart}[2]{%
+  \setbox\DocumentTableStart=\vbox{\hsize=\linewidth\small #2}%
+  \Needspace{\dimexpr\ht\DocumentTableStart+\dp\DocumentTableStart
+    +\LTpre+\baselineskip+#1\baselineskip*4\relax}%
+}
+\preto\section{\Needspace{5\baselineskip}}
+\preto\subsection{\Needspace{5\baselineskip}}
+\preto\subsubsection{\Needspace{4\baselineskip}}
+\clubpenalty=10000
+\widowpenalty=10000
 \setlist{leftmargin=1.5em,itemsep=2pt,topsep=3pt}
 \providecommand{\tightlist}{\setlength{\itemsep}{1pt}\setlength{\parskip}{0pt}}
 \titleformat{\section}{\Large\sffamily\bfseries\color{Accent}}{}{0pt}{}
