@@ -6,6 +6,7 @@ on:
     paths:
       - 'docs/**'
       - 'scripts/build_documents.py'
+      - 'scripts/test_build_documents.py'
       - '.github/workflows/build-pdf.yml'
   workflow_dispatch:
 
@@ -31,6 +32,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends texlive-xetex texlive-latex-extra texlive-lang-cyrillic texlive-fonts-recommended fonts-dejavu inkscape
+
+      - name: Check publisher regressions
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
       - name: Compile editable LaTeX twice
         run: python3 scripts/build_documents.py

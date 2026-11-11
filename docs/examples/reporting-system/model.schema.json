@@ -1,0 +1,947 @@
+{
+  "$defs": {
+    "checks": {
+      "additionalProperties": false,
+      "properties": {
+        "$schema": {
+          "const": "model.schema.json"
+        },
+        "approval": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "checks": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "basis": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "id": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "result": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "subject": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "subject",
+              "basis",
+              "result"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "method": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "record_type": {
+          "const": "checks"
+        }
+      },
+      "required": [
+        "$schema",
+        "record_type",
+        "method",
+        "approval",
+        "checks"
+      ],
+      "type": "object"
+    },
+    "decisions": {
+      "additionalProperties": false,
+      "properties": {
+        "$schema": {
+          "const": "model.schema.json"
+        },
+        "decisions": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "alternative": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "author": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "basis": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "id": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "proposal": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "source_ids": {
+                "items": {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "status": {
+                "const": "Предложено; не согласовано"
+              }
+            },
+            "required": [
+              "id",
+              "proposal",
+              "alternative",
+              "basis",
+              "author",
+              "status",
+              "source_ids"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "record_type": {
+          "const": "decisions"
+        }
+      },
+      "required": [
+        "$schema",
+        "record_type",
+        "decisions"
+      ],
+      "type": "object"
+    },
+    "model": {
+      "additionalProperties": false,
+      "properties": {
+        "$schema": {
+          "const": "model.schema.json"
+        },
+        "context": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "type": "object"
+        },
+        "files": {
+          "additionalProperties": false,
+          "properties": {
+            "checks": {
+              "const": "checks.json"
+            },
+            "decisions": {
+              "const": "decisions.json"
+            },
+            "objects": {
+              "const": "objects.json"
+            },
+            "relationships": {
+              "const": "relationships.json"
+            },
+            "requirements": {
+              "const": "requirements.json"
+            },
+            "sources": {
+              "const": "sources.json"
+            },
+            "views": {
+              "const": "views.json"
+            }
+          },
+          "required": [
+            "objects",
+            "relationships",
+            "requirements",
+            "sources",
+            "decisions",
+            "views",
+            "checks"
+          ],
+          "type": "object"
+        },
+        "name": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "record_type": {
+          "const": "model"
+        },
+        "schema_version": {
+          "const": "1.0"
+        },
+        "scope_name": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "workspace_id": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "$schema",
+        "record_type",
+        "schema_version",
+        "workspace_id",
+        "name",
+        "scope_name",
+        "context",
+        "files"
+      ],
+      "type": "object"
+    },
+    "object": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "interface"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "owner_id"
+            ]
+          }
+        }
+      ],
+      "properties": {
+        "alias": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "architecture_object",
+            "data",
+            "interface"
+          ]
+        },
+        "owner_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "platform_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "properties": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "type": "object"
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "storage_id": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "alias",
+        "kind",
+        "properties",
+        "provenance"
+      ],
+      "type": "object"
+    },
+    "objects": {
+      "additionalProperties": false,
+      "properties": {
+        "$schema": {
+          "const": "model.schema.json"
+        },
+        "objects": {
+          "items": {
+            "$ref": "#/$defs/object"
+          },
+          "type": "array"
+        },
+        "record_type": {
+          "const": "objects"
+        }
+      },
+      "required": [
+        "$schema",
+        "record_type",
+        "objects"
+      ],
+      "type": "object"
+    },
+    "provenance": {
+      "additionalProperties": false,
+      "properties": {
+        "source_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "автор": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "основания": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "статус": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "тип": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "фрагмент": {
+          "minLength": 1,
+          "type": "string"
+        }
+      },
+      "required": [
+        "source_ids",
+        "тип",
+        "автор",
+        "статус"
+      ],
+      "type": "object"
+    },
+    "relationship": {
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "data_flow"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "data_ids",
+              "interaction_id"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "interaction"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "interface_id"
+            ]
+          }
+        }
+      ],
+      "properties": {
+        "alias": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "data_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "interaction_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "interface_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "kind": {
+          "enum": [
+            "data_flow",
+            "interaction"
+          ]
+        },
+        "properties": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "type": "object"
+        },
+        "provenance": {
+          "$ref": "#/$defs/provenance"
+        },
+        "source_id": {
+          "format": "uuid",
+          "type": "string"
+        },
+        "target_id": {
+          "format": "uuid",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "alias",
+        "kind",
+        "source_id",
+        "target_id",
+        "properties",
+        "provenance"
+      ],
+      "type": "object"
+    },
+    "relationships": {
+      "additionalProperties": false,
+      "properties": {
+        "$schema": {
+          "const": "model.schema.json"
+        },
+        "record_type": {
+          "const": "relationships"
+        },
+        "relationships": {
+          "items": {
+            "$ref": "#/$defs/relationship"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "$schema",
+        "record_type",
+        "relationships"
+      ],
+      "type": "object"
+    },
+    "requirements": {
+      "additionalProperties": false,
+      "properties": {
+        "$schema": {
+          "const": "model.schema.json"
+        },
+        "record_type": {
+          "const": "requirements"
+        },
+        "requirements": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "pattern": "^[RN]-[0-9]{2}$",
+                "type": "string"
+              },
+              "kind": {
+                "enum": [
+                  "functional",
+                  "nonfunctional"
+                ]
+              },
+              "source_id": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "status": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "text": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "kind",
+              "text",
+              "source_id",
+              "status"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "rules": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "exceptions": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "id": {
+                "pattern": "^(SEC|ARCH|VIEW)-[0-9]{2}$",
+                "type": "string"
+              },
+              "mandatory": {
+                "type": "boolean"
+              },
+              "source_id": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "summary": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "text": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "text",
+              "summary",
+              "mandatory",
+              "exceptions",
+              "source_id"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "$schema",
+        "record_type",
+        "requirements",
+        "rules"
+      ],
+      "type": "object"
+    },
+    "sources": {
+      "additionalProperties": false,
+      "properties": {
+        "$schema": {
+          "const": "model.schema.json"
+        },
+        "record_type": {
+          "const": "sources"
+        },
+        "sources": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "alias": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "document_id": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "id": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "media_type": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "path": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "section": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "sha256": {
+                "pattern": "^[0-9a-f]{64}$",
+                "type": "string"
+              },
+              "size_bytes": {
+                "minimum": 0,
+                "type": "integer"
+              },
+              "version_id": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "alias",
+              "document_id",
+              "path",
+              "section",
+              "version_id",
+              "sha256",
+              "media_type",
+              "size_bytes"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "$schema",
+        "record_type",
+        "sources"
+      ],
+      "type": "object"
+    },
+    "views": {
+      "additionalProperties": false,
+      "properties": {
+        "$schema": {
+          "const": "model.schema.json"
+        },
+        "folders": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "name": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "parent_id": {
+                "anyOf": [
+                  {
+                    "format": "uuid",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "parent_id"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "record_type": {
+          "const": "views"
+        },
+        "views": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "edges": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "access_mode": {
+                      "enum": [
+                        "read",
+                        "write",
+                        "not_applicable"
+                      ]
+                    },
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "notation_type": {
+                      "enum": [
+                        "Flow",
+                        "Access",
+                        "Association"
+                      ]
+                    },
+                    "relationship_id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "source_node_id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "target_node_id": {
+                      "format": "uuid",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "relationship_id",
+                    "source_node_id",
+                    "target_node_id",
+                    "notation_type",
+                    "access_mode"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "folder_id": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "groups": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "label": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "node_ids": {
+                      "items": {
+                        "format": "uuid",
+                        "type": "string"
+                      },
+                      "type": "array"
+                    },
+                    "object_id": {
+                      "format": "uuid",
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "label",
+                    "node_ids"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "id": {
+                "format": "uuid",
+                "type": "string"
+              },
+              "name": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "nodes": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "label_template": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "notation_type": {
+                      "enum": [
+                        "Application_Component",
+                        "Application_DataObject",
+                        "Technology_SystemSoftware"
+                      ]
+                    },
+                    "object_id": {
+                      "format": "uuid",
+                      "type": "string"
+                    },
+                    "renderer_alias": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
+                    "wrap_label": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "id",
+                    "object_id",
+                    "renderer_alias",
+                    "label_template",
+                    "wrap_label",
+                    "notation_type"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              "renderer": {
+                "additionalProperties": false,
+                "properties": {
+                  "canvas": {
+                    "const": "explicit_light_background"
+                  },
+                  "direction": {
+                    "const": "top_to_bottom"
+                  },
+                  "engine": {
+                    "const": "PlantUML"
+                  },
+                  "image": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "layout": {
+                    "const": "automatic"
+                  },
+                  "scale": {
+                    "exclusiveMinimum": 0,
+                    "type": "number"
+                  },
+                  "source": {
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "engine",
+                  "layout",
+                  "direction",
+                  "scale",
+                  "source",
+                  "image",
+                  "canvas"
+                ],
+                "type": "object"
+              },
+              "viewpoint": {
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "name",
+              "folder_id",
+              "viewpoint",
+              "renderer",
+              "nodes",
+              "edges",
+              "groups"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "$schema",
+        "record_type",
+        "folders",
+        "views"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/model"
+    },
+    {
+      "$ref": "#/$defs/objects"
+    },
+    {
+      "$ref": "#/$defs/relationships"
+    },
+    {
+      "$ref": "#/$defs/requirements"
+    },
+    {
+      "$ref": "#/$defs/sources"
+    },
+    {
+      "$ref": "#/$defs/decisions"
+    },
+    {
+      "$ref": "#/$defs/views"
+    },
+    {
+      "$ref": "#/$defs/checks"
+    }
+  ],
+  "title": "Reporting-system example bundle, schema 1.0; not a complete future product metamodel"
+}

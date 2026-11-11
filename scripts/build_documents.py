@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -49,8 +50,8 @@ def normalize(value: object) -> object:
     kind, content = value.get('t'), value.get('c')
     if kind == 'Link' and not re.match(r'https?://|mailto:', content[2][0]):
         label = text_of(content[1])
-        if label in ('manifest.yaml', 'YAML-манифест'):
-            return {'t': 'Span', 'c': [['', [], []], [{'t': 'Str', 'c': 'архитектурный манифест (полностью приведён в приложении)'}]]}
+        if label in ('model.json', 'JSON-модель'):
+            return {'t': 'Span', 'c': [['', [], []], [{'t': 'Str', 'c': 'JSON-модель (полностью приведена в приложении)'}]]}
         return {'t': 'Span', 'c': [['', [], []], normalize(content[1])]}
     if kind == 'Image':
         name = Path(content[2][0]).stem
@@ -67,10 +68,6 @@ def normalize(value: object) -> object:
                    + r'\vfill\begin{center}' + '\n'
                    + r'\includegraphics[width=\linewidth,height=.82\textheight,keepaspectratio]{.build/documents/'
                    + name + '.pdf}\n' + r'\end{center}\vfill' + '\n' + closing)
-    if kind == 'Para' and text_of(content).startswith('Документы и манифест проверяются в рамках одного коммита Git.'):
-        return raw('')
-    if kind == 'Para' and text_of(content).startswith('Эталон подготовлен по '):
-        return raw('Решения предложены для ревью; согласование и ответы человека не имитируются.')
     if kind == 'Para' and len(content) == 1 and content[0].get('t') == 'Image':
         return normalize(content[0])
     if kind == 'Table':
@@ -156,6 +153,55 @@ def source(title: str, subtitle: str, description: str, body: str) -> str:
             + body + '\n' + r'\end{document}' + '\n')
 
 
+def prepare_json_appendix() -> None:
+    """Publish every data file, retaining full JSON and checking source pins.
+
+    This is a publishing check, not the future application's domain validator.
+    Indented records permit page breaks without a second model in Git.
+    """
+    def unique_pairs(pairs: list[tuple[str, object]]) -> dict:
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError(f'Duplicate JSON key: {key}')
+            result[key] = value
+        return result
+
+    def load(name: str) -> dict:
+        return json.loads((EXAMPLE / name).read_text(), object_pairs_hook=unique_pairs)
+
+    model = load('model.json')
+    if model.get('schema_version') != '1.0':
+        raise ValueError('Unsupported model schema_version')
+    names = ['model.json', *model['files'].values()]
+    if any(Path(name).name != name or not name.endswith('.json') for name in names):
+        raise ValueError('Model files must be local JSON filenames')
+    documents = {name: load(name) for name in names}
+    for source_ref in documents[model['files']['sources']]['sources']:
+        source_path = (EXAMPLE / source_ref['path']).resolve()
+        if not source_path.is_relative_to(EXAMPLE.parent.resolve()):
+            raise ValueError('Pinned source is outside the example directory')
+        content = source_path.read_bytes()
+        digest = hashlib.sha256(content).hexdigest()
+        if (digest != source_ref['sha256'] or len(content) != source_ref['size_bytes']
+                or source_ref['version_id'] != 'sha256:' + digest):
+            raise ValueError(f"Pinned source mismatch: {source_ref['path']}")
+    directory = BUILD / 'json'
+    directory.mkdir(parents=True, exist_ok=True)
+    sections = []
+    for name, data in documents.items():
+        # Physical line breaks let fvextra paginate even deeply nested views.
+        (directory / name).write_text(json.dumps(data, ensure_ascii=False, sort_keys=True,
+                                                indent=2) + '\n')
+        relative = (Path('.build/documents/json') / name).as_posix()
+        sections.append(r'\subsection{' + name + '}\n'
+                        + r'\VerbatimInput[fontsize=\small,breaklines=true,breakanywhere=true,'
+                        + r'breaksymbolleft={},breaksymbolright={},tabsize=2,'
+                        + r'frame=leftline,framerule=.6pt,rulecolor=\color{Accent},'
+                        + r'xleftmargin=8pt,framesep=8pt]{' + relative + '}\n')
+    (BUILD / 'model-appendix.tex').write_text('\n'.join(sections))
+
+
 def refresh() -> None:
     if not shutil.which('pandoc'):
         raise SystemExit('pandoc is required only for --refresh-tex.')
@@ -167,18 +213,17 @@ def refresh() -> None:
                       first_heading='Исходные требования и контекст')
     example += '\n'
     example += convert(EXAMPLE / 'expected-result.md', first_heading='Ожидаемый архитектурный результат')
-    example += '\n' + r'''\section{Полный архитектурный манифест}
-\label{manifest-appendix}
-Ниже приведён полный YAML-манифест системы формирования отчётности.
-Он описывает контекст, системы, наборы данных, потоки и технические взаимодействия.
-\VerbatimInput[fontsize=\normalsize,breaklines=true,breakanywhere=true,
-  breaksymbolleft={},breaksymbolright={},tabsize=2,
-  frame=leftline,framerule=.6pt,rulecolor=\color{Accent},
-  xleftmargin=8pt,framesep=8pt]{docs/examples/reporting-system/manifest.yaml}
+    example += '\n' + r'''\section{Полная структурированная JSON-модель}
+\label{model-appendix}
+Ниже приведены все данные модели, включая общие объекты, отношения,
+требования, источники, решения, дерево представлений и ограничения проверок.
+Запись с отступами сохраняет все значения и допускает переносы страниц. Это ручной эталон, а не результат работы приложения.
+Схема версии 1.0 определена в model.schema.json репозитория.
+\input{.build/documents/model-appendix.tex}
 '''
     (LATEX / 'example.tex').write_text(source(
         'Система формирования отчётности', 'Сквозной пример',
-        'Синтетические бизнес-требования, архитектурный результат, две диаграммы и полный YAML-манифест.',
+        'Синтетические требования, общая архитектурная модель, два представления и полный JSON.',
         example))
     print('Refreshed editable LaTeX sources from Markdown.')
 
@@ -193,12 +238,14 @@ def main() -> None:
     for command in ('xelatex', 'inkscape'):
         if not shutil.which(command):
             raise SystemExit(f'Missing required command: {command}')
+    prepare_json_appendix()
     if args.refresh_tex:
         refresh()
     env = os.environ.copy()
     if 'SOURCE_DATE_EPOCH' not in env:
         epoch = run(['git', 'log', '-1', '--format=%ct', '--', 'docs/latex',
-                     'docs/examples/reporting-system/manifest.yaml',
+                     'docs/BRD.md', 'docs/examples/reporting-system.md',
+                     'docs/examples/reporting-system',
                      'docs/examples/reporting-system/data-flow.svg',
                      'docs/examples/reporting-system/interactions.svg',
                      'scripts/build_documents.py'], capture_output=True, text=True).stdout.strip()
