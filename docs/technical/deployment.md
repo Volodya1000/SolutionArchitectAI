@@ -1,95 +1,43 @@
-# Docker и развёртывание
+# Развёртывание и сохранность
 
-[Навигация](README.md) · [Настройки и секреты](configuration.md) · [Хранение](backend.md#хранение-и-запись-в-git)
+[Навигация](README.md) · [Конфигурация](configuration.md) · [Протокол хранения](backend.md)
 
-## Минимальный состав
+## Минимальная поставка
 
-Рекомендация — Docker Compose для локального однопользовательского запуска и два постоянно работающих контейнера.
-У каждого приложения собственная сборка и lifecycle; один репозиторий исходников не означает один исполняемый процесс.
+Docker Compose включает отдельные frontend и backend, PostgreSQL и сохраняемые тома. Local filesystem — первая реализация файлового порта; S3-compatible endpoint выбирается конфигурацией. MinIO возможен отдельным profile для проверки S3, но не обязательная корпоративная зависимость. Git и локальный PlantUML/Java/Graphviz можно поставлять внутри backend образа. Веса и inference server в базовый Compose не входят.
 
-| Компонент | Содержимое и ответственность | Постоянные данные |
+| Ресурс | Назначение | Сохранность |
 | --- | --- | --- |
-| Backend | Python runtime, FastAPI, зависимости, Git CLI, локальный PlantUML CLI, JRE/Graphviz и кириллические шрифты | Один локальный persistent volume: Git-проекты, снимки источников, черновики, chat/run-state, pending journal |
-| Frontend | Development: Node/Vite; production: собранная SPA и Nginx | Нет; статические файлы поставляются в образе |
-| LLM endpoint | Внешний API либо локальный Ollama/совместимый сервер по выбранному профилю | Вне базового Compose; веса и GPU зависят от выбранной модели |
+| Frontend | Vite dev server или Nginx со статической SPA | Без предметных данных и секретов |
+| Backend | FastAPI, управляемые runs, адаптеры и рендеринг | Один worker в MVP; temp отдельно от durable data |
+| PostgreSQL | Операционное состояние, сообщения, runs, journal | Отдельный volume, Alembic migrations |
+| Git volume | Один общий архитектурный repo на пространство | Все refs/objects и незавершённые staging операции |
+| File storage | Immutable документы и вложения | Local volume либо S3 с политикой удержания версий |
 
-Локальный рендерер внутри backend устраняет внешний PlantUML API и третий сервис; цена — больший образ и JRE.
-Отдельный renderer-container оправдан при измеренной потребности изоляции/масштабирования; сейчас его жизненный цикл проще ограничить subprocess с timeout и ресурсными пределами.
-Redis, PostgreSQL, Kafka, LiteLLM Proxy и отдельный worker не включаются в базовый Compose: текущие требования их не обосновывают.
-Использование Kafka/PostgreSQL в [синтетическом примере](../examples/reporting-system.md) не требует запускать их для анализа этого примера.
+Redis, task broker, Kubernetes, vector database и LangGraph не нужны для первого сценария. Kafka и 2FA из примера — свойства проектируемой системы, не сервисы помощника. PostgreSQL помощника при этом обязателен.
 
-## Сеть frontend/backend
+## Сеть, development и production
 
-```mermaid
-flowchart LR
-    B[Браузер] -->|один origin| F[Frontend: Vite или Nginx]
-    F -->|/api через Compose DNS| A[Backend API]
-    A -->|HTTPS либо локальная сеть| L[LLM endpoint]
-    A --> V[(Persistent volume)]
-```
+Браузер обращается к относительному `/api`; Vite proxy/Nginx маршрутизирует запросы backend через Compose DNS. Deep links SPA возвращают index.html, API errors сохраняют собственные статус/JSON. SSE требует отключить buffering и согласовать proxy idle timeout; отмена server run — отдельный API. Backend не передаёт ключи в браузер. Для отдельного dev frontend задаётся конкретный CORS origin, не wildcard с credentials.
 
-Браузер использует относительный `/api`; имена `backend` и `ollama` из Compose ему недоступны.
-В development Vite proxy перенаправляет `/api` на backend по имени сервиса; в production то же делает Nginx, сохраняя API-префикс по согласованному правилу маршрутизации.
-Nginx отдаёт index.html для UI deep links, но API-ошибка не превращается в HTML со статусом 200.
-Порты разработки публикуются только на loopback хоста; backend внутри сети слушает контейнерный интерфейс.
-При отдельном локальном frontend вне Compose разрешается только явный dev CORS origin; wildcard с credentials не используется.
-Production — HTTPS на входном proxy, закрытый прямой backend port и same-origin без отдельного CORS.
-Будущий SSE потребует timeout и отключения proxy buffering; для начального polling специальных WebSocket-настроек нет.
+Development использует bind mounts кода и hot reload; production — immutable multi-stage images, Nginx static frontend без Node runtime, backend без dev tools/reload. Версии и lock-файлы фиксируются при реализации. Порты локальной разработки публикуются на loopback. Удалённая эксплуатация требует отдельно согласованных auth/access/data правил; этот документ их не утверждает.
 
-## Development и production
+Dishka lifespan закрывает clients/pools/tasks. SQL migrations выполняются одной явной командой до readiness, а не конкурентно каждым worker. [Compose service_healthy](https://docs.docker.com/compose/how-tos/startup-order/) задаёт ожидание PostgreSQL; сам порядок старта готовности не гарантирует. Readiness проверяет schema version, DB/Git/file access и pending recovery. Liveness проверяет процесс; LLM availability показывается отдельно degraded, не скрывает историю. Health check не запускает генерацию/JVM каждый раз.
 
-| Область | Development | Production |
-| --- | --- | --- |
-| Исходники | Bind mounts только каталогов кода, hot reload | Неизменяемые образы, без source mounts и reload |
-| Frontend | Node/Vite dev server | Multi-stage build, статические файлы и Nginx; Node runtime не нужен |
-| Backend | Dev-инструменты доступны в development target | Только runtime-зависимости; один process/worker по принятой файловой модели |
-| Конфигурация | Локальные env overrides и YAML | Явно смонтированный несекретный YAML, env, secret files; dotenv не читаются |
-| Данные | Отдельный dev volume с синтетикой | Сохраняемый volume с ограниченными правами и резервированием |
-| Логи | Читаемый локальный формат по необходимости | JSON в stdout, redaction; traces хранятся отдельно |
+## Локальные модели
 
-Образы собираются воспроизводимо по lock-файлам; версии базовых images фиксируются при реализации с политикой обновления безопасности.
-Backend/рендерер работают непривилегированным пользователем; запись разрешена только в data/temp.
-Volume не монтируется поверх кода. Git-репозитории создаёт приложение, сторонние hooks/произвольные команды пользователя не запускаются.
-PlantUML получает только сгенерированный код с экранированными названиями, а не .puml от LLM/пользователя.
-Выбирается [профиль безопасности PlantUML](https://plantuml.com/security) без сетевых includes; локальная ArchiMate-библиотека поставляется вместе с рендерером и разрешается только при необходимости.
-Совместимость выбранного security profile с bundled include из эталона проверяется в PR рендеринга; автоматическое ослабление до LEGACY не допускается.
-SVG отдаётся как изображение с ограничениями content policy; выполнение активного содержимого в контексте UI не требуется.
+Backend использует настроенный OpenAI-compatible endpoint LM Studio или vLLM через LiteLLM. `localhost` внутри контейнера — сам контейнер: для host endpoint нужен явно настроенный host gateway/DNS; для удалённого endpoint — доступная сеть и TLS по политике окружения. Ollama и обязательного облачного backend нет. Автоматическая отправка данных другому провайдеру запрещена. Fake LLM позволяет запустить обычный CI без inference server, реальная модель проходит отдельный capability/quality smoke.
 
-## Конфигурация контейнеров
+## Конфигурация и ограничения адаптеров
 
-Порядок источников внутри backend определён только в [configuration.md](configuration.md#приоритет-загрузки).
-Compose `.env` подставляет переменные в Compose-модель и сам по себе не передаёт их процессу контейнера.
-`environment`/`env_file` задают окружение контейнера; источники не смешиваются неявно с собственным dotenv loader приложения.
-Для development рекомендуем передавать явно выбранные env-файлы контейнеру, а чтение dotenv внутри него выключать; вне Docker действуют `.env` → `.env.local` с приоритетом окружения процесса.
-В production разрешены только нужные поля; backend secret mounts не доступны frontend, build secrets не используются как runtime-настройки.
-[Compose secrets](https://docs.docker.com/compose/how-tos/use-secrets/) выдаются конкретному сервису через `/run/secrets`, исходные файлы и резервные копии защищаются на хосте.
+Приоритет источников — только по [configuration.md](configuration.md#приоритет-загрузки). Compose `.env` выполняет интерполяцию и сам не передаёт всё окружение backend. Development env_file и собственный dotenv loader не включаются одновременно неявно. Production использует явный YAML/разрешённые env и [secret mounts](https://docs.docker.com/compose/how-tos/use-secrets/); frontend не получает backend dotenv. Source и секреты не копируются в images.
 
-## Локальные LLM
+Backend непривилегирован, пишет в data/temp. Git CLI получает список аргументов без shell, server-generated branch/path names и отключённые сторонние hooks. PlantUML получает сгенерированные экранированные проекции, не произвольный LLM `.puml`. [Security profile](https://plantuml.com/security) запрещает сетевые includes, локальная ArchiMate-библиотека поставляется вместе с рендерером; совместимость проверяется, автоматического ослабления до LEGACY нет. SVG показан как изображение с ограниченным content policy.
 
-По умолчанию backend подключается к настроенному endpoint; локальную модель не требуется скачивать каждому пользователю облачного профиля.
-Ollama на хосте доступен по адресу хоста из контейнера, а не `localhost` контейнера; для Linux механизм host gateway задаётся явно.
-Альтернатива — необязательный Compose profile локального LLM с модельным volume; требования к RAM/GPU и health check определяются после выбора модели.
-Endpoints не публикуются в интернет. Встроенный Docker DNS используется для контейнерного LLM, host gateway — только для хостового.
-Offline-проверки с fake LLM не запускают Ollama и не требуют ключей; реальная локальная модель проходит отдельный capability/quality smoke-test.
-Переключение на облачного провайдера при сбое локального не выполняется автоматически, поскольку меняет место обработки данных.
+## Recovery и резервирование
 
-## Health checks, запуск и остановка
+Shutdown останавливает приём новых runs, завершает короткую CAS-публикацию или оставляет journal для recovery, отменяет LLM/рендер с cleanup и конечным grace period, закрывает SQL/HTTP ресурсы. Interrupted run не объявляется completed. Recovery сопоставляет journal, refs/operation_id и immutable file versions; неопределённость блокирует запись. Протокол не обещает распределённую транзакцию.
 
-Backend liveness сообщает, что процесс отвечает; readiness проверяет валидность настроек, состояние хранилища/Git и отсутствие неразрешённого recovery.
-Диагностика рендерера выполняется при старте; простой health check не запускает JVM и платный LLM-вызов каждый раз.
-Недоступность LLM показывается отдельно как degraded и не скрывает сохранённую историю/редактирование; согласование без обязательного judge остаётся заблокировано.
-Frontend health check проверяет static response; завершение задачи Git/рендера проверяется по статусу операции, а не по живому HTTP-порту.
-[Compose запускает зависимости по порядку, но не ждёт готовности без `service_healthy`](https://docs.docker.com/compose/how-tos/startup-order/).
-Для frontend допустим запуск после backend readiness; proxy использует повторное разрешение имени/ограниченный retry, restart backend не требует ручной пересборки SPA.
-Опциональный локальный LLM при соответствующем profile имеет собственный health check; загрузка весов не маскируется как мгновенная готовность API.
-При shutdown прекращается приём новых операций, завершается короткая Git-публикация, незавершённые LLM-runs сохраняются как interrupted; используется конечный grace period.
+Backup охватывает PostgreSQL, весь Git repo и retained file versions с согласованным checkpoint/manifest. Один Git — не backup диска. Для минимального согласованного backup приостанавливаем записи/GC, выполняем DB dump и snapshot Git/files, записываем hashes и журнал, затем возобновляем. Restore на отдельном окружении проверяет ссылки на источники и незавершённые операции, а не только запуск контейнеров. Секреты резервируются отдельно, traces имеют доступ как исходники.
 
-## Сохранность и границы эксплуатации
-
-Git хранит историю, но не является резервной копией диска. Копируется весь data volume, включая .git, источники, черновики и pending journal.
-Для согласованной резервной копии запись приостанавливается или применяется согласованный snapshot файловой системы; восстановление испытывается на отдельном каталоге.
-Секреты не входят в проекты; LLM traces могут содержать данные источников и требуют тех же правил доступа, что и исходники.
-Сроки хранения, RPO/RTO и расписание backup должны быть согласованы для самого помощника; N-02 системы отчётности на него автоматически не переносится.
-Базовый Compose предназначен для локальной работы. Выставление в сеть требует согласованных аутентификации, авторизации и правил обработки данных, которые BRD пока не задаёт.
-Production на одном хосте возможен после этих решений; Kubernetes и горизонтальное масштабирование не являются целью текущего MVP.
-Dockerfile и Compose-файлы появятся в будущих PR по [плану реализации](implementation-plan.md), здесь описана только целевая организация.
+RPO/RTO, сроки хранения, права удаления, удалённый доступ и конкретная корпоративная платформа остаются открытыми. N-02 системы отчётности не переносится на помощника. Никакого допуска реальных закрытых данных из успешного синтетического smoke не следует. Compose/Dockerfile появятся при реализации, в этом PR их нет.
