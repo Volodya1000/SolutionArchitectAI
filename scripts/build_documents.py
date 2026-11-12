@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the two committed PDFs; regenerate editable LaTeX only on request."""
+"""Build the three committed PDFs; regenerate editable LaTeX only on request."""
 from __future__ import annotations
 
 import argparse
@@ -17,6 +17,7 @@ BUILD = ROOT / '.build' / 'documents'
 LATEX = ROOT / 'docs' / 'latex'
 PDF = ROOT / 'docs' / 'pdf'
 EXAMPLE = ROOT / 'docs' / 'examples' / 'reporting-system'
+DOCUMENTS = ('brd', 'example', 'technical-decisions')
 
 
 def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess:
@@ -165,29 +166,44 @@ def refresh() -> None:
         'Система формирования отчётности', 'Сквозной пример',
         'Синтетические требования, общая архитектурная модель, два представления решения и результаты проверок.',
         example))
+    decisions = convert(ROOT / 'docs' / 'technical' / 'technical-decisions-summary.md')
+    (LATEX / 'technical-decisions.tex').write_text(source(
+        'SolutionArchitectAI. Ключевые технические решения', 'Технические решения',
+        '', decisions))
     print('Refreshed editable LaTeX sources from Markdown.')
+
+
+def require_latex_sources() -> None:
+    for name in DOCUMENTS:
+        tex = LATEX / f'{name}.tex'
+        if not tex.exists():
+            raise SystemExit(f'Missing {tex.relative_to(ROOT)}; run with --refresh-tex first.')
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--refresh-tex', action='store_true',
-                        help='overwrite brd.tex and example.tex from the current Markdown before building')
+                        help='overwrite all three LaTeX sources from the current Markdown before building')
+    parser.add_argument('--output-dir', type=Path, default=PDF,
+                        help='where compiled PDFs are copied (default: docs/pdf)')
     args = parser.parse_args()
-    for path in (BUILD, LATEX, PDF):
+    for path in (BUILD, LATEX, args.output_dir):
         path.mkdir(parents=True, exist_ok=True)
     for command in ('xelatex', 'inkscape'):
         if not shutil.which(command):
             raise SystemExit(f'Missing required command: {command}')
     if args.refresh_tex:
         refresh()
+    require_latex_sources()
     env = os.environ.copy()
     if 'SOURCE_DATE_EPOCH' not in env:
-        epoch = run(['git', 'log', '-1', '--format=%ct', '--', 'docs/latex',
+        epoch = run(['git', 'log', '-1', '--format=%ct', '--',
+                     'docs/latex/brd.tex', 'docs/latex/example.tex',
                      'docs/BRD.md', 'docs/examples/reporting-system.md',
                      'docs/examples/reporting-system',
                      'docs/examples/reporting-system/data-flow.svg',
-                     'docs/examples/reporting-system/interactions.svg',
-                     'scripts/build_documents.py'], capture_output=True, text=True).stdout.strip()
+                     'docs/examples/reporting-system/interactions.svg'],
+                    capture_output=True, text=True).stdout.strip()
         env['SOURCE_DATE_EPOCH'] = epoch or '0'
     env['FORCE_SOURCE_DATE'] = '1'
     env['TZ'] = 'UTC'
@@ -195,10 +211,8 @@ def main() -> None:
         run(['inkscape', str(EXAMPLE / f'{name}.svg'), '--export-type=pdf',
              f'--export-filename={BUILD / (name + ".pdf")}'], env=env,
             capture_output=True)
-    for name in ('brd', 'example'):
+    for name in DOCUMENTS:
         tex = LATEX / f'{name}.tex'
-        if not tex.exists():
-            raise SystemExit(f'Missing {tex.relative_to(ROOT)}; run with --refresh-tex first.')
         for _ in range(2):
             result = subprocess.run(['xelatex', '-no-shell-escape', '-halt-on-error', '-interaction=nonstopmode',
                                      '-file-line-error', f'-output-directory={BUILD}', str(tex)],
@@ -212,8 +226,8 @@ def main() -> None:
         if warnings:
             print('\n'.join(warnings))
             raise SystemExit(f'Layout or font errors in {name}; inspect the build log.')
-        shutil.copyfile(BUILD / f'{name}.pdf', PDF / f'{name}.pdf')
-        print(f'Built docs/pdf/{name}.pdf')
+        shutil.copyfile(BUILD / f'{name}.pdf', args.output_dir / f'{name}.pdf')
+        print(f'Built {args.output_dir / (name + ".pdf")}')
 
 
 if __name__ == '__main__':

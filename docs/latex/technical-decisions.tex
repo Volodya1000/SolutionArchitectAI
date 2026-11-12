@@ -1,0 +1,109 @@
+% Editable publishing source. Rebuild without --refresh-tex to preserve edits.
+\documentclass[10pt,a4paper]{article}
+\input{docs/latex/common.tex}
+\hypersetup{pdftitle={SolutionArchitectAI. Ключевые технические решения},pdfauthor={},pdfsubject={Технические решения}}
+\fancyhead[L]{\small SolutionArchitectAI}
+\fancyhead[R]{\small Технические решения}
+\begin{document}
+\DocumentTitle{SolutionArchitectAI. Ключевые технические решения}{Технические решения}{}
+Статус: рекомендуемая архитектура MVP для предметного ревью, а не отчёт об испытании приложения. Реализация backend/frontend и испытания конкретных LLM ещё впереди. Развёрнутые основания и контракты --- в {технической документации}.
+
+\KeepTableStart{1}{%
+\begin{tabular}{@{}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 2\tabcolsep) * \real{0.2500}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 2\tabcolsep) * \real{0.7500}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+Уровень
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Ответственность
+\end{minipage} \\
+\midrule\noalign{}
+React / FastAPI & Рабочее место архитектора, чаты, API, запуск и наблюдение за операциями \\
+\end{tabular}%
+}
+\section{1. Система и границы}\label{1-ux441ux438ux441ux442ux435ux43cux430-ux438-ux433ux440ux430ux43dux438ux446ux44b}
+
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 2\tabcolsep) * \real{0.2500}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 2\tabcolsep) * \real{0.7500}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+Уровень
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Ответственность
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+React / FastAPI & Рабочее место архитектора, чаты, API, запуск и наблюдение за операциями \\
+Application & Use cases, права, привязка задач, запусков, Git-редакций и согласований; предметные команды \\
+LangGraph и агенты & Выполнение многоэтапного процесса; роли извлекают требования, задают вопросы, проектируют и независимо проверяют \\
+LangChain / Domain & Обращение к LLM и структурная валидация / архитектурные объекты, операции и инварианты \\
+Persistence / Infrastructure & PostgreSQL, Git, файлы, LLM-адаптеры и рендеринг \\
+\end{longtable}
+
+Стрелки работы: UI → FastAPI → Application → LangGraph → агенты → LangChain → локальная LLM. Application обращается к Domain и портам хранения. Граф ведёт исполнение процесса, но не становится источником истины архитектурной модели. Предложения ИИ проходят предметную валидацию и решение человека. Применение изменения, согласование результата и Git merge остаются разными операциями с проверкой полномочий.
+
+\section{2. Backend и модель}\label{2-backend-ux438-ux43cux43eux434ux435ux43bux44c}
+
+\textbf{Рекомендованный стек:} FastAPI/OpenAPI для HTTP и streaming, Dishka для scoped зависимостей, Pydantic для внешних DTO и Settings, SQLAlchemy 2.x async + Alembic для PostgreSQL. Выбор ещё не подтверждён эксплуатацией этого приложения; совместимые версии закрепляются в lock-файлах при реализации. Асинхронные клиенты, сессии и checkpointer управляются через \texttt{async\ with} и lifespan; конкурентные операции не делят одну \texttt{AsyncSession}.
+
+\texttt{domain} содержит Python-модель архитектурных объектов, отношений, решений и разрешённых операций с инвариантами. JSON служит сериализации, а не источником бизнес-правил. \texttt{application} содержит use cases, агентные контракты и порты к внешним средствам; \texttt{persistence} реализует SQL/Git/files, \texttt{infrastructure} --- LLM и рендеринг, \texttt{presentation} --- API, \texttt{config} --- загрузку настроек, \texttt{di} --- композицию. Зависимости направлены к Application/Domain. Protocol/ABC создаются при реальной границе или замене, а не для каждого класса.
+
+\KeepTableStart{1}{%
+\begin{tabular}{@{}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 2\tabcolsep) * \real{0.2500}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 2\tabcolsep) * \real{0.7500}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+Средство
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Авторитетные данные
+\end{minipage} \\
+\midrule\noalign{}
+PostgreSQL & Задачи, чаты, сообщения, запуски, права, ответы, предложения и журнал предметных операций; отдельно checkpoints LangGraph \\
+\end{tabular}%
+}
+\section{3. Хранение, редакции и восстановление}\label{3-ux445ux440ux430ux43dux435ux43dux438ux435-ux440ux435ux434ux430ux43aux446ux438ux438-ux438-ux432ux43eux441ux441ux442ux430ux43dux43eux432ux43bux435ux43dux438ux435}
+
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 2\tabcolsep) * \real{0.2500}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 2\tabcolsep) * \real{0.7500}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+Средство
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Авторитетные данные
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+PostgreSQL & Задачи, чаты, сообщения, запуски, права, ответы, предложения и журнал предметных операций; отдельно checkpoints LangGraph \\
+Git & Подтверждённые редакции общей архитектурной модели, дерево представлений, решения и проверяемая история изменений \\
+Local files / S3-compatible & Неизменяемые версии входных документов, вложений и крупных производных файлов \\
+\end{longtable}
+
+Задача создаёт рабочую Git-ветку от точной редакции общей модели. Применение предложения требует \texttt{operation\_id}, ожидаемого HEAD, повторной проверки входов и разрешённых Domain-операций. PostgreSQL-журнал фиксирует подготовку, публикацию и итог; при потере ответа исход восстанавливается по журналу и Git ref без второго commit. Checkpoint графа не заменяет этот журнал. Общей транзакции PostgreSQL/Git/S3 нет: частичный сбой требует идемпотентного восстановления. Approval и merge выполняет уполномоченный человек отдельно.
+
+\section{4. LLM, агенты и граф}\label{4-llm-ux430ux433ux435ux43dux442ux44b-ux438-ux433ux440ux430ux444}
+
+Для базовых интерфейсов сообщений/цепочек выбран \texttt{langchain-core}, для настраиваемого OpenAI-совместимого endpoint --- \texttt{langchain-openai} (\texttt{ChatOpenAI}). Полный пакет \texttt{langchain} базовому MVP не нужен. LM Studio рассматривается для разработки, vLLM --- как следующий сервер; одинаковый HTTP-формат не гарантирует поддержки JSON Schema и прочих возможностей конкретной модели. Эти пары модель/сервер подлежат интеграционному испытанию.
+
+\textbf{StructuredOutputGenerator} --- собственный переиспользуемый компонент за портом Application. Он принимает промпт/сообщения, профиль модели и Pydantic-схему, возвращает типизированный результат либо типизированную ошибку. \texttt{with\_structured\_output(...,\ method="json\_schema")} допускается только при проверенной поддержке. Иначе явно настроенный режим JSON-текста всё равно проходит строгую Pydantic-валидацию. Невалидный JSON и ошибка схемы допускают контролируемую повторную генерацию. \texttt{RetryConfig} задаёт один бюджет запросов и времени для сетевых, rate-limit и validation повторов; вложенные независимые retry-loop запрещены. Отмена и отсутствие capability завершаются явной ошибкой. Автоматического перехода к Tool Calling и молчаливого ослабления схемы нет. LangChain не воспроизводит сам все механизмы исправления ответа Instructor.
+
+Для многоэтапного проектирования выбран \texttt{langgraph} с детерминированным \texttt{StateGraph}. Он управляет зависимостями, параллельными ветвями, checkpoint, ожиданием человека и возобновлением. Это заменяет прежний план собственного движка переходов. LiteLLM и Instructor не входят в базовый стек, но могут быть пересмотрены по результатам экспериментов. Решение учитывает существующее применение LangChain/LangGraph в организации; работоспособность в данном приложении пока не испытана.
+
+Сохраняются четыре роли: RequirementsExtractionAgent, ClarificationAgent, ArchitectureDesignAgent, ArchitectureReviewAgent. Их контракт --- \texttt{AgentRequest\ →\ AgentResult}; узел графа адаптирует результат к GraphState. Проектирование разбито на контекст, reuse, компоненты, данные, потоки, взаимодействия, сборку кандидата, представления и независимое ревью. Один агент может выполнить несколько операций; отдельный агент для каждого узла не требуется.
+
+\texttt{langgraph-checkpoint-postgres} сохраняет компактный GraphState в PostgreSQL: run ID, версии входов, Git base revision, ссылки на результаты и данные для продолжения. Полная архитектура остаётся в своих хранилищах. Для async backend рассматривается \texttt{AsyncPostgresSaver} с управляемым lifespan, явным \texttt{setup()} до первого использования и строгой политикой десериализации. После \texttt{interrupt()} узел при resume может начаться заново: внешние действия защищаются идемпотентностью. LangGraph не определяет семантическую неактуальность предложений после смены требований; Application/Domain проверяют версии и выбирают затронутые операции для повтора.
+
+\section{5. Frontend, качество и поставка}\label{5-frontend-ux43aux430ux447ux435ux441ux442ux432ux43e-ux438-ux43fux43eux441ux442ux430ux432ux43aux430}
+
+React + TypeScript + Vite, React Router и TanStack Query образуют рекомендуемую основу SPA. Для чата рекомендуется assistant-ui с собственным транспортом FastAPI; история и статусы хранятся на сервере. Интерактивные архитектурные представления показывают общие объекты, их связи, свойства, использование в разных видах и diff предложений. Layout вида отделён от семантики модели. Конкретная библиотека графа и корпоративная UI-библиотека выбираются после короткого испытания; Light/Dark/System входят в MVP.
+
+Ruff, Pyright, pytest и import-linter проверяют Python-код и границы импортов; ESLint, Vitest и Playwright --- frontend и сквозные сценарии. Docker Compose поставляет frontend, backend, PostgreSQL и постоянные тома; inference server развёртывается отдельно. Первый рабочий результат --- сохраняемый чат React → FastAPI → LangChain → локальная LLM без LangGraph. Следующий --- извлечение требований, вопрос архитектору, прерывание и возобновление через LangGraph. Позднее добавляются проектирование и review. Реальные проверки модели, повторов, восстановления после рестарта, конкурентности и Git-идемпотентности относятся к последующим PR, а не к этому документу.
+
+\end{document}

@@ -47,13 +47,14 @@ jobs:
         run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
       - name: Compile editable LaTeX twice
-        run: python3 scripts/build_documents.py
+        run: python3 scripts/build_documents.py --output-dir .build/document-artifacts
 
-      - name: Upload both PDFs
+      - name: Upload all three PDFs
         uses: actions/upload-artifact@v4
         with:
           name: architecture-documents
           path: |
-            docs/pdf/brd.pdf
-            docs/pdf/example.pdf
+            .build/document-artifacts/brd.pdf
+            .build/document-artifacts/example.pdf
+            .build/document-artifacts/technical-decisions.pdf
           if-no-files-found: error

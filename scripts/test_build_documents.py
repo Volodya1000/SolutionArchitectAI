@@ -11,13 +11,14 @@ spec.loader.exec_module(publisher)
 
 
 class PublicationTests(unittest.TestCase):
-    def test_refresh_contains_review_material_and_both_vector_diagrams_without_json_listing(self):
+    def test_refresh_contains_review_material_and_third_summary(self):
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory)
             with patch.object(publisher, 'LATEX', target):
                 publisher.refresh()
             example = (target / 'example.tex').read_text()
             brd = (target / 'brd.tex').read_text()
+            decisions = (target / 'technical-decisions.tex').read_text()
             for forbidden in ('model-appendix', 'VerbatimInput', 'Полная структурированная JSON',
                               'полностью приведена в приложении'):
                 self.assertNotIn(forbidden, example)
@@ -29,11 +30,23 @@ class PublicationTests(unittest.TestCase):
             self.assertIn('Архитектурное проектирование MVP системы SolutionArchitectAI', brd)
             for status in ('Подтверждено', 'Требует проверки', 'Нарушение', 'Недостаточно данных'):
                 self.assertIn(status, brd)
+            for required in ('Ключевые технические решения', 'LangGraph',
+                             'StructuredOutputGenerator', 'AsyncPostgresSaver', 'longtable'):
+                self.assertIn(required, decisions)
 
     def test_local_model_link_is_plain_repository_reference(self):
         link = {'t': 'Link', 'c': [['', [], []], [{'t': 'Str', 'c': 'JSON-модель'}],
                                  ['model.json', '']]}
         self.assertNotIn('приложении', publisher.text_of(publisher.normalize(link)))
+
+    def test_missing_third_latex_source_fails_preflight(self):
+        with tempfile.TemporaryDirectory(dir=publisher.ROOT) as directory:
+            target = Path(directory)
+            (target / 'brd.tex').touch()
+            (target / 'example.tex').touch()
+            with patch.object(publisher, 'LATEX', target):
+                with self.assertRaisesRegex(SystemExit, 'technical-decisions.tex'):
+                    publisher.require_latex_sources()
 
 
 if __name__ == '__main__':
