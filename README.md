@@ -18,7 +18,7 @@
 | --- | --- |
 | [BRD MVP](docs/BRD.md) | Функции, ограничения, результаты и критерии приёмки |
 | [Принципы архитектуры](docs/architecture.md) | Предложения по модели архитектуры, диаграммам и интеграциям |
-| [Техническое проектирование](docs/technical/README.md) | Рекомендуемый стек, контракты агентов, конфигурация, развёртывание, качество и план реализации |
+| [Техническое проектирование](docs/technical/README.md) | Планируемый стек, контракты агентов, конфигурация, развёртывание, качество и план реализации |
 | [Ключевые технические решения](docs/technical/technical-decisions-summary.md) | Краткий технический обзор для архитектора и ведущих разработчиков |
 | [Входной пример](docs/examples/reporting-system.md) | Полный синтетический BRD и корпоративный контекст |
 | [Ожидаемый результат](docs/examples/reporting-system/expected-result.md) | Таблицы и диаграммы с русскими названиями, решения и проверки |
@@ -29,3 +29,5 @@
 [JSON-модель примера](docs/examples/reporting-system/model.json) хранит общие объекты и дерево представлений; обычные архитектурные операции будущего приложения выполняются через UI. [Техническая архитектура](docs/technical/README.md) описывает PostgreSQL/Git/files, агентов и локальные LLM.
 
 Основная ветка приложения — `review/base`. PR предлагаются к ней; `main` в продуктовой документации — будущая согласованная ветка общего архитектурного репозитория. Merge выполняет человек.
+
+Планируемый MVP: Python 3.13 + uv + FastAPI; React/TypeScript/Vite, React Router, TanStack Query, shadcn/ui + Tailwind CSS, assistant-ui и React Flow ([выбор библиотек](docs/technical/frontend-library-evaluation.md)). [Локальное окружение](docs/technical/deployment.md) — Docker Compose с отдельными frontend, backend, PostgreSQL и PlantUML Server; LLM подключается отдельно. Будущий production — Red Hat OpenShift. Контейнеры и приложение пока не реализуются.

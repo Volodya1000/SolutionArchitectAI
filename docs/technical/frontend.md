@@ -8,31 +8,11 @@
 
 Центральный объект — общая архитектурная модель и дерево представлений. Рядом доступен чат, основной способ общения с ИИ. Рабочее место позволяет найти компонент, открыть свойства/отношения, список использующих его видов, связанные требования/решения, историю и diff. Задача выбирает ветку, но не создаёт отдельную архитектуру. Представления — ссылки на общие ID, не набор независимых SVG. Полный drag-and-drop редактор уровня Archi вне первого MVP.
 
-## Готовый чат: исследование 11 ноября 2026
+## Выбранные библиотеки
 
-Это оценка официальной документации, без установки и интеграционного прототипа. У всех кандидатов FastAPI/PostgreSQL остаются нашими: UI-библиотека сама не сохраняет историю в нашей БД. «Поддержка» ниже означает API/компоненты и требуемый адаптер, а не готовый backend.
+Планируется использовать **shadcn/ui + Tailwind CSS** для общих компонентов и тем, **assistant-ui** для чата, **React Flow (`@xyflow/react`)** для интерактивных диаграмм. React Router работает в Declarative mode; TanStack Query отвечает за серверные данные без дублирования кеша в Router. Vite обеспечивает dev server и сборку SPA. Основания, альтернативы, лицензии, peer ranges и ограничения зафиксированы в [анализе библиотек](frontend-library-evaluation.md), проверенном 12 ноября 2026 года. Выбор сделан; интеграционный smoke и lock-файл ещё предстоят.
 
-| Критерий | assistant-ui | MUI X Chat | shadcn/ui AI Elements |
-| --- | --- | --- | --- |
-| React/Vite | React primitives/runtime, без обязательного Next.js | React/MUI; Vite совместим | Копируемые React-компоненты; есть Vite setup; chatbot template на Next.js не обязателен |
-| FastAPI, без cloud | LocalRuntime/ChatModelAdapter или ExternalStoreRuntime; Assistant Cloud опционален | Свой backend adapter/ReadableStream | Свой transport/state; AI SDK template — пример, не обязательный облачный сервис |
-| Streaming | Async stream адаптера, runtime состояния | Потоковый processor и adapter | Message Scroller/Message показывают обновления; transport подключаем сами |
-| История PostgreSQL | HistoryAdapter и remote thread list через наш API | История/идентификаторы через свой backend adapter | Load/save и управление состоянием реализуем сами |
-| Несколько чатов | RemoteThreadListAdapter, thread runtime | Multi-conversation/thread switching | Навигация и список чатов собственные |
-| Вложения | AttachmentAdapter плюс наш immutable file API | Документированы message parts/attachments; upload adapter свой | Attachment/Input components; upload и связывание с сообщением свои |
-| Отмена | AbortSignal/cancel runtime; API отмены run нужен отдельно | Cancellation contract адаптера; остановка server run наша | Abort transport и lifecycle реализуем сами |
-| Кастомные сообщения | Custom components/data parts; карточки вопросов и proposals | Slots/parts, custom renderer | Полный контроль копируемого кода |
-| Вопросы/предложения | Наши typed части ClarificationSet/ChangeProposal, кнопки use cases | Наши parts/slots и команды принятия | Свои карточки и event mapping |
-| Light/Dark/System | Primitives стилизуем общей темой; не отдельная несогласованная палитра | Встроенная MUI theme integration | Общий Vite ThemeProvider/CSS tokens |
-| Лицензия | MIT для open-source core; hosted-продукты отдельно | Документация Chat указывает MIT Community; не переносить лицензию Pro DataGrid на Chat | MIT исходников shadcn/ui; проверяем лицензии выбранных зависимостей |
-| API и зрелость | Специализированный runtime с адаптерами; встречаются unstable API, pin и contract tests обязательны | Страница overview показывает **v9.0.0-alpha.21**, early development/Chat Preview; обещанный срок stable не доказательство выпуска | AI Elements переносится в shadcn/ui; старый registry объявлен к deprecation в конце ноября 2026; код сопровождать нам |
-| Наш код интеграции | Средний: stream, history, threads, uploads и domain cards; меньше собственной механики чата | Средний при выборе MUI, плюс риск миграций alpha | Наибольший: композиция UI проста, lifecycle/history/concurrency в основном наши |
-
-Источники: [assistant-ui LocalRuntime](https://www.assistant-ui.com/docs/runtimes/custom/local-runtime), [adapters](https://www.assistant-ui.com/docs/runtimes/concepts/adapters), [threads](https://www.assistant-ui.com/docs/runtimes/concepts/threads), [MIT](https://github.com/assistant-ui/assistant-ui/blob/main/LICENSE); [MUI overview](https://mui.com/x/react-chat/overview/), [alpha announcement](https://mui.com/blog/introducing-mui-x-chat-v9-alpha/); [shadcn Chat](https://ui.shadcn.com/docs/ai-elements/base/chat), [AI Elements](https://ui.shadcn.com/docs/ai-elements), [migration notice](https://elements.ai-sdk.dev/), [MIT](https://github.com/shadcn-ui/ui/blob/main/LICENSE.md).
-
-**Рекомендация — assistant-ui с собственным FastAPI transport и persistence adapters.** Он закрывает больше типового lifecycle, не требует облачного чата и оставляет domain UI нашему приложению. MUI X Chat сейчас не рекомендуем для основы MVP из-за подтверждённой alpha, даже при выборе Material UI. shadcn AI Elements — подходящая альтернатива для полностью собственного UI, но требует больше интеграционного кода и учёта текущего переноса. Сравнение не является benchmark; перед pin версии первый вертикальный сценарий проверяет cancel/reconnect/history/attachments.
-
-Общая UI-библиотека остаётся **рекомендацией**: бесплатный Material UI core удобен для таблиц/форм; shadcn/ui + Tailwind лучше сочетается с готовой стилизацией assistant-ui. При выборе MUI используем стилизуемые assistant-ui primitives, избегаем двух независимых reset/theme систем. Окончательный корпоративный выбор не объявлен. Redux не нужен: Query хранит серверное состояние, React — локальное.
+assistant-ui использует ExternalStoreRuntime и собственный адаптер FastAPI: серверная история, stream, список чатов, вложения, восстановление и отмена run. Облачные chat services не нужны. Карточки уточнений/предложений и их команды реализует приложение. shadcn-компоненты копируются в проект: команда отвечает за их обновления и доступность. Redux не требуется: Query хранит серверное состояние, React — локальные правки.
 
 ## Чат и команды
 
@@ -48,7 +28,7 @@ Mutation применения передаёт expected_commit/operation_id. З�
 
 Обязательны **Light / Dark / System**, ручное переключение и восстановление выбора. System реагирует на prefers-color-scheme; явный Light/Dark имеет приоритет. Предпочтение сохраняется локально и в пользовательских настройках PostgreSQL; при старте локальный выбор применяется до загрузки профиля, затем действует сохранённый выбор пользователя с явной политикой синхронизации.
 
-Если выбран MUI: [ThemeProvider, colorSchemes, useColorScheme и CSS variables](https://mui.com/material-ui/customization/dark-mode/) предоставляют основу и storage manager; дополнительный theme framework не нужен. Если shadcn/ui: [ThemeProvider для Vite](https://ui.shadcn.com/docs/dark-mode/vite), localStorage и CSS variables. Не добавляем next-themes в Vite лишь потому, что он встречается в Next.js примере.
+[ThemeProvider shadcn/ui для Vite](https://ui.shadcn.com/docs/dark-mode/vite), localStorage и CSS variables образуют общую тему. Не добавляем next-themes из Next.js примеров; assistant-ui и React Flow используют те же tokens и согласованные палитры.
 
 Общие tokens применяются к чату, таблицам, дереву, диалогам, карточкам, diff, Markdown/code blocks и замечаниям. Диаграммы получают собственные проверенные палитры background/text/line/fill в обеих темах; если SVG экспортируется только для светлого режима, показывается на явно светлой canvas с читаемой рамкой, а не на прозрачном чёрном фоне. Не используем CSS invert: он меняет смысл цветов. Смена темы не меняет предметную модель/layout; theme-specific SVG остаётся производным экспортом той же ревизии.
 
@@ -66,4 +46,6 @@ Mutation применения передаёт expected_commit/operation_id. З�
 
 Предложение ИИ показывается в контексте затронутых объектов и diff; доступны применить/отклонить/вернуть на уточнение. Сравнение показывает добавление, изменение и удаление объектов/связей с основаниями, а не только текст сериализации. Интерфейс выделяет доказанное нарушение, конфликт с решением человека, недостающие обязательные данные и сомнительное предложение; подробности раскрываются. Контроль качества, происхождение и human approval независимы.
 
-Конкретная React-библиотека графа выбирается коротким испытанием в шаге общей модели: select/edit edge, where-used, два независимых layout, русские подписи, темы и diff. Это выбор frontend, не замена ArchiMate на UML. MVP ограничен согласованным профилем нотации и основными операциями; полный набор возможностей редактора Archi не обещается.
+**React Flow выбран** для controlled nodes/edges, selection, drag, handles/reconnect, custom nodes/edges и zoom/pan. Приложение сохраняет по view ID отдельные позиции, подписи и viewport, отображает свойства и where-used, проверяет разрешённые отношения на backend и строит semantic diff с принятием/отклонением. ID графического экземпляра и ID общего предметного объекта различаются. React Flow не становится источником предметной модели или Git-форматом.
+
+PlantUML получает проверенную проекцию той же предметной редакции и генерирует экспортируемые схемы; SVG не заменяет интерактивный редактор. Будущий ArchiMate Model Exchange XML строится отдельным адаптером предметной модели, не сериализатором React Flow. Это не замена ArchiMate на UML. MVP ограничен согласованным профилем нотации; полный редактор Archi не обещается. Интеграционные проверки охватывают select/edit edge, where-used, два независимых layout, русские подписи, темы, клавиатуру и diff.

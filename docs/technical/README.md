@@ -1,7 +1,7 @@
 # Техническая архитектура SolutionArchitectAI
 
-Статус: конкретные рекомендации для реализации MVP и предметного ревью. Решения из задания интегрированы; библиотечные рекомендации не означают согласования ручного эталона.
-Источники для нового LLM-стека проверены **12 ноября 2026 года**: [ChatOpenAI](https://docs.langchain.com/oss/python/integrations/chat/openai), [LangGraph](https://docs.langchain.com/oss/python/langgraph/graph-api), [PostgreSQL checkpointer](https://github.com/langchain-ai/langgraph/tree/main/libs/checkpoint-postgres) и метаданные PyPI. На дату проверки: langchain-core 1.8.0, langchain-openai 1.7.4, langgraph 1.2.20, langgraph-checkpoint-postgres 3.2.0; эти версии совместимы по заявленным ограничениям зависимостей, но конкретные версии будут закреплены вместе при реализации. Остальные технические источники первоначально проверены 11 ноября 2026 года. Зависимости не устанавливались, backend/frontend не реализованы; версии проверяются совместно и фиксируются lock-файлами при реализации.
+Статус: планируемые решения реализации MVP для технического согласования. Выбор стека не означает согласования ручного эталона.
+Источники для нового LLM-стека проверены **12 ноября 2026 года**: [ChatOpenAI](https://docs.langchain.com/oss/python/integrations/chat/openai), [LangGraph](https://docs.langchain.com/oss/python/langgraph/graph-api), [PostgreSQL checkpointer](https://github.com/langchain-ai/langgraph/tree/main/libs/checkpoint-postgres) и метаданные PyPI. На дату проверки: langchain-core 1.8.0, langchain-openai 1.7.4, langgraph 1.2.20, langgraph-checkpoint-postgres 3.2.0; эти версии совместимы по заявленным ограничениям зависимостей, но конкретные версии будут закреплены вместе при реализации. Frontend, Python 3.13 и контейнерное развёртывание дополнительно проверены 12 ноября 2026 года. Проверены metadata/peer ranges и разрешение backend-зависимостей для Python 3.13; backend/frontend не реализованы и не испытаны. Версии фиксируются lock-файлами при реализации.
 
 ## Общая модель и рабочее место
 
@@ -30,13 +30,13 @@ flowchart TD
 
 | Область | Решение | Подробности |
 | --- | --- | --- |
-| Backend | Python, FastAPI, Dishka, PostgreSQL, SQLAlchemy 2.x, Alembic, Pydantic | [Backend](backend.md) |
+| Backend | Python 3.13, uv, FastAPI, Dishka, PostgreSQL, SQLAlchemy 2.x, Alembic, Pydantic | [Backend](backend.md) |
 | LLM и граф | langchain-core, langchain-openai, Pydantic, StructuredOutputGenerator; LangGraph + PostgreSQL checkpoints для многоэтапного проектирования | [Генерация](structured-output.md), [граф](agent-pipeline.md) |
 | Модель | Python Domain Model с валидаторами; JSON для сохранения/восстановления | [Модель и хранение](domain-model.md) |
 | Состояние | PostgreSQL / Git / local или S3; журнал и восстановление вместо общей транзакции | [Согласованность](persistence.md#согласованность-хранилищ) |
-| Frontend | React, TypeScript, Vite, Router, TanStack Query; assistant-ui — рекомендуемый чат | [Сравнение и темы](frontend.md) |
+| Frontend | React, TypeScript, Vite, React Router, TanStack Query; shadcn/ui + Tailwind CSS, assistant-ui, React Flow | [Рабочее место](frontend.md), [выбор библиотек](frontend-library-evaluation.md) |
 | Конфигурация | Pydantic Settings, несекретный YAML приложения, environment overrides и secret files | [Настройки](configuration.md) |
-| Поставка | Compose приложения и PostgreSQL; local storage по умолчанию, S3 опционально; inference server отдельно | [Развёртывание](deployment.md) |
+| Поставка | Docker Compose: frontend/backend/PostgreSQL/PlantUML Server и durable Git/files; LLM отдельно; будущий production — OpenShift | [Развёртывание](deployment.md) |
 | Качество | Ruff, Pyright, pytest, import-linter; TypeScript, Vitest, Playwright | [Проверки](quality-and-testing.md) |
 | Следующий результат | Ранний React → FastAPI → LangChain → локальная LLM с сохранённым чатом; затем первый LangGraph HITL-сценарий | [План](implementation-plan.md) |
 
@@ -60,7 +60,7 @@ FR-01–FR-05 поддерживают [роли и граф проектиро�
 
 Kafka, 2FA и прокси синтетической системы отчётности не становятся зависимостями помощника. PostgreSQL помощника нужен для его операционного состояния независимо от PostgreSQL в примере.
 
-Открыты предметное согласование полного эталона, обязательность XML-обмена, окончательная корпоративная UI-библиотека, поддерживаемые входные форматы сверх Markdown/текста, модели и цели смыслового качества. Реальные закрытые данные, удалённый доступ и эксплуатация в конкретной организации не разрешаются этим проектированием.
+Открыты предметное согласование полного эталона, обязательность XML-обмена, поддерживаемые входные форматы сверх Markdown/текста, модели и цели смыслового качества. Реальные закрытые данные, удалённый доступ и эксплуатация в конкретной организации не разрешаются этим проектированием.
 
 Краткий обзор для технического ревью: [Markdown](technical-decisions-summary.md) · [PDF](../pdf/technical-decisions.pdf).
 
@@ -80,6 +80,7 @@ Kafka, 2FA и прокси синтетической системы отчёт�
 | Контекст, покрытие источников, исследование RAG | [context-management.md](context-management.md) |
 | Один Settings, источники и RetryConfig | [configuration.md](configuration.md) |
 | Графическое рабочее место и чат | [frontend.md](frontend.md) |
+| Выбор frontend-библиотек и границы React Flow | [frontend-library-evaluation.md](frontend-library-evaluation.md) |
 | Развёртывание и backup | [deployment.md](deployment.md) |
 | Качество и тестирование | [quality-and-testing.md](quality-and-testing.md) |
 | Вертикальные сценарии разработки | [implementation-plan.md](implementation-plan.md) |
