@@ -155,12 +155,12 @@ def refresh() -> None:
         raise SystemExit('pandoc is required only for --refresh-tex.')
     brd = convert(ROOT / 'docs' / 'BRD.md')
     (LATEX / 'brd.tex').write_text(source(
-        'SolutionArchitectAI', 'Бизнес-требования · MVP',
-        'Назначение, этапы проектирования, результаты и критерии приёмки первой версии.', brd))
-    example = convert(ROOT / 'docs' / 'examples' / 'reporting-system.md',
-                      first_heading='Исходные требования и контекст')
+        'Архитектурное проектирование MVP системы SolutionArchitectAI', 'Бизнес-требования',
+        '', brd))
+    example = convert(ROOT / 'docs' / 'examples' / 'reporting-system.md')
     example += '\n'
-    example += convert(EXAMPLE / 'expected-result.md', first_heading='Ожидаемый архитектурный результат')
+    example += convert(EXAMPLE / 'expected-result.md',
+                       first_heading='Часть III. Ожидаемый результат архитектурного проектирования')
     (LATEX / 'example.tex').write_text(source(
         'Система формирования отчётности', 'Сквозной пример',
         'Синтетические требования, общая архитектурная модель, два представления решения и результаты проверок.',

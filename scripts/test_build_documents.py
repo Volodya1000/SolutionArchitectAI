@@ -23,6 +23,10 @@ class PublicationTests(unittest.TestCase):
                 self.assertNotIn(forbidden, example)
             for required in ('data-flow.pdf', 'interactions.pdf', 'longtable', 'Реестр решений'):
                 self.assertIn(required, example)
+            for heading in ('Часть I. Исходные требования', 'Часть II. Синтетический корпоративный контекст',
+                            'Часть III. Ожидаемый результат архитектурного проектирования'):
+                self.assertIn(heading, example)
+            self.assertIn('Архитектурное проектирование MVP системы SolutionArchitectAI', brd)
             for status in ('Подтверждено', 'Требует проверки', 'Нарушение', 'Недостаточно данных'):
                 self.assertIn(status, brd)
 

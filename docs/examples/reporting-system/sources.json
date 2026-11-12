@@ -9,9 +9,9 @@
       "media_type": "text/markdown",
       "path": "../reporting-system.md",
       "section": "Правила контекста",
-      "sha256": "fac8fc78beac3d4eb506e42e9f9833dbe9159eb1523887a6726d9a6bde5a69c8",
-      "size_bytes": 21540,
-      "version_id": "sha256:fac8fc78beac3d4eb506e42e9f9833dbe9159eb1523887a6726d9a6bde5a69c8"
+      "sha256": "a9820f2ff6a9c67e6c9c739f05d46006c7e64a6848befcca254a152c9f280309",
+      "size_bytes": 18047,
+      "version_id": "sha256:a9820f2ff6a9c67e6c9c739f05d46006c7e64a6848befcca254a152c9f280309"
     },
     {
       "alias": "BRD",
@@ -20,9 +20,9 @@
       "media_type": "text/markdown",
       "path": "../reporting-system.md",
       "section": "Требования",
-      "sha256": "fac8fc78beac3d4eb506e42e9f9833dbe9159eb1523887a6726d9a6bde5a69c8",
-      "size_bytes": 21540,
-      "version_id": "sha256:fac8fc78beac3d4eb506e42e9f9833dbe9159eb1523887a6726d9a6bde5a69c8"
+      "sha256": "a9820f2ff6a9c67e6c9c739f05d46006c7e64a6848befcca254a152c9f280309",
+      "size_bytes": 18047,
+      "version_id": "sha256:a9820f2ff6a9c67e6c9c739f05d46006c7e64a6848befcca254a152c9f280309"
     },
     {
       "alias": "SCOPE",
@@ -31,9 +31,9 @@
       "media_type": "text/markdown",
       "path": "../reporting-system.md",
       "section": "Назначение и границы",
-      "sha256": "fac8fc78beac3d4eb506e42e9f9833dbe9159eb1523887a6726d9a6bde5a69c8",
-      "size_bytes": 21540,
-      "version_id": "sha256:fac8fc78beac3d4eb506e42e9f9833dbe9159eb1523887a6726d9a6bde5a69c8"
+      "sha256": "a9820f2ff6a9c67e6c9c739f05d46006c7e64a6848befcca254a152c9f280309",
+      "size_bytes": 18047,
+      "version_id": "sha256:a9820f2ff6a9c67e6c9c739f05d46006c7e64a6848befcca254a152c9f280309"
     },
     {
       "alias": "CAT",
@@ -42,9 +42,9 @@
       "media_type": "text/markdown",
       "path": "../reporting-system.md",
       "section": "Корпоративный контекст",
-      "sha256": "fac8fc78beac3d4eb506e42e9f9833dbe9159eb1523887a6726d9a6bde5a69c8",
-      "size_bytes": 21540,
-      "version_id": "sha256:fac8fc78beac3d4eb506e42e9f9833dbe9159eb1523887a6726d9a6bde5a69c8"
+      "sha256": "a9820f2ff6a9c67e6c9c739f05d46006c7e64a6848befcca254a152c9f280309",
+      "size_bytes": 18047,
+      "version_id": "sha256:a9820f2ff6a9c67e6c9c739f05d46006c7e64a6848befcca254a152c9f280309"
     },
     {
       "alias": "DATA",
@@ -53,9 +53,9 @@
       "media_type": "text/markdown",
       "path": "../reporting-system.md",
       "section": "Данные",
-      "sha256": "fac8fc78beac3d4eb506e42e9f9833dbe9159eb1523887a6726d9a6bde5a69c8",
-      "size_bytes": 21540,
-      "version_id": "sha256:fac8fc78beac3d4eb506e42e9f9833dbe9159eb1523887a6726d9a6bde5a69c8"
+      "sha256": "a9820f2ff6a9c67e6c9c739f05d46006c7e64a6848befcca254a152c9f280309",
+      "size_bytes": 18047,
+      "version_id": "sha256:a9820f2ff6a9c67e6c9c739f05d46006c7e64a6848befcca254a152c9f280309"
     }
   ]
 }
