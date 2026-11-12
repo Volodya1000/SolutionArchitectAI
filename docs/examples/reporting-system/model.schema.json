@@ -1,5 +1,28 @@
 {
   "$defs": {
+    "approval": {
+      "additionalProperties": false,
+      "properties": {
+        "note": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "not_requested",
+            "pending",
+            "approved",
+            "rejected",
+            "stale"
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "note"
+      ],
+      "type": "object"
+    },
     "checks": {
       "additionalProperties": false,
       "properties": {
@@ -7,8 +30,7 @@
           "const": "model.schema.json"
         },
         "approval": {
-          "minLength": 1,
-          "type": "string"
+          "$ref": "#/$defs/approval"
         },
         "checks": {
           "items": {
@@ -18,13 +40,24 @@
                 "minLength": 1,
                 "type": "string"
               },
+              "details": {
+                "minLength": 1,
+                "type": "string"
+              },
               "id": {
                 "format": "uuid",
                 "type": "string"
               },
+              "quality": {
+                "$ref": "#/$defs/quality"
+              },
               "result": {
-                "minLength": 1,
-                "type": "string"
+                "enum": [
+                  "passed",
+                  "violation",
+                  "not_applicable",
+                  "not_run"
+                ]
               },
               "subject": {
                 "minLength": 1,
@@ -35,7 +68,9 @@
               "id",
               "subject",
               "basis",
-              "result"
+              "result",
+              "details",
+              "quality"
             ],
             "type": "object"
           },
@@ -72,6 +107,9 @@
                 "minLength": 1,
                 "type": "string"
               },
+              "approval": {
+                "$ref": "#/$defs/approval"
+              },
               "author": {
                 "minLength": 1,
                 "type": "string"
@@ -96,7 +134,12 @@
                 "type": "array"
               },
               "status": {
-                "const": "Предложено; не согласовано"
+                "enum": [
+                  "proposed",
+                  "accepted",
+                  "rejected",
+                  "superseded"
+                ]
               }
             },
             "required": [
@@ -106,7 +149,8 @@
               "basis",
               "author",
               "status",
-              "source_ids"
+              "source_ids",
+              "approval"
             ],
             "type": "object"
           },
@@ -195,7 +239,7 @@
           "const": "model"
         },
         "schema_version": {
-          "const": "1.0"
+          "const": "1.1"
         },
         "scope_name": {
           "minLength": 1,
@@ -241,6 +285,9 @@
           "minLength": 1,
           "type": "string"
         },
+        "approval": {
+          "$ref": "#/$defs/approval"
+        },
         "id": {
           "format": "uuid",
           "type": "string"
@@ -285,6 +332,9 @@
         "provenance": {
           "$ref": "#/$defs/provenance"
         },
+        "quality": {
+          "$ref": "#/$defs/quality"
+        },
         "storage_id": {
           "format": "uuid",
           "type": "string"
@@ -295,7 +345,9 @@
         "alias",
         "kind",
         "properties",
-        "provenance"
+        "provenance",
+        "quality",
+        "approval"
       ],
       "type": "object"
     },
@@ -343,13 +395,14 @@
           },
           "type": "array"
         },
-        "статус": {
-          "minLength": 1,
-          "type": "string"
-        },
         "тип": {
-          "minLength": 1,
-          "type": "string"
+          "enum": [
+            "Предложение",
+            "Следствие правила",
+            "Следствие требований и контекста",
+            "Факт контекста",
+            "Факт требований"
+          ]
         },
         "фрагмент": {
           "minLength": 1,
@@ -359,8 +412,38 @@
       "required": [
         "source_ids",
         "тип",
-        "автор",
-        "статус"
+        "автор"
+      ],
+      "type": "object"
+    },
+    "quality": {
+      "additionalProperties": false,
+      "properties": {
+        "basis": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "check_ids": {
+          "items": {
+            "format": "uuid",
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "status": {
+          "enum": [
+            "confirmed",
+            "needs_review",
+            "violation",
+            "insufficient_data"
+          ]
+        }
+      },
+      "required": [
+        "status",
+        "basis",
+        "check_ids"
       ],
       "type": "object"
     },
@@ -401,6 +484,9 @@
         "alias": {
           "minLength": 1,
           "type": "string"
+        },
+        "approval": {
+          "$ref": "#/$defs/approval"
         },
         "data_ids": {
           "items": {
@@ -452,6 +538,9 @@
         "provenance": {
           "$ref": "#/$defs/provenance"
         },
+        "quality": {
+          "$ref": "#/$defs/quality"
+        },
         "source_id": {
           "format": "uuid",
           "type": "string"
@@ -468,7 +557,9 @@
         "source_id",
         "target_id",
         "properties",
-        "provenance"
+        "provenance",
+        "quality",
+        "approval"
       ],
       "type": "object"
     },
@@ -943,5 +1034,5 @@
       "$ref": "#/$defs/checks"
     }
   ],
-  "title": "Reporting-system example bundle, schema 1.0; not a complete future product metamodel"
+  "title": "Reporting-system example bundle, schema 1.1; not a complete future product metamodel"
 }

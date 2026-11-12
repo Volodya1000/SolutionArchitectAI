@@ -1,8 +1,6 @@
-"""Regression checks for the document publisher, not future application tests."""
+"""Publishing regression checks; no future application behavior is exercised."""
 import importlib.util
-import json
 from pathlib import Path
-import shutil
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -12,51 +10,26 @@ publisher = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(publisher)
 
 
-class JsonAppendixTests(unittest.TestCase):
-    def setUp(self):
-        self.temp = tempfile.TemporaryDirectory()
-        self.addCleanup(self.temp.cleanup)
-        root = Path(self.temp.name)
-        example = root / 'example'
-        shutil.copytree(publisher.EXAMPLE, example)
-        shutil.copyfile(publisher.EXAMPLE.parent / 'reporting-system.md', root / 'reporting-system.md')
-        self.example = example
-        self.build = root / 'build'
-        self.addCleanup(patch.stopall)
-        patch.object(publisher, 'EXAMPLE', example).start()
-        patch.object(publisher, 'BUILD', self.build).start()
+class PublicationTests(unittest.TestCase):
+    def test_refresh_contains_review_material_and_both_vector_diagrams_without_json_listing(self):
+        with tempfile.TemporaryDirectory() as directory:
+            target = Path(directory)
+            with patch.object(publisher, 'LATEX', target):
+                publisher.refresh()
+            example = (target / 'example.tex').read_text()
+            brd = (target / 'brd.tex').read_text()
+            for forbidden in ('model-appendix', 'VerbatimInput', 'Полная структурированная JSON',
+                              'полностью приведена в приложении'):
+                self.assertNotIn(forbidden, example)
+            for required in ('data-flow.pdf', 'interactions.pdf', 'longtable', 'Реестр решений'):
+                self.assertIn(required, example)
+            for status in ('Подтверждено', 'Требует проверки', 'Нарушение', 'Недостаточно данных'):
+                self.assertIn(status, brd)
 
-    def prepare(self):
-        self.assertTrue(hasattr(publisher, 'prepare_json_appendix'), 'JSON appendix generation is missing')
-        publisher.prepare_json_appendix()
-
-    def test_appendix_preserves_every_model_file(self):
-        self.prepare()
-        model = json.loads((self.example / 'model.json').read_text())
-        for name in ['model.json', *model['files'].values()]:
-            original = json.loads((self.example / name).read_text())
-            listing = json.loads((self.build / 'json' / name).read_text())
-            self.assertEqual(listing, original)
-        self.assertTrue((self.build / 'model-appendix.tex').is_file())
-
-    def test_changed_source_is_not_published_as_pinned_version(self):
-        source = self.example.parent / 'reporting-system.md'
-        source.write_text(source.read_text() + '\nChanged source\n')
-        with self.assertRaisesRegex(ValueError, 'source'):
-            self.prepare()
-
-    def test_duplicate_json_key_is_rejected(self):
-        (self.example / 'model.json').write_text('{"schema_version":"1.0","schema_version":"2.0"}')
-        with self.assertRaisesRegex(ValueError, 'Duplicate'):
-            self.prepare()
-
-    def test_unknown_schema_version_is_rejected(self):
-        p = self.example / 'model.json'
-        model = json.loads(p.read_text())
-        model['schema_version'] = '999'
-        p.write_text(json.dumps(model))
-        with self.assertRaisesRegex(ValueError, 'schema_version'):
-            self.prepare()
+    def test_local_model_link_is_plain_repository_reference(self):
+        link = {'t': 'Link', 'c': [['', [], []], [{'t': 'Str', 'c': 'JSON-модель'}],
+                                 ['model.json', '']]}
+        self.assertNotIn('приложении', publisher.text_of(publisher.normalize(link)))
 
 
 if __name__ == '__main__':
