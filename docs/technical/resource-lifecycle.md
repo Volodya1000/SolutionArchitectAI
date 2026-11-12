@@ -2,17 +2,17 @@
 
 [Навигация](README.md) · [Persistence](persistence.md)
 
-Один backend worker для MVP и ограниченные управляемые задачи; PostgreSQL хранит run-state после рестарта. Стадии claim выполняются атомарно с версией/lease, чтобы два возобновления не породили две публикации. Redis/workflow engine не нужны. LLM-вызов не держит DB-транзакцию или Git lock.
+Один backend worker для MVP и ограниченные управляемые задачи; PostgreSQL хранит checkpoints LangGraph и отдельный предметный журнал после рестарта. Application сериализует/проверяет конкурентные команды по run/operation ID и не допускает повторной публикации. Redis/workflow engine не нужны. LLM-вызов не держит DB-транзакцию или Git lock.
 
 Async оправдан для LLM, HTTP, SQL async driver, streaming и поддерживаемого storage I/O. Синхронный Git/локальные файлы выносятся в контролируемый thread pool; CPU-парсинг и тяжёлый рендер — в process/subprocess с timeout и cleanup. Чистые domain-правила остаются синхронными. Не блокируем event loop, не делим одну AsyncSession между конкурентными задачами; session на отдельный use case/task ([SQLAlchemy](https://docs.sqlalchemy.org/en/20/orm/extensions/asyncio.html#using-asyncsession-with-concurrent-tasks)).
 
-TaskGroup/структурированная конкурентность там, где подзадачи имеют общий lifecycle; нет бесконтрольных fire-and-forget. CancelledError распространяется после cleanup; общий monotonic deadline охватывает ожидание semaphore, сеть, backoff и генерацию. LLM concurrency ограничен. Shutdown прекращает новые runs, отменяет/ожидает активные, закрывает потоки/clients/sessions; незавершённые стадии получают interrupted. Временные и постоянные ошибки различаются.
+TaskGroup/структурированная конкурентность там, где подзадачи имеют общий lifecycle; нет бесконтрольных fire-and-forget. CancelledError распространяется после cleanup; общий monotonic deadline охватывает ожидание semaphore, сеть, backoff и генерацию. LLM concurrency ограничен. Shutdown прекращает новые runs, отменяет/ожидает активные, закрывает потоки/clients/sessions; незавершённое выполнение графа остаётся доступным для восстановления по checkpoint; состояние предметной операции определяется её журналом. Временные и постоянные ошибки различаются.
 
 Команда запуска возвращает run_id. Streaming — SSE (или fetch-stream с согласованным event envelope): run_id, event_id/sequence, kind, payload; reconnect восстанавливает сообщение и статус из PostgreSQL, не запускает новую генерацию. Отмена — отдельная идемпотентная команда; частичный текст остаётся явно incomplete. Логи содержат task/run/operation IDs, задержки, токены, модель/версию, параметры, ошибки и повторы; секреты и полные документы по умолчанию исключены. Расчётов оплаты LLM нет.
 
 ## Обязательный управляемый scope
 
-Если объект владеет освобождаемым ресурсом или требует асинхронной инициализации/завершения, публичный API выдаёт его только внутри `async with`. Это относится к AsyncSession, транзакциям/соединениям, временным execution-ресурсам. Фабрика возвращает `AsyncContextManager[Resource]`, а не `Resource` или coroutine, возвращающую открытый ресурс. Реализация фабрики использует `@asynccontextmanager`; композиция — `AsyncExitStack`. Dishka scoped providers с `yield` освобождают ресурсы при закрытии своего scope.
+Если объект владеет освобождаемым ресурсом или требует асинхронной инициализации/завершения, публичный API выдаёт его только внутри `async with`. Это относится к AsyncSession, транзакциям/соединениям, `AsyncPostgresSaver` и временным execution-ресурсам. Checkpointer открывается в lifespan worker и закрывается после активных runs, а не на каждый запрос; `.setup()` выполняется до первого запуска графа. Фабрика возвращает `AsyncContextManager[Resource]`, а не `Resource` или coroutine, возвращающую открытый ресурс. Реализация фабрики использует `@asynccontextmanager`; композиция — `AsyncExitStack`. Dishka scoped providers с `yield` освобождают ресурсы при закрытии своего scope.
 
 Концептуальный пример контракта и использования (не реализация):
 

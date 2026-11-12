@@ -114,7 +114,7 @@ Coverage помогает искать непроверенные ветви, н
 ## LLM без обязательного внешнего API
 
 Обычный CI использует fake LLM-порт с валидными/невалидными JSON, отказом, обрезкой, timeout, 429 и поздним ответом.
-Integration адаптера использует [LiteLLM mock_response](https://docs.litellm.ai/docs/completion/mock_requests) и локальный HTTP-stub для сетевых ошибок, capability mismatch и проверки числа попыток.
+Integration адаптера `ChatOpenAI`/`StructuredOutputGenerator` использует локальный OpenAI-совместимый HTTP-stub для сетевых ошибок, capability mismatch и проверки числа попыток.
 Внешняя сеть по умолчанию запрещена тестовой политикой; отсутствие ключа не превращает обязательный тест в молчаливый skip.
 Тесты prompt builder проверяют наличие обязательных источников/решений и соблюдение бюджета, а не полную строку инструкций.
 Fake judge проверяет формат/переходы, но не доказывает смысловое качество модели.
@@ -170,7 +170,7 @@ SOLID применяется к реальным границам, KISS/YAGNI о
 | Contract | Конкретное ограничение |
 | --- | --- |
 | Layers | `di` → `presentation | infrastructure | persistence | config` → `application` → `domain`; порядок сверху вниз. Pipe означает независимые siblings, не последовательную зависимость адаптеров |
-| Forbidden imports | domain запрещены application/adapters/presentation/config/di и внешние sqlalchemy, fastapi, litellm, instructor, dishka; application запрещены реализации/SDK/config/di |
+| Forbidden imports | domain запрещены application/adapters/presentation/config/di и внешние sqlalchemy, fastapi, langchain_core, langchain_openai, langgraph, dishka; application запрещены реализации/SDK/config/di |
 | Independence | presentation, infrastructure, persistence независимы; не применять ко всем фичам без различия, если между ними есть законные application-контракты |
 | Acyclic siblings | Для внутренних feature-пакетов domain/application — запрет циклов при разрешённых однонаправленных зависимостях; на выбранной версии проверить поддержку соответствующего contract |
 
@@ -203,7 +203,7 @@ layers =
 - Реальные PostgreSQL + временный Git + local storage: fault injection на каждом шаге journal, включая S3 upload до DB pin и CAS до SQL completed. Для S3 — тот же FileStorage contract suite с immutable versions и отказом удаления pinned source.
 - Разрешённое обновление task branch после смены main, семантический конфликт общего объекта даже при чистом Git merge; checks/approval инвалидируются, фактический merge tree/родители сверяются с разрешением.
 - Один объект на двух видах, отдельный layout/label override; удаление из вида не удаляет каталог. Round-trip/детерминированный JSON, неизвестная версия, broken refs и схема миграции.
-- Instructor/LiteLLM local HTTP stub: пустой/обрезанный/refusal/invalid schema, неподдерживаемая capability, общий лимит сетевых и validation retries, retries=0, deadline/cancel. Один и тот же агентный контракт для двух endpoint profiles; реальная LM Studio/vLLM совместимость проверяется отдельным smoke, не выводится из stub.
+- LangChain local HTTP stub: пустой/обрезанный/refusal, невалидный JSON и Pydantic, повторная генерация, неподдерживаемая JSON Schema capability, запрет скрытого Tool Calling, общий лимит сетевых и validation retries, retries=0, deadline/cancel. Один и тот же агентный контракт для двух endpoint profiles; реальная LM Studio/vLLM совместимость проверяется отдельным smoke, не выводится из stub.
 - Clarification resume после restart, повтор ответа и повторное формирование вопросов не создают дублей; ContextBuilder учитывает closed questions, обязательные источники, budget и revision invalidation.
 
 ## Метрики качества ИИ
@@ -226,4 +226,4 @@ Frontend tests добавляют Light/Dark/System + reload/system change, ко
 
 В последующих PR разработки обязательны lifecycle-тесты фабрик/scope (успех, исключение, отмена, частичная инициализация), запрет создания ресурсных реализаций вне providers, отдельная session для concurrent tasks. Приоритеты единого Settings проверяются в development/test/production, включая вложенный env override поверх YAML и redaction ошибок.
 
-Pipeline проверяется на частичный пересчёт по зависимостям, конфликт параллельных результатов, restart между операциями, waiting_input и stale head. Domain-тесты проверяют допустимые операции/инварианты и round-trip независимого сериализатора. Проверки документарного JSON-примера в зависимом PR относятся только к сохранённому эталону и не подтверждают реализацию Domain.
+LangGraph проверяется на interrupt/ответ/resume после перезапуска, повторный запуск узла, конкурентные независимые операции и освобождение AsyncPostgresSaver после отмены. Application/Domain отдельно проверяют частичный пересчёт по версиям входов, stale Git revision, конфликт параллельных результатов и отсутствие повторного применения предметного изменения. Domain-тесты проверяют допустимые операции/инварианты и round-trip независимого сериализатора. Проверки документарного JSON-примера в зависимом PR относятся только к сохранённому эталону и не подтверждают реализацию Domain.

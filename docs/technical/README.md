@@ -1,7 +1,7 @@
 # Техническая архитектура SolutionArchitectAI
 
 Статус: конкретные рекомендации для реализации MVP и предметного ревью. Решения из задания интегрированы; библиотечные рекомендации не означают согласования ручного эталона.
-Исследование официальных источников: **11 ноября 2026 года**. Зависимости не устанавливались, backend/frontend не реализованы; версии проверяются совместно и фиксируются lock-файлами при реализации.
+Источники для нового LLM-стека проверены **12 ноября 2026 года**: [ChatOpenAI](https://docs.langchain.com/oss/python/integrations/chat/openai), [LangGraph](https://docs.langchain.com/oss/python/langgraph/graph-api), [PostgreSQL checkpointer](https://github.com/langchain-ai/langgraph/tree/main/libs/checkpoint-postgres) и метаданные PyPI. На дату проверки: langchain-core 1.8.0, langchain-openai 1.7.4, langgraph 1.2.20, langgraph-checkpoint-postgres 3.2.0; эти версии совместимы по заявленным ограничениям зависимостей, но конкретные версии будут закреплены вместе при реализации. Остальные технические источники первоначально проверены 11 ноября 2026 года. Зависимости не устанавливались, backend/frontend не реализованы; версии проверяются совместно и фиксируются lock-файлами при реализации.
 
 ## Общая модель и рабочее место
 
@@ -14,7 +14,10 @@
 ```mermaid
 flowchart TD
     UI[React: дерево, свойства, чат] --> API[FastAPI]
-    API --> UC[Application: use cases и pipeline]
+    API --> UC[Application: use cases и права]
+    UC --> LG[LangGraph: процесс проектирования]
+    LG --> AG[Агенты через AgentRequest/AgentResult]
+    AG --> LC[LangChain: LLM]
     UC --> D[Domain: общая модель и инварианты]
     UC --> P[Порты Application]
     P --> DB[PostgreSQL: операции и чаты]
@@ -28,14 +31,14 @@ flowchart TD
 | Область | Решение | Подробности |
 | --- | --- | --- |
 | Backend | Python, FastAPI, Dishka, PostgreSQL, SQLAlchemy 2.x, Alembic, Pydantic | [Backend](backend.md) |
-| LLM | LiteLLM SDK; Instructor + Pydantic для общей структурированной генерации; LM Studio и vLLM через настраиваемый endpoint | [Structured output](structured-output.md) |
+| LLM и граф | langchain-core, langchain-openai, Pydantic, StructuredOutputGenerator; LangGraph + PostgreSQL checkpoints для многоэтапного проектирования | [Генерация](structured-output.md), [граф](agent-pipeline.md) |
 | Модель | Python Domain Model с валидаторами; JSON для сохранения/восстановления | [Модель и хранение](domain-model.md) |
 | Состояние | PostgreSQL / Git / local или S3; журнал и восстановление вместо общей транзакции | [Согласованность](persistence.md#согласованность-хранилищ) |
 | Frontend | React, TypeScript, Vite, Router, TanStack Query; assistant-ui — рекомендуемый чат | [Сравнение и темы](frontend.md) |
 | Конфигурация | Pydantic Settings, несекретный YAML приложения, environment overrides и secret files | [Настройки](configuration.md) |
 | Поставка | Compose приложения и PostgreSQL; local storage по умолчанию, S3 опционально; inference server отдельно | [Развёртывание](deployment.md) |
 | Качество | Ruff, Pyright, pytest, import-linter; TypeScript, Vitest, Playwright | [Проверки](quality-and-testing.md) |
-| Следующий результат | Ранний React → FastAPI → сохранённый чат → локальная LLM | [План](implementation-plan.md) |
+| Следующий результат | Ранний React → FastAPI → LangChain → локальная LLM с сохранённым чатом; затем первый LangGraph HITL-сценарий | [План](implementation-plan.md) |
 
 ## Что взято из Archi
 
@@ -53,7 +56,7 @@ Archi в среде не обнаружен; установки и практи�
 
 ## Связь с требованиями и границы
 
-FR-01–FR-05 поддерживают [роли и pipeline](agents.md); FR-06/08 — общую модель и её проекции; FR-07/09/10 — независимые проверки и выделение сомнительных предложений ИИ; FR-11 — [ветки, историю и согласование](git-workflow.md). Обновление BRD и примера выполняется отдельным PR поверх этой ветки: до него старые формулировки BRD не отменяют описанные здесь изменения задания.
+FR-01–FR-05 поддерживают [роли и граф проектирования](agents.md); FR-06/08 — общую модель и её проекции; FR-07/09/10 — независимые проверки и выделение сомнительных предложений ИИ; FR-11 — [ветки, историю и согласование](git-workflow.md). BRD и синтетический пример описывают пользовательские требования и эталон; этот пересмотр меняет только технический способ реализации.
 
 Kafka, 2FA и прокси синтетической системы отчётности не становятся зависимостями помощника. PostgreSQL помощника нужен для его операционного состояния независимо от PostgreSQL в примере.
 

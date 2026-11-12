@@ -10,11 +10,11 @@ Docker Compose включает отдельные frontend и backend, PostgreS
 | --- | --- | --- |
 | Frontend | Vite dev server или Nginx со статической SPA | Без предметных данных и секретов |
 | Backend | FastAPI, управляемые runs, адаптеры и рендеринг | Один worker в MVP; temp отдельно от durable data |
-| PostgreSQL | Операционное состояние, сообщения, runs, journal | Отдельный volume, Alembic migrations |
+| PostgreSQL | Операционное состояние, сообщения, runs, journal и checkpoints графа | Отдельный volume, Alembic migrations |
 | Git volume | Один общий архитектурный repo на пространство | Все refs/objects и незавершённые staging операции |
 | File storage | Immutable документы и вложения | Local volume либо S3 с политикой удержания версий |
 
-Redis, task broker, Kubernetes, vector database и LangGraph не нужны для первого сценария. Kafka и 2FA из примера — свойства проектируемой системы, не сервисы помощника. PostgreSQL помощника при этом обязателен.
+Redis, task broker, Kubernetes, vector database и LangGraph не нужны для первого сценария чата. LangGraph и PostgreSQL checkpointer добавляются с первым агентным сценарием ожидания ответа человека. Kafka и 2FA из примера — свойства проектируемой системы, не сервисы помощника. PostgreSQL помощника при этом обязателен.
 
 ## Сеть, development и production
 
@@ -22,11 +22,11 @@ Redis, task broker, Kubernetes, vector database и LangGraph не нужны д�
 
 Development использует bind mounts кода и hot reload; production — immutable multi-stage images, Nginx static frontend без Node runtime, backend без dev tools/reload. Версии и lock-файлы фиксируются при реализации. Порты локальной разработки публикуются на loopback. Удалённая эксплуатация требует отдельно согласованных auth/access/data правил; этот документ их не утверждает.
 
-Dishka lifespan закрывает clients/pools/tasks. SQL migrations выполняются одной явной командой до readiness, а не конкурентно каждым worker. [Compose service_healthy](https://docs.docker.com/compose/how-tos/startup-order/) задаёт ожидание PostgreSQL; сам порядок старта готовности не гарантирует. Readiness проверяет schema version, DB/Git/file access и pending recovery. Liveness проверяет процесс; LLM availability показывается отдельно degraded, не скрывает историю. Health check не запускает генерацию/JVM каждый раз.
+Dishka lifespan закрывает clients/pools/tasks. Alembic migrations и первый `AsyncPostgresSaver.setup()` выполняются до readiness управляемой инициализацией, а не конкурентно каждым worker. [Compose service_healthy](https://docs.docker.com/compose/how-tos/startup-order/) задаёт ожидание PostgreSQL; сам порядок старта готовности не гарантирует. Readiness проверяет schema version, DB/Git/file access и pending recovery. Liveness проверяет процесс; LLM availability показывается отдельно degraded, не скрывает историю. Health check не запускает генерацию/JVM каждый раз.
 
 ## Локальные модели
 
-Backend использует настроенный OpenAI-compatible endpoint LM Studio или vLLM через LiteLLM. `localhost` внутри контейнера — сам контейнер: для host endpoint нужен явно настроенный host gateway/DNS; для удалённого endpoint — доступная сеть и TLS по политике окружения. Автоматическая отправка данных другому провайдеру запрещена. Fake LLM позволяет запустить обычный CI без inference server, реальная модель проходит отдельный capability/quality smoke.
+Backend использует настроенный OpenAI-compatible endpoint LM Studio или vLLM через `langchain-openai` (`ChatOpenAI`, явно настроенный `base_url`). `localhost` внутри контейнера — сам контейнер: для host endpoint нужен явно настроенный host gateway/DNS; для удалённого endpoint — доступная сеть и TLS по политике окружения. Автоматическая отправка данных другому провайдеру запрещена. Fake LLM позволяет запустить обычный CI без inference server, реальная модель проходит отдельный capability/quality smoke.
 
 ## Конфигурация и ограничения адаптеров
 

@@ -7,14 +7,14 @@
 | Хранилище | Авторитетные данные | Порт Application |
 | --- | --- | --- |
 | Git | JSON-модель, дерево видов, существенные подтверждённые решения, версионируемые результаты проверок, pinned источники, воспроизводимые .puml | ArchitectureRepository: read_revision, create_task_branch, commit_changes(expected_head, operation_id), diff, inspect_merge |
-| PostgreSQL | Пространства/проекты/задачи, чаты/сообщения, agent runs, drafts/proposals, ответы, настройки, статусы, привязки веток/коммитов, журнал операций и разрешений | TaskRepository, ChatRepository, RunRepository, OperationJournal и SQL UnitOfWork для одной БД |
+| PostgreSQL | Пространства/проекты/задачи, чаты/сообщения, agent runs, drafts/proposals, ответы, настройки, статусы, привязки веток/коммитов, журнал операций и разрешений; отдельно таблицы checkpoints LangGraph | TaskRepository, ChatRepository, RunRepository, OperationJournal и SQL UnitOfWork для одной БД |
 | Local filesystem или S3-compatible API | Оригиналы документов/вложения, крупные бинарные файлы, производные и временные экспорты | FileStorage: put_immutable, get_version, verify, delete_unreferenced |
 
-Git и SQLAlchemy не взаимозаменяемы. Будущий GitLab-адаптер добавит удалённые операции к Git-порту без изменения domain; MR не часть обязательного workflow. Права на merge остаются у человека вне LLM-порта. История сообщений не служит реестром подтверждённых решений: существенный ответ переносится в model/decision отдельной командой человека.
+Checkpoints LangGraph сохраняют выполнение графа, а SQL-журнал — предметные команды и их идемпотентность. Они не дублируют один и тот же next-stage. GraphState содержит ссылки и версии, не полную архитектуру или копию журнала. Git и SQLAlchemy не взаимозаменяемы. Будущий GitLab-адаптер добавит удалённые операции к Git-порту без изменения domain; MR не часть обязательного workflow. Права на merge остаются у человека вне LLM-порта. История сообщений не служит реестром подтверждённых решений: существенный ответ переносится в model/decision отдельной командой человека.
 
 ## Согласованность хранилищ
 
-Общей транзакции PostgreSQL/Git/S3 нет. Одна команда имеет operation_id, scope, payload digest, expected_head и журнал стадий. SQL UoW обеспечивает атомарность только собственных записей.
+Общей транзакции PostgreSQL/Git/S3 нет; checkpoint LangGraph её также не создаёт. Одна команда имеет operation_id, scope, payload digest, expected_head и журнал стадий. SQL UoW обеспечивает атомарность только собственных записей.
 
 | Стадия | Действие и восстановление |
 | --- | --- |
