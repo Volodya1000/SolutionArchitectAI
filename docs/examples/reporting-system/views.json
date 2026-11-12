@@ -1,0 +1,469 @@
+{
+  "$schema": "model.schema.json",
+  "folders": [
+    {
+      "id": "cb71a98b-bec6-59d3-b4b7-f0c6321536d7",
+      "name": "Системы",
+      "parent_id": null
+    },
+    {
+      "id": "01161c53-1027-594c-981a-7414934bd0d2",
+      "name": "Отчётность",
+      "parent_id": "cb71a98b-bec6-59d3-b4b7-f0c6321536d7"
+    }
+  ],
+  "record_type": "views",
+  "views": [
+    {
+      "edges": [
+        {
+          "access_mode": "not_applicable",
+          "id": "8014a60f-6046-5b1f-b4d1-ee6b854a4fcc",
+          "notation_type": "Flow",
+          "relationship_id": "b67e814b-a352-5b69-9761-2602d68365ad",
+          "source_node_id": "a2416c0e-9a91-5380-9fea-c25b240bc5a9",
+          "target_node_id": "6af5ac18-d769-54da-851e-f39631f9eeb0"
+        },
+        {
+          "access_mode": "not_applicable",
+          "id": "3dff6d7e-ea09-500f-8133-03446d6965a2",
+          "notation_type": "Flow",
+          "relationship_id": "28f6972c-fdc7-5497-896b-cfd12b393fab",
+          "source_node_id": "6af5ac18-d769-54da-851e-f39631f9eeb0",
+          "target_node_id": "0f6f8d58-9983-529a-9d10-c40dc273588c"
+        },
+        {
+          "access_mode": "not_applicable",
+          "id": "5052837e-5e76-5211-b826-fd2a4db6dd47",
+          "notation_type": "Flow",
+          "relationship_id": "ac43febd-a535-5f14-b35e-7a95bcc0a51e",
+          "source_node_id": "82cb39e6-eba5-5b1f-a7f6-ac91f29b41a0",
+          "target_node_id": "0f6f8d58-9983-529a-9d10-c40dc273588c"
+        },
+        {
+          "access_mode": "write",
+          "id": "c49b8d87-c8b8-5c5c-a8a7-af9dc02b20d7",
+          "notation_type": "Access",
+          "relationship_id": "ef83cfc0-3f87-5683-8051-eb1894af6047",
+          "source_node_id": "0f6f8d58-9983-529a-9d10-c40dc273588c",
+          "target_node_id": "517ddeb3-0c40-5fee-9b01-d501530be330"
+        },
+        {
+          "access_mode": "read",
+          "id": "63f57494-364d-59ee-bfb2-2c89ec7ae390",
+          "notation_type": "Access",
+          "relationship_id": "56a1812b-8ae0-5dee-a7f6-b77b78da5af2",
+          "source_node_id": "517ddeb3-0c40-5fee-9b01-d501530be330",
+          "target_node_id": "59d25e1f-a32d-5abb-b1de-b2be717d2511"
+        },
+        {
+          "access_mode": "not_applicable",
+          "id": "288a58d3-cd9b-550d-a49d-1118da4429a9",
+          "notation_type": "Flow",
+          "relationship_id": "dbf8361b-af76-50ca-acb4-30edcda9834c",
+          "source_node_id": "55b74040-c638-5949-8a70-f43735a3d42b",
+          "target_node_id": "59d25e1f-a32d-5abb-b1de-b2be717d2511"
+        },
+        {
+          "access_mode": "not_applicable",
+          "id": "86e98711-f149-5bf9-9558-2ba1cbe92dfa",
+          "notation_type": "Flow",
+          "relationship_id": "ed396eec-8360-5b86-b3c4-63295004a86f",
+          "source_node_id": "59d25e1f-a32d-5abb-b1de-b2be717d2511",
+          "target_node_id": "f5feef7c-734d-5efe-a5b7-e93afeb7b1b0"
+        },
+        {
+          "access_mode": "not_applicable",
+          "id": "40aee56e-fb96-5fc9-844d-ec78ba3155a6",
+          "notation_type": "Flow",
+          "relationship_id": "24448f3d-9669-56fb-a761-f4d2e353f7ea",
+          "source_node_id": "59d25e1f-a32d-5abb-b1de-b2be717d2511",
+          "target_node_id": "80b732e9-bb3c-5059-9773-cdad0fb1048e"
+        },
+        {
+          "access_mode": "not_applicable",
+          "id": "4f769017-b999-56c3-bab1-2a29fb63d6f8",
+          "notation_type": "Flow",
+          "relationship_id": "67ed2245-f279-5421-aada-4d7f640c0a4c",
+          "source_node_id": "80b732e9-bb3c-5059-9773-cdad0fb1048e",
+          "target_node_id": "2cb5b693-5c19-5a3b-bb90-ca238e9240e1"
+        },
+        {
+          "access_mode": "not_applicable",
+          "id": "8ba8cc4d-dbbe-5606-a0fe-e678a66823fc",
+          "notation_type": "Flow",
+          "relationship_id": "93e13163-02e4-58d9-bd26-77ed743aafe3",
+          "source_node_id": "2cb5b693-5c19-5a3b-bb90-ca238e9240e1",
+          "target_node_id": "17297850-7039-583f-9e5a-5aad6d1a911d"
+        },
+        {
+          "access_mode": "not_applicable",
+          "id": "bcbc20bb-3f52-5779-9332-8df334295b7c",
+          "notation_type": "Flow",
+          "relationship_id": "9a9faf27-2f01-5de5-9b85-840f5a83cf5e",
+          "source_node_id": "17297850-7039-583f-9e5a-5aad6d1a911d",
+          "target_node_id": "2cb5b693-5c19-5a3b-bb90-ca238e9240e1"
+        },
+        {
+          "access_mode": "not_applicable",
+          "id": "1728aefb-cc5d-5562-9510-f20034f42c96",
+          "notation_type": "Flow",
+          "relationship_id": "df372178-d22f-5ed3-98be-f7a244bd085e",
+          "source_node_id": "2cb5b693-5c19-5a3b-bb90-ca238e9240e1",
+          "target_node_id": "80b732e9-bb3c-5059-9773-cdad0fb1048e"
+        },
+        {
+          "access_mode": "not_applicable",
+          "id": "0531ca87-930e-5160-afc3-9ebc4d9078fe",
+          "notation_type": "Flow",
+          "relationship_id": "099988cb-d8f4-5d71-a15a-404895cd066c",
+          "source_node_id": "80b732e9-bb3c-5059-9773-cdad0fb1048e",
+          "target_node_id": "59d25e1f-a32d-5abb-b1de-b2be717d2511"
+        },
+        {
+          "access_mode": "not_applicable",
+          "id": "c5f8f2b1-424f-5eaa-9227-d5e1ad0adeb3",
+          "notation_type": "Flow",
+          "relationship_id": "4ce63b1c-22ca-5c21-840b-b4371ce660c5",
+          "source_node_id": "f5feef7c-734d-5efe-a5b7-e93afeb7b1b0",
+          "target_node_id": "55b74040-c638-5949-8a70-f43735a3d42b"
+        },
+        {
+          "access_mode": "not_applicable",
+          "id": "b020fd1c-2fd0-552f-baaf-ee479c2b9077",
+          "notation_type": "Flow",
+          "relationship_id": "9403c390-3abd-52b6-b2df-dc7c4453548a",
+          "source_node_id": "55b74040-c638-5949-8a70-f43735a3d42b",
+          "target_node_id": "f5feef7c-734d-5efe-a5b7-e93afeb7b1b0"
+        }
+      ],
+      "folder_id": "01161c53-1027-594c-981a-7414934bd0d2",
+      "groups": [
+        {
+          "id": "52280b97-7c1b-5645-b5c8-61290d474fd3",
+          "label": "Система отчётности",
+          "node_ids": [
+            "0f6f8d58-9983-529a-9d10-c40dc273588c",
+            "59d25e1f-a32d-5abb-b1de-b2be717d2511",
+            "517ddeb3-0c40-5fee-9b01-d501530be330"
+          ]
+        }
+      ],
+      "id": "a52a3729-c766-5cdb-b6fe-b550dca6b807",
+      "name": "Потоки данных",
+      "nodes": [
+        {
+          "id": "a2416c0e-9a91-5380-9fea-c25b240bc5a9",
+          "label_template": "{name}",
+          "notation_type": "Application_Component",
+          "object_id": "5ba72cc3-b0de-521a-8540-6847276fee3f",
+          "renderer_alias": "sales",
+          "wrap_label": true
+        },
+        {
+          "id": "82cb39e6-eba5-5b1f-a7f6-ac91f29b41a0",
+          "label_template": "{name}",
+          "notation_type": "Application_Component",
+          "object_id": "53a1efa1-ad5a-5bc3-9388-cef60cf6a8c8",
+          "renderer_alias": "units",
+          "wrap_label": true
+        },
+        {
+          "id": "55b74040-c638-5949-8a70-f43735a3d42b",
+          "label_template": "{name} · 2FA",
+          "notation_type": "Application_Component",
+          "object_id": "270b063c-b6c1-5abb-b0a4-87687d855b31",
+          "renderer_alias": "access",
+          "wrap_label": true
+        },
+        {
+          "id": "6af5ac18-d769-54da-851e-f39631f9eeb0",
+          "label_template": "{name} Apache Kafka",
+          "notation_type": "Application_Component",
+          "object_id": "b3ed0ebf-286e-5c9c-88e5-d2c0a0e311f7",
+          "renderer_alias": "broker",
+          "wrap_label": true
+        },
+        {
+          "id": "80b732e9-bb3c-5059-9773-cdad0fb1048e",
+          "label_template": "{name}",
+          "notation_type": "Application_Component",
+          "object_id": "0a6c16c5-4550-5df9-b9a8-f5fb7bc39683",
+          "renderer_alias": "delivery",
+          "wrap_label": true
+        },
+        {
+          "id": "2cb5b693-5c19-5a3b-bb90-ca238e9240e1",
+          "label_template": "{name}\nСквозной TLS-туннель",
+          "notation_type": "Application_Component",
+          "object_id": "befaa3df-fe12-531f-abcc-4970d5b7adb5",
+          "renderer_alias": "proxy",
+          "wrap_label": true
+        },
+        {
+          "id": "17297850-7039-583f-9e5a-5aad6d1a911d",
+          "label_template": "{name}",
+          "notation_type": "Application_Component",
+          "object_id": "abdf9561-5111-57ab-9fbd-f3d3f55ce6df",
+          "renderer_alias": "recipient",
+          "wrap_label": true
+        },
+        {
+          "id": "f5feef7c-734d-5efe-a5b7-e93afeb7b1b0",
+          "label_template": "{name}",
+          "notation_type": "Application_Component",
+          "object_id": "b3c8ad75-afb1-530f-ba10-d52bb52bc6c1",
+          "renderer_alias": "browser",
+          "wrap_label": true
+        },
+        {
+          "id": "0f6f8d58-9983-529a-9d10-c40dc273588c",
+          "label_template": "{name}\nПроверка и сохранение",
+          "notation_type": "Application_Component",
+          "object_id": "755c8bdc-9f7f-56e2-8336-c56286d476a6",
+          "renderer_alias": "loader",
+          "wrap_label": true
+        },
+        {
+          "id": "517ddeb3-0c40-5fee-9b01-d501530be330",
+          "label_template": "{name}\nв базе данных",
+          "notation_type": "Application_DataObject",
+          "object_id": "22e4cead-cab5-595f-8c9f-03637eaf28d0",
+          "renderer_alias": "report_data",
+          "wrap_label": true
+        },
+        {
+          "id": "59d25e1f-a32d-5abb-b1de-b2be717d2511",
+          "label_template": "{name}\nПодсчёт итогов",
+          "notation_type": "Application_Component",
+          "object_id": "95430169-591d-57db-a640-a07bec4bd837",
+          "renderer_alias": "reporting",
+          "wrap_label": true
+        }
+      ],
+      "renderer": {
+        "canvas": "explicit_light_background",
+        "direction": "top_to_bottom",
+        "engine": "PlantUML",
+        "image": "data-flow.svg",
+        "layout": "automatic",
+        "scale": 1,
+        "source": "data-flow.puml"
+      },
+      "viewpoint": "VIEW-01"
+    },
+    {
+      "edges": [
+        {
+          "access_mode": "not_applicable",
+          "id": "ab7cc1ca-f8bf-5a22-b3d2-b63ee0793076",
+          "notation_type": "Association",
+          "relationship_id": "7481188e-7719-5425-877b-4a7bd6922a79",
+          "source_node_id": "762d7131-b532-53fd-b174-3acffdc8f770",
+          "target_node_id": "2ee601db-dd91-5a8a-8b5d-3ade5aef1405"
+        },
+        {
+          "access_mode": "not_applicable",
+          "id": "65852919-bd1c-5e18-9c8c-d167d231f610",
+          "notation_type": "Association",
+          "relationship_id": "21d293dd-6a79-530e-b520-4ea6a3447e3d",
+          "source_node_id": "77e36d54-ee08-5653-84a3-6764bda14b6d",
+          "target_node_id": "2ee601db-dd91-5a8a-8b5d-3ade5aef1405"
+        },
+        {
+          "access_mode": "not_applicable",
+          "id": "c23b55b4-8dd8-572b-a55b-ea457f615a28",
+          "notation_type": "Association",
+          "relationship_id": "a627a50f-4104-5e7f-88ec-b83413bfc68a",
+          "source_node_id": "77e36d54-ee08-5653-84a3-6764bda14b6d",
+          "target_node_id": "73a6bf28-7fc9-578c-9d8b-c649ac1d0ab5"
+        },
+        {
+          "access_mode": "not_applicable",
+          "id": "cc3ff9c8-de4d-538d-ab7f-615bde51f76c",
+          "notation_type": "Association",
+          "relationship_id": "73c5ef0b-092d-5703-9849-07f9ad2702ac",
+          "source_node_id": "77e36d54-ee08-5653-84a3-6764bda14b6d",
+          "target_node_id": "c84a7f8c-c779-513a-8b4d-1054d9aa992d"
+        },
+        {
+          "access_mode": "not_applicable",
+          "id": "45b3cf46-c825-5eb7-80d3-95e42852a4f1",
+          "notation_type": "Association",
+          "relationship_id": "5a94b55d-5ddf-5e4c-ab99-ed442dfb44f0",
+          "source_node_id": "c1a26b1a-24b1-51a7-93f4-ef3da9125c4d",
+          "target_node_id": "c84a7f8c-c779-513a-8b4d-1054d9aa992d"
+        },
+        {
+          "access_mode": "not_applicable",
+          "id": "d01e38a3-59c9-50d3-aac5-676f89ee21a1",
+          "notation_type": "Association",
+          "relationship_id": "cebb6d7c-f58d-5d21-a9f8-4326910a6695",
+          "source_node_id": "c1a26b1a-24b1-51a7-93f4-ef3da9125c4d",
+          "target_node_id": "70aef570-41a0-567c-8204-7c14fda15b7d"
+        },
+        {
+          "access_mode": "not_applicable",
+          "id": "64a5c1ee-2371-5f58-b596-6cb560e182b3",
+          "notation_type": "Association",
+          "relationship_id": "91f901a3-c4e8-52a6-8fc2-8fc4192ae39e",
+          "source_node_id": "9240b567-cf67-5947-9aa4-aa0d8feeccf1",
+          "target_node_id": "c1a26b1a-24b1-51a7-93f4-ef3da9125c4d"
+        },
+        {
+          "access_mode": "not_applicable",
+          "id": "4443fa73-b533-5c27-b032-288b0b19a9b2",
+          "notation_type": "Association",
+          "relationship_id": "0a7142cc-df77-58c8-926f-33258fa85238",
+          "source_node_id": "c1a26b1a-24b1-51a7-93f4-ef3da9125c4d",
+          "target_node_id": "2999db67-e7db-50ae-b042-df8987bba543"
+        },
+        {
+          "access_mode": "not_applicable",
+          "id": "27701eb5-1458-547e-897e-5bc3d627c652",
+          "notation_type": "Association",
+          "relationship_id": "fb1c66d8-9419-56fa-aff6-c750001230f3",
+          "source_node_id": "4ff84f52-3dd5-5636-a46b-c32cb7aaddd5",
+          "target_node_id": "e7881376-d312-5c6f-b7db-1214e08840f7"
+        },
+        {
+          "access_mode": "not_applicable",
+          "id": "f4412a3c-7f0e-5cfe-927d-8e9be863b53f",
+          "notation_type": "Association",
+          "relationship_id": "31f4f0bd-9f57-54af-92b5-737ef8d6583b",
+          "source_node_id": "2999db67-e7db-50ae-b042-df8987bba543",
+          "target_node_id": "4ff84f52-3dd5-5636-a46b-c32cb7aaddd5"
+        },
+        {
+          "access_mode": "not_applicable",
+          "id": "5859b5cf-8fd5-55f1-94ac-cfa47385a12c",
+          "notation_type": "Association",
+          "relationship_id": "b664e96f-151d-52ae-b6e2-78460c83aa64",
+          "source_node_id": "9240b567-cf67-5947-9aa4-aa0d8feeccf1",
+          "target_node_id": "70aef570-41a0-567c-8204-7c14fda15b7d"
+        }
+      ],
+      "folder_id": "01161c53-1027-594c-981a-7414934bd0d2",
+      "groups": [
+        {
+          "id": "c8540032-6491-5f2d-9780-2d1108c72538",
+          "label": "Система отчётности",
+          "node_ids": [
+            "77e36d54-ee08-5653-84a3-6764bda14b6d",
+            "c1a26b1a-24b1-51a7-93f4-ef3da9125c4d"
+          ]
+        },
+        {
+          "id": "ce36295f-81bd-5291-a0b6-06a46de351a6",
+          "label": "Существующая платформа PostgreSQL",
+          "node_ids": [
+            "c84a7f8c-c779-513a-8b4d-1054d9aa992d"
+          ],
+          "object_id": "ac0a1e5c-243f-5013-864b-e4f83302e6f9"
+        }
+      ],
+      "id": "d111fe51-36c5-53b9-8ad1-06adbe3566ce",
+      "name": "Взаимодействия",
+      "nodes": [
+        {
+          "id": "762d7131-b532-53fd-b174-3acffdc8f770",
+          "label_template": "{name}",
+          "notation_type": "Application_Component",
+          "object_id": "5ba72cc3-b0de-521a-8540-6847276fee3f",
+          "renderer_alias": "sales",
+          "wrap_label": true
+        },
+        {
+          "id": "73a6bf28-7fc9-578c-9d8b-c649ac1d0ab5",
+          "label_template": "{name}",
+          "notation_type": "Application_Component",
+          "object_id": "53a1efa1-ad5a-5bc3-9388-cef60cf6a8c8",
+          "renderer_alias": "units",
+          "wrap_label": true
+        },
+        {
+          "id": "70aef570-41a0-567c-8204-7c14fda15b7d",
+          "label_template": "{name} · 2FA",
+          "notation_type": "Application_Component",
+          "object_id": "270b063c-b6c1-5abb-b0a4-87687d855b31",
+          "renderer_alias": "access",
+          "wrap_label": true
+        },
+        {
+          "id": "2ee601db-dd91-5a8a-8b5d-3ade5aef1405",
+          "label_template": "{name} Apache Kafka",
+          "notation_type": "Application_Component",
+          "object_id": "b3ed0ebf-286e-5c9c-88e5-d2c0a0e311f7",
+          "renderer_alias": "broker",
+          "wrap_label": true
+        },
+        {
+          "id": "2999db67-e7db-50ae-b042-df8987bba543",
+          "label_template": "{name}",
+          "notation_type": "Application_Component",
+          "object_id": "0a6c16c5-4550-5df9-b9a8-f5fb7bc39683",
+          "renderer_alias": "delivery",
+          "wrap_label": true
+        },
+        {
+          "id": "4ff84f52-3dd5-5636-a46b-c32cb7aaddd5",
+          "label_template": "{name}\nВыход из контура",
+          "notation_type": "Application_Component",
+          "object_id": "befaa3df-fe12-531f-abcc-4970d5b7adb5",
+          "renderer_alias": "proxy",
+          "wrap_label": true
+        },
+        {
+          "id": "e7881376-d312-5c6f-b7db-1214e08840f7",
+          "label_template": "{name}",
+          "notation_type": "Application_Component",
+          "object_id": "abdf9561-5111-57ab-9fbd-f3d3f55ce6df",
+          "renderer_alias": "recipient",
+          "wrap_label": true
+        },
+        {
+          "id": "9240b567-cf67-5947-9aa4-aa0d8feeccf1",
+          "label_template": "{name}",
+          "notation_type": "Application_Component",
+          "object_id": "b3c8ad75-afb1-530f-ba10-d52bb52bc6c1",
+          "renderer_alias": "browser",
+          "wrap_label": true
+        },
+        {
+          "id": "c84a7f8c-c779-513a-8b4d-1054d9aa992d",
+          "label_template": "{name}",
+          "notation_type": "Technology_SystemSoftware",
+          "object_id": "12077120-1f01-53c5-b689-db785aa936e0",
+          "renderer_alias": "database",
+          "wrap_label": true
+        },
+        {
+          "id": "77e36d54-ee08-5653-84a3-6764bda14b6d",
+          "label_template": "{name}",
+          "notation_type": "Application_Component",
+          "object_id": "755c8bdc-9f7f-56e2-8336-c56286d476a6",
+          "renderer_alias": "loader",
+          "wrap_label": true
+        },
+        {
+          "id": "c1a26b1a-24b1-51a7-93f4-ef3da9125c4d",
+          "label_template": "{name}",
+          "notation_type": "Application_Component",
+          "object_id": "95430169-591d-57db-a640-a07bec4bd837",
+          "renderer_alias": "reporting",
+          "wrap_label": true
+        }
+      ],
+      "renderer": {
+        "canvas": "explicit_light_background",
+        "direction": "top_to_bottom",
+        "engine": "PlantUML",
+        "image": "interactions.svg",
+        "layout": "automatic",
+        "scale": 1,
+        "source": "interactions.puml"
+      },
+      "viewpoint": "VIEW-01"
+    }
+  ]
+}
