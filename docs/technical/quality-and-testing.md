@@ -2,26 +2,25 @@
 
 [Навигация](README.md) · [План внедрения проверок](implementation-plan.md)
 
-## Python: набор без дублирования
+## Python: выбранный набор и разделение проверок
 
-Планируется: Ruff для линтинга/форматирования, Pyright для типов, pytest для поведения и узко выбранный WPS231 для когнитивной сложности.
-Все перечисленные ниже проверки — план будущих конфигураций; этот PR не добавляет runtime-зависимости или проверки ещё не созданного приложения; тесты и CI издателя документации обновляются отдельно.
-Актуальность оценена по официальной документации на дату [исследования](README.md); разрешимость совместимых стабильных пакетов проверяется при создании lock-файла.
-`latest`-документация может описывать development/preview: это не основание включать нестабильные правила или pin версии из заголовка сайта.
+Базовый набор backend: Ruff, Mypy, Pylint, Bandit, import-linter, точечный WPS231 из wemake-python-styleguide и pytest. Это будущие development-проверки; приложения и его конфигурации линтеров в этом PR нет. Ruff Formatter остаётся единственным форматтером Python. Целевая версия — Python 3.13.
 
-| Инструмент | Что даёт и с чем пересекается | Рекомендация |
-| --- | --- | --- |
-| [Ruff](https://docs.astral.sh/ruff/rules/) | Реализует множество проверок Flake8, Bandit и часть Pylint; не запускает эти плагины и не равен их полному покрытию | Основной линтер; один formatter `ruff format` |
-| [Bandit](https://bandit.readthedocs.io/en/latest/) | Отдельный AST security-анализ с plugins; частично пересекается с Ruff S | Не включать полный параллельный запуск; при реализации Git/renderer сравнить актуальные B/S-каталоги и включить только обнаруженные полезные пробелы |
-| [Pylint](https://pylint.readthedocs.io/en/stable/) | Inference, межмодульные проверки и design-диагностика; часть правил уже есть в Ruff PL и проверке типов | Полный второй линтер не добавлять; конкретный недостающий дефект может обосновать точечное включение |
-| [wemake-python-styleguide](https://wemake-python-styleguide.readthedocs.io/en/latest/) | Flake8 plugin с архитектурными ограничениями и cognitive complexity; полный набор слишком предписывающий | Только WPS231, без всего WPS и без второго formatter |
-| [Pyright](https://github.com/microsoft/pyright/blob/main/docs/configuration.md) | Статические типы, generics/Protocols, async, strict diagnostics | Один type checker; начать strict с domain/application, типизировать порты адаптеров |
+| Инструмент | Назначение и граница с другими проверками |
+| --- | --- |
+| [Ruff](https://docs.astral.sh/ruff/rules/) | Основной линтер: ошибки имён/импортов, async, распространённые дефекты, согласованный стиль. `ruff format` форматирует код; Flake8/Pylint не форматируют повторно. Семейства `PL` и `S` включаются лишь для правил, не дублирующих выбранные Pylint/Bandit diagnostics. |
+| [Mypy](https://mypy.readthedocs.io/en/stable/config_file.html) | Единственная обязательная статическая проверка типов: строгий профиль для Domain/Application и типизированных границ адаптеров. Pyright рассмотрен как альтернатива, но не входит в выбранный набор и CI. |
+| [Pylint](https://pylint.readthedocs.io/en/stable/user_guide/configuration/index.html) | Дополнительный inference и межмодульная диагностика, например некорректные атрибуты/вызовы и обоснованные design warnings. Дубли Ruff/форматтера и слишком шумные соглашения отключаются адресно, с тестом на полезный сигнал. |
+| [Bandit](https://bandit.readthedocs.io/en/latest/config.html) | Отдельный AST-анализ security: проверяются содержательные B-правила, которых нет в активном Ruff S, и контекстные предупреждения. Пересекающиеся S/B правила оставляются в одном источнике; полный запуск Bandit как выбранного инструмента выполняется по исходникам с точечными `skip` и обоснованными `# nosec`, а не откладывается до появления дефекта. |
+| [import-linter](https://import-linter.readthedocs.io/en/stable/contract_types/) | Контракты направлений импортов между пакетами; обычный линтинг импортов их не заменяет. |
+| [wemake-python-styleguide](https://wemake-python-styleguide.readthedocs.io/en/latest/) | Через Flake8 запускается только WPS231 для когнитивной сложности. Остальные WPS не включаются автоматически. |
+| [pytest](https://docs.pytest.org/) | Unit и integration тесты поведения; статические проверки их не заменяют. |
 
-Mypy — полноценная альтернатива Pyright с plugin-экосистемой; здесь Pyright удобен быстрым анализом Protocol/async и обратной связью IDE.
-Не запускаем одновременно оба ради числа инструментов. `Any` внешнего SDK локализуется адаптером; ошибки схем проверяет runtime Pydantic.
-AST-линтеры не подтверждают безопасность prompt execution; ограничение полномочий из [agents.md](agents.md) проверяется поведением.
+Конфигурация начинается с минимальных выбранных диагностик и примеров срабатывания. Перед закреплением правил сравниваются сообщения Ruff, Pylint и Bandit на одном коде; дубли убираются в одном инструменте, а не глобальными отключениями. Pylint и Bandit остаются обязательными отдельными запусками. Mypy, Pylint, Bandit и WPS231 проверяют разные свойства. AST-анализ не доказывает безопасность выполнения промптов; полномочия агентов проверяются поведением.
 
-Целевая версия проверок backend — Python 3.13. PyPI metadata на 12 ноября 2026 года допускают её для Ruff 0.17.4 (>=3.7), Pyright 1.1.414 (>=3.7), import-linter 2.16 (>=3.11) и pytest 9.2.0 (>=3.10). Ruff, import-linter и pytest явно указывают классификатор 3.13; Pyright настраивается на `pythonVersion = "3.13"`. Источники: [Ruff](https://pypi.org/pypi/ruff/json), [Pyright](https://pypi.org/pypi/pyright/json), [import-linter](https://pypi.org/pypi/import-linter/json), [pytest](https://pypi.org/pypi/pytest/json). Точечный WPS231 остаётся дополнительной dev-проверкой после проверки совместимости Flake8/WPS, а не обязательной runtime-зависимостью.
+На 12 ноября 2026 года PyPI показывает версии Mypy 2.4.1, Pylint 4.1.3, Bandit 1.9.4, wemake-python-styleguide 1.8.1 и Flake8 7.5.0. Их `Requires-Python` допускают 3.13; Mypy, Pylint, Bandit и wemake также заявляют классификатор 3.13. Это проверка метаданных, а не совместного запуска на будущем backend. [Mypy](https://pypi.org/pypi/mypy/json), [Pylint](https://pypi.org/pypi/pylint/json), [Bandit](https://pypi.org/pypi/bandit/json), [wemake](https://pypi.org/pypi/wemake-python-styleguide/json), [Flake8](https://pypi.org/pypi/flake8/json). При реализации фиксируются совместимые версии и выполняется реальный совместный запуск на Python 3.13.
+
+Для Mypy задаются `python_version = "3.13"`, строгий профиль значимых пакетов и явные типы на входах/выходах. Pydantic v2 может требовать официального `pydantic.mypy` plugin для точной проверки конструкторов; необходимость проверяется на коде. SQLAlchemy 2.x использует собственные типизированные `Mapped`/`mapped_column`, без старого SQLAlchemy mypy plugin. Async-порты должны точно указывать awaitable/result и жизненный цикл. Внешние типы LangChain/LangGraph и Dishka проверяются на выбранных версиях; неточный `Any` локализуется адаптерами и узкими stubs, не отключением проверки целых пакетов. Успешную типизацию будущего приложения нельзя утверждать до запуска Mypy на его коде.
 
 ## Предлагаемый строгий профиль Ruff
 
@@ -32,7 +31,7 @@ AST-линтеры не подтверждают безопасность prompt
 | Ошибки и неиспользуемый код | F, E4/E7/E9, B, UP, I | Неизвестные имена, импорты, опасные конструкции, современный синтаксис и порядок импортов |
 | Надёжность | ASYNC, BLE, A, C4, SIM, PIE, RET, RUF, PGH | Async-ошибки, слишком широкие except, затенение builtins, избыточные конструкции и неконтролируемые suppressions |
 | Предметные ошибки | DTZ, G, LOG, T20, ARG, PT | Часовые пояса, корректное логирование, отсутствие print в runtime, забытые параметры и понятные pytest-конструкции |
-| Безопасность | S, с адресными обоснованными исключениями | Статические признаки небезопасных subprocess, сериализации, секретов и сетевых вызовов |
+| Безопасность | Выбранные S без дублей Bandit B | Быстрые security-диагностики в основном линтере; дополнительные B проверяет Bandit |
 | Размер и цикломатическая сложность | C901, PLR0912, PLR0913, PLR0915 | Сложность ветвления, число веток/параметров/операторов |
 
 Начальные рекомендации: C901 ≤ 10, число веток ≤ 12, параметров ≤ 6, операторов ≤ 50; это внутренние пороги ревью, не требование бизнес-предметной области.
@@ -45,7 +44,7 @@ Flake8 в этом запуске не повторяет E/F/WPS-стили; WP
 
 Docstring на каждый элемент, обязательные комментарии/копирайты и строгая форма имён ради формы не требуются: D/DOC/CPY не включаются автоматически.
 Formatter-конфликтующие правила отступов/кавычек исключаются по документации Ruff, preview и unsafe auto-fix не запускаются автоматически.
-В тестах разрешается S101 для assert; subprocess Git запускается списком аргументов без shell, исключение S603 при необходимости узко документируется в адаптере.
+В тестах разрешается assert; subprocess Git запускается списком аргументов без shell. Для пересекающихся subprocess-диагностик выбирается один источник предупреждений и узкое документированное подавление при необходимости.
 Не отключаем всю категорию безопасности для infrastructure или всех тестов; подавление содержит код правила и конкретную причину.
 Статический анализ не находит весь мёртвый код: F/ARG ловят часть проблем, невызванные публичные функции требуют ревью, а не ложного обещания полного обнаружения.
 
@@ -158,7 +157,7 @@ SOLID применяется к реальным границам, KISS/YAGNI о
 | Когда | Будущие проверки |
 | --- | --- |
 | Каждый PR с документацией | Относительные ссылки, scope diff и Markdown; существующая PDF-сборка сохраняется |
-| Каждый PR с backend | Locked install, Ruff check/format check, Pyright, import-linter, WPS231, unit и локальные integration без внешних LLM |
+| Каждый PR с backend | Locked install, Ruff check/format check, Mypy, Pylint, Bandit, import-linter, WPS231, unit и локальные integration без внешних LLM |
 | Каждый PR с frontend | Locked install, ESLint, Prettier check, tsc, Vitest, production build |
 | При сквозных изменениях | Короткий Playwright-набор с реальным backend/Git и fake LLM; артефакты ошибок |
 | При появлении контейнеров | Compose config/build, readiness и smoke с persistent volume; восстановление после рестарта |
@@ -169,7 +168,7 @@ SOLID применяется к реальным границам, KISS/YAGNI о
 
 ## Архитектурные импорты
 
-[import-linter](https://import-linter.readthedocs.io/en/stable/contract_types/) дополняет Ruff/Pyright: проверяет граф импортов, а не форматирование/типы. Выбираем отдельный `backend/.importlinter`, команда CI `lint-imports --config backend/.importlinter` из корня с установленным backend package. Конфиг появится вместе с пакетами, здесь — проект проверок.
+[import-linter](https://import-linter.readthedocs.io/en/stable/contract_types/) дополняет Ruff/Mypy: проверяет граф импортов, а не форматирование/типы. Выбираем отдельный `backend/.importlinter`, команда CI `lint-imports --config backend/.importlinter` из корня с установленным backend package. Конфиг появится вместе с пакетами, здесь — проект проверок.
 
 | Contract | Конкретное ограничение |
 | --- | --- |
@@ -207,7 +206,7 @@ layers =
 - Реальные PostgreSQL + временный Git + local storage: fault injection на каждом шаге journal, включая S3 upload до DB pin и CAS до SQL completed. Для S3 — тот же FileStorage contract suite с immutable versions и отказом удаления pinned source.
 - Разрешённое обновление task branch после смены main, семантический конфликт общего объекта даже при чистом Git merge; checks/approval инвалидируются, фактический merge tree/родители сверяются с разрешением.
 - Один объект на двух видах, отдельный layout/label override; удаление из вида не удаляет каталог. Round-trip/детерминированный JSON, неизвестная версия, broken refs и схема миграции.
-- LangChain local HTTP stub: пустой/обрезанный/refusal, невалидный JSON и Pydantic, повторная генерация, неподдерживаемая JSON Schema capability, запрет скрытого Tool Calling, общий лимит сетевых и validation retries, retries=0, deadline/cancel. Один и тот же агентный контракт для двух endpoint profiles; реальная LM Studio/vLLM совместимость проверяется отдельным smoke, не выводится из stub.
+- LangChain local HTTP stub: пустой/обрезанный/refusal, невалидный JSON и Pydantic, повторная генерация, неподдерживаемая JSON Schema capability, запрет скрытого Tool Calling, общий лимит сетевых и validation retries, retries=0, deadline/cancel. Один и тот же агентный контракт для двух endpoint profiles; реальная vLLM/модель совместимость проверяется отдельным smoke, не выводится из stub.
 - Clarification resume после restart, повтор ответа и повторное формирование вопросов не создают дублей; ContextBuilder учитывает closed questions, обязательные источники, budget и revision invalidation.
 
 ## Метрики качества ИИ

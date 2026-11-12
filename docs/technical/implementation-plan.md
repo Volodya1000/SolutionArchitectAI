@@ -6,9 +6,9 @@
 
 ## 1. Первый работающий чат React → FastAPI → LangChain → локальная LLM
 
-С минимальным каркасом получить сохраняемый диалог: Python 3.13/uv, React/Vite/shadcn/ui/Tailwind CSS, выбранный assistant-ui adapter, FastAPI/Dishka, PostgreSQL/SQLAlchemy/Alembic, `langchain-core` и `langchain-openai` к настроенному OpenAI-совместимому endpoint LM Studio. LangGraph этому сценарию не нужен. Несекретный YAML/Settings, Compose приложения и PostgreSQL, Ruff/Pyright/pytest/import-linter и frontend checks входят в тот же результат. LLM не откладывается до завершения архитектурных каталогов.
+С минимальным каркасом получить сохраняемый диалог без внешнего LLM API-ключа: Python 3.13/uv, React/Vite/shadcn/ui/Tailwind CSS, выбранный assistant-ui adapter, FastAPI/Dishka, PostgreSQL/SQLAlchemy/Alembic, `langchain-core` и `langchain-openai` к vLLM из `docker-compose.ln.yml` с поддерживаемой локальной моделью. LangGraph этому сценарию не нужен. Несекретный YAML/Settings, `docker-compose.yml` и `docker-compose.ln.yml`, Ruff/Mypy/Pylint/Bandit/import-linter/WPS231/pytest и frontend checks входят в тот же результат. LLM не откладывается до завершения архитектурных каталогов.
 
-Готовность: два чата, отправка/stream/отмена ответа, история после restart, видимый error/incomplete и Light/Dark/System. Обычный CI использует fake endpoint, отдельный smoke — реально выбранную модель. Приложение пока не объявляет архитектуру согласованной.
+Готовность: два чата, отправка/stream/отмена ответа, история после restart, видимый error/incomplete и Light/Dark/System. Обычный CI использует fake endpoint, отдельный smoke — реально выбранную модель. Для менее мощного компьютера предусматривается компактный проверенный профиль или демонстрационный fake LLM; fake не показывает качество агентного проектирования. Приложение пока не объявляет архитектуру согласованной.
 
 ## 2. Общая модель и безопасная предметная операция
 
@@ -20,7 +20,7 @@ Python Domain Model с разрешёнными операциями и инва
 
 Ввести `StructuredOutputGenerator` на LangChain/Pydantic, `RetryConfig`, раздельные Python-промпты, ContextBuilder, RequirementsExtractionAgent и ClarificationAgent. `StateGraph` и `AsyncPostgresSaver` сохраняют процесс, `interrupt()` ждёт ответа архитектора, `AnswerClarification` проверяет права/ревизию, затем граф возобновляется. GraphState хранит ссылки и версии, Application — предметные операции. Никакой второй машины стадий.
 
-Готовность: вопросы и source refs не теряются после restart; закрытые вопросы не дублируются; новая входная ревизия помечает результат stale; повтор узла безопасен. Профили LM Studio/vLLM проверяются отдельно. Интеграционные испытания с реально выбранными моделями/серверами должны проверить native JSON Schema, невалидный JSON/Pydantic, корректирующую генерацию, отказ от скрытого Tool Calling, общий бюджет retry/deadline, timeout/rate limit/cancel и освобождение async-ресурсов. Эти испытания ещё не выполнены.
+Готовность: вопросы и source refs не теряются после restart; закрытые вопросы не дублируются; новая входная ревизия помечает результат stale; повтор узла безопасен. Профили выбранных локальных моделей и vLLM проверяются отдельно. Интеграционные испытания с реально выбранными моделями/серверами должны проверить native JSON Schema, невалидный JSON/Pydantic, корректирующую генерацию, отказ от скрытого Tool Calling, общий бюджет retry/deadline, timeout/rate limit/cancel и освобождение async-ресурсов. Эти испытания ещё не выполнены.
 
 ## 4. Проектирование, представления и независимое ревью
 

@@ -51,7 +51,7 @@ class DatabaseSettings(ConfigSection):
     credentials: DatabaseEnv
 
 class LLMSettings(ConfigSection):
-    base_url: str = "http://localhost:1234/v1"
+    base_url: str = "http://vllm:8000/v1"
     model: str
     api_key: SecretStr | None = Field(default=None, repr=False)
     retry: RetryConfig = Field(default_factory=RetryConfig)
@@ -97,11 +97,10 @@ SecretStr маскирует стандартный вывод, но не шиф
 
 ## Профили локальных LLM
 
-LM Studio — локальная разработка/тестирование; vLLM — перспективный inference backend. Базовый Compose приложения не скачивает веса и не запускает inference server. Вызовы идут через `langchain-openai` и `langchain-core` за application-портом; полный `langchain` и LLM proxy не обязательны. Платные провайдеры и расчёты оплаты не входят в проект.
-
+Для локального запуска с реальной моделью `docker-compose.yml` дополняется `docker-compose.ln.yml`: vLLM обслуживает локальную модель в той же Docker-сети. Backend использует `http://vllm:8000/v1`; имя модели и URL задаются профилем, без изменения кода агентов. Внешний LLM API-ключ не обязателен. Если OpenAI SDK требует непустое поле key, задаётся локальное служебное значение, которое не является ключом внешнего провайдера. Основной Compose не скачивает веса. Кэш весов сохраняется; первая загрузка и офлайновый запуск описаны в [deployment.md](deployment.md#локальные-модели). Вызовы идут через `langchain-openai` и `langchain-core` за application-портом; полный `langchain` и LLM proxy не обязательны.
 Профиль подключения задаёт base_url, adapter identifier, model identifier и ссылку на необязательный API key. Профиль модели содержит context_window, output_limit, temperature (если поддерживается), request_timeout, RetryConfig, concurrency и capabilities: streaming, JSON schema subset/strictness, JSON-text mode, cancellation semantics, tokenizer/counting strategy. Значения не выводятся только из имени модели. По ролям задаются aliases этих профилей.
 
-Смена LM Studio/vLLM/иного поддерживаемого endpoint — изменение профиля, не кода агента. Настройка формата результата явно выбирает проверенный `json_schema` или разрешённый JSON-текст с Pydantic; запрещены молчаливое удаление schema, fallback на tool calling или смена модели. Capability mismatch даёт typed failure. До реальных испытаний проверяются поддерживаемая схема, пустой/обрезанный ответ, streaming и отмена на каждом endpoint. Поддержка OpenAI-compatible HTTP не доказывает одинаковой поддержки JSON Schema.
+Смена модели или другого поддерживаемого endpoint — изменение профиля, не кода агента. Настройка формата результата явно выбирает проверенный `json_schema` или разрешённый JSON-текст с Pydantic; запрещены молчаливое удаление schema, fallback на tool calling или смена модели. Capability mismatch даёт typed failure. До реальных испытаний проверяются поддерживаемая схема, пустой/обрезанный ответ, streaming и отмена на каждом endpoint. Поддержка OpenAI-compatible HTTP не доказывает одинаковой поддержки JSON Schema.
 
 ## RetryConfig
 

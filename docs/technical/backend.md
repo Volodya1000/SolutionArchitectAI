@@ -4,7 +4,18 @@
 
 ## Стек и направления зависимостей
 
-Планируется модульный backend на **Python 3.13**, с **uv** для управления зависимостями и воспроизводимыми окружениями: FastAPI/OpenAPI, Dishka AsyncContainer, PostgreSQL, SQLAlchemy 2.x async и Alembic. Pydantic проверяет внешние контракты, Pydantic Settings — конфигурацию. Domain использует dataclasses/enum и чистые валидаторы без ORM/HTTP/LLM SDK. Полные DDD, CQRS, event sourcing и микросервисы MVP не нужны. Фичи группируются внутри пакетов; общие порты принадлежат их потребителю в Application.
+Планируется модульный backend. Основные технологии и их ответственность:
+
+- **Python 3.13** — целевая версия серверного кода.
+- **uv** — зависимости, окружения и lock-файл.
+- **FastAPI** — HTTP API и OpenAPI-контракты.
+- **Dishka** — контейнер зависимостей и управление scope.
+- **Pydantic** — валидация внешних контрактов.
+- **Pydantic Settings** — загрузка конфигурации.
+- **SQLAlchemy 2.x async** — работа с PostgreSQL.
+- **Alembic** — миграции структуры БД.
+
+Domain использует dataclasses/enum и чистые валидаторы без ORM/HTTP/LLM SDK. Полные DDD, CQRS, event sourcing и микросервисы MVP не нужны. Фичи группируются внутри пакетов; общие порты принадлежат их потребителю в Application.
 
 | Пакет | Обязанность и допустимые импорты |
 | --- | --- |
