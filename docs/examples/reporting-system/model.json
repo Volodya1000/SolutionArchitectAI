@@ -1,0 +1,26 @@
+{
+  "$schema": "model.schema.json",
+  "context": {
+    "selected_proxy_id": "befaa3df-fe12-531f-abcc-4970d5b7adb5",
+    "класс_данных": "Продажи и сводка — конфиденциальные финансовые данные без персональных сведений",
+    "контур": "Внутренний тестовый",
+    "критичность": "Обычная",
+    "обязательность_правил": "Все правила обязательны, исключений нет",
+    "пользователи": "Сотрудники с ролью «Аналитик»",
+    "профиль_обслуживания": "Внутренний сервис в рабочие дни 08:00–18:00; не клиентское приложение 24/7"
+  },
+  "files": {
+    "checks": "checks.json",
+    "decisions": "decisions.json",
+    "objects": "objects.json",
+    "relationships": "relationships.json",
+    "requirements": "requirements.json",
+    "sources": "sources.json",
+    "views": "views.json"
+  },
+  "name": "Общее синтетическое корпоративное пространство",
+  "record_type": "model",
+  "schema_version": "1.1",
+  "scope_name": "Система формирования отчётности",
+  "workspace_id": "79fcfd37-66f0-5f54-b618-6d8126bfb484"
+}

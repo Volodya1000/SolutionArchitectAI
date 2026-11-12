@@ -49,8 +49,6 @@ def normalize(value: object) -> object:
     kind, content = value.get('t'), value.get('c')
     if kind == 'Link' and not re.match(r'https?://|mailto:', content[2][0]):
         label = text_of(content[1])
-        if label in ('manifest.yaml', 'YAML-манифест'):
-            return {'t': 'Span', 'c': [['', [], []], [{'t': 'Str', 'c': 'архитектурный манифест (полностью приведён в приложении)'}]]}
         return {'t': 'Span', 'c': [['', [], []], normalize(content[1])]}
     if kind == 'Image':
         name = Path(content[2][0]).stem
@@ -67,10 +65,6 @@ def normalize(value: object) -> object:
                    + r'\vfill\begin{center}' + '\n'
                    + r'\includegraphics[width=\linewidth,height=.82\textheight,keepaspectratio]{.build/documents/'
                    + name + '.pdf}\n' + r'\end{center}\vfill' + '\n' + closing)
-    if kind == 'Para' and text_of(content).startswith('Документы и манифест проверяются в рамках одного коммита Git.'):
-        return raw('')
-    if kind == 'Para' and text_of(content).startswith('Эталон подготовлен по '):
-        return raw('Решения предложены для ревью; согласование и ответы человека не имитируются.')
     if kind == 'Para' and len(content) == 1 and content[0].get('t') == 'Image':
         return normalize(content[0])
     if kind == 'Table':
@@ -167,18 +161,9 @@ def refresh() -> None:
                       first_heading='Исходные требования и контекст')
     example += '\n'
     example += convert(EXAMPLE / 'expected-result.md', first_heading='Ожидаемый архитектурный результат')
-    example += '\n' + r'''\section{Полный архитектурный манифест}
-\label{manifest-appendix}
-Ниже приведён полный YAML-манифест системы формирования отчётности.
-Он описывает контекст, системы, наборы данных, потоки и технические взаимодействия.
-\VerbatimInput[fontsize=\normalsize,breaklines=true,breakanywhere=true,
-  breaksymbolleft={},breaksymbolright={},tabsize=2,
-  frame=leftline,framerule=.6pt,rulecolor=\color{Accent},
-  xleftmargin=8pt,framesep=8pt]{docs/examples/reporting-system/manifest.yaml}
-'''
     (LATEX / 'example.tex').write_text(source(
         'Система формирования отчётности', 'Сквозной пример',
-        'Синтетические бизнес-требования, архитектурный результат, две диаграммы и полный YAML-манифест.',
+        'Синтетические требования, общая архитектурная модель, два представления решения и результаты проверок.',
         example))
     print('Refreshed editable LaTeX sources from Markdown.')
 
@@ -198,7 +183,8 @@ def main() -> None:
     env = os.environ.copy()
     if 'SOURCE_DATE_EPOCH' not in env:
         epoch = run(['git', 'log', '-1', '--format=%ct', '--', 'docs/latex',
-                     'docs/examples/reporting-system/manifest.yaml',
+                     'docs/BRD.md', 'docs/examples/reporting-system.md',
+                     'docs/examples/reporting-system',
                      'docs/examples/reporting-system/data-flow.svg',
                      'docs/examples/reporting-system/interactions.svg',
                      'scripts/build_documents.py'], capture_output=True, text=True).stdout.strip()

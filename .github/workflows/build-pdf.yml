@@ -5,7 +5,7 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - 'docs/**'
-      - 'scripts/build_documents.py'
+      - 'scripts/**'
       - '.github/workflows/build-pdf.yml'
   workflow_dispatch:
 
@@ -27,10 +27,24 @@ jobs:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install example format validator
+        run: python3 -m pip install -r scripts/requirements-docs.txt
+
+      - name: Validate documentary architecture example
+        run: python3 scripts/validate_example.py
+
       - name: Install document tools and Cyrillic fonts
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends texlive-xetex texlive-latex-extra texlive-lang-cyrillic texlive-fonts-recommended fonts-dejavu inkscape
+          sudo apt-get install -y --no-install-recommends texlive-xetex texlive-latex-extra texlive-lang-cyrillic texlive-fonts-recommended fonts-dejavu inkscape pandoc
+
+      - name: Check example and publisher regressions
+        run: python3 -m unittest discover -s scripts -p 'test_*.py'
 
       - name: Compile editable LaTeX twice
         run: python3 scripts/build_documents.py
