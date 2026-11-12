@@ -51,7 +51,7 @@ class DatabaseSettings(ConfigSection):
     credentials: DatabaseEnv
 
 class LLMSettings(ConfigSection):
-    base_url: str = "http://localhost:1234/v1"
+    base_url: str = "http://vllm:8000/v1"
     model: str
     api_key: SecretStr | None = Field(default=None, repr=False)
     retry: RetryConfig = Field(default_factory=RetryConfig)
@@ -97,11 +97,10 @@ SecretStr маскирует стандартный вывод, но не шиф
 
 ## Профили локальных LLM
 
-LM Studio — локальная разработка/тестирование; vLLM — перспективный inference backend. Базовый Compose приложения не скачивает веса и не запускает inference server. Все вызовы идут через LiteLLM SDK за application-портом; Proxy не обязателен. Платные провайдеры и расчёты оплаты не входят в проект.
+Для локального запуска с реальной моделью `docker-compose.yml` дополняется `docker-compose.ln.yml`: vLLM обслуживает локальную модель в той же Docker-сети. Backend использует `http://vllm:8000/v1`; имя модели и URL задаются профилем, без изменения кода агентов. Внешний LLM API-ключ не обязателен. Если OpenAI SDK требует непустое поле key, задаётся локальное служебное значение, которое не является ключом внешнего провайдера. Основной Compose не скачивает веса. Кэш весов сохраняется; первая загрузка и офлайновый запуск описаны в [deployment.md](deployment.md#локальные-модели). Вызовы идут через `langchain-openai` и `langchain-core` за application-портом; полный `langchain` и LLM proxy не обязательны.
+Профиль подключения задаёт base_url, adapter identifier, model identifier и ссылку на необязательный API key. Профиль модели содержит context_window, output_limit, temperature (если поддерживается), request_timeout, RetryConfig, concurrency и capabilities: streaming, JSON schema subset/strictness, JSON-text mode, cancellation semantics, tokenizer/counting strategy. Значения не выводятся только из имени модели. По ролям задаются aliases этих профилей.
 
-Профиль подключения задаёт base_url, provider adapter identifier, model identifier и ссылку на необязательный API key. Профиль модели содержит context_window, output_limit, temperature (если поддерживается), request_timeout, RetryConfig, concurrency и capabilities: streaming, JSON schema subset/strictness, JSON-text mode, cancellation semantics, tokenizer/counting strategy. Значения не выводятся только из имени модели. По ролям задаются aliases этих профилей.
-
-Смена LM Studio/vLLM/иного поддерживаемого endpoint — изменение профиля, не кода агента. Настройка формата результата выбирает совместимый режим Instructor; запрещены молчаливое удаление schema, fallback на tool calling или смена модели. Capability mismatch даёт typed failure. До реальных испытаний проверяются поддерживаемая схема, пустой/обрезанный ответ, streaming и отмена на каждом endpoint. Поддержка OpenAI-compatible HTTP не доказывает одинаковой поддержки JSON Schema.
+Смена модели или другого поддерживаемого endpoint — изменение профиля, не кода агента. Настройка формата результата явно выбирает проверенный `json_schema` или разрешённый JSON-текст с Pydantic; запрещены молчаливое удаление schema, fallback на tool calling или смена модели. Capability mismatch даёт typed failure. До реальных испытаний проверяются поддерживаемая схема, пустой/обрезанный ответ, streaming и отмена на каждом endpoint. Поддержка OpenAI-compatible HTTP не доказывает одинаковой поддержки JSON Schema.
 
 ## RetryConfig
 
@@ -119,6 +118,6 @@ LM Studio — локальная разработка/тестирование; 
 
 Числа выбираются по испытаниям, не объявляются требованиями заказчика. Все лимиты конечны; retries неотрицательны, total >= 1, backoff/timeout согласованы. Невалидный ответ не повторяется бесконечно; изменения неподдерживаемой схемы требуют явного решения. После обрезки нельзя молча превысить output limit. Смена модели запрещена без явной команды.
 
-Единственный координатор повторов структурированной генерации — адаптер Instructor с [AsyncRetrying/Tenacity](https://python.useinstructor.com/concepts/retrying/), отдельными счётчиками классов ошибок и общим request/deadline budget. Он использует готовый reask/validation механизм; внешнего вложенного retry-loop агентов нет. LiteLLM/Router/provider SDK retries отключаются явными настройками; соответствие max_retries числу попыток библиотеки проверяется contract test (0 наших retries означает ровно один запрос). Для обычного streaming тот же RetryConfig компилируется транспортным адаптером; после уже выданных токенов прозрачный replay запрещён. Общий счётчик не сбрасывается после schema retry, иначе сетевые и корректирующие повторы перемножатся.
+Единственный координатор повторов структурированной генерации — `StructuredOutputGenerator` поверх LangChain/Pydantic. Он ведёт отдельные счётчики классов ошибок и общий request/deadline budget, включая повторную генерацию после Pydantic-ошибки. Встроенные `ChatOpenAI(max_retries=0)`/SDK retries и LangGraph retry policy для LLM-узла не создают независимых циклов; contract test проверяет, что ноль наших повторов означает один HTTP-запрос. При возобновлении run сохраняется остаток общего бюджета. Для обычного streaming транспорт использует тот же бюджет; после уже выданных токенов прозрачный replay запрещён. Смена класса ошибки не сбрасывает общий счётчик.
 
 Интеграционный тест считает исходящие запросы при последовательности network error → invalid JSON → success, при обоих retries=0, исчерпании бюджета и отмене во время backoff. Генерация не охватывает применение или Git commit. После HTTP disconnect запросить operation_id безопаснее, чем запускать всю команду заново.

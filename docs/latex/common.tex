@@ -1,4 +1,4 @@
-% Shared editable typography for both document editions.
+% Shared editable typography for all three document editions.
 \usepackage{fontspec}
 \setmainfont{DejaVu Serif}
 \setsansfont{DejaVu Sans}
@@ -19,6 +19,7 @@
 \usepackage{enumitem}
 \usepackage{etoolbox}
 \usepackage{needspace}
+\usepackage{tocloft}
 \usepackage[unicode,colorlinks=true,linkcolor=Accent,urlcolor=Accent,bookmarksnumbered=false]{hyperref}
 \usepackage{bookmark}
 \usepackage{microtype}
@@ -32,13 +33,36 @@
 \setlength{\tabcolsep}{4pt}
 \renewcommand{\arraystretch}{1.16}
 \AtBeginEnvironment{longtable}{\small}
-% Measure only a table's header and first data row. The generator emits this
-% guard before the table and any directly preceding section heading.
+% Measure a compact table or its header and first two data rows. The output
+% remains a breakable longtable. Cap the reservation for unusually tall rows.
 \newsavebox{\DocumentTableStart}
+\newlength{\DocumentTableSpace}
 \newcommand{\KeepTableStart}[2]{%
   \setbox\DocumentTableStart=\vbox{\hsize=\linewidth\small #2}%
-  \Needspace{\dimexpr\ht\DocumentTableStart+\dp\DocumentTableStart
+  \setlength{\DocumentTableSpace}{\dimexpr\ht\DocumentTableStart+\dp\DocumentTableStart
     +\LTpre+\baselineskip+#1\baselineskip*4\relax}%
+  \ifdim\DocumentTableSpace>.5\textheight
+    \setlength{\DocumentTableSpace}{.5\textheight}%
+  \fi
+  \Needspace{\DocumentTableSpace}%
+}
+% Measure short lists once. Small blocks move together; long ones are unboxed
+% into the normal page builder and remain breakable, never scaled or clipped.
+\newsavebox{\DocumentShortBlock}
+\newcommand{\KeepShortBlock}[1]{%
+  % A heading's page-space check must not run inside the measuring box: it
+  % would inspect the outer page and embed a spurious forced break in the box.
+  \par\setbox\DocumentShortBlock=\vbox{\hsize=\linewidth
+    \renewcommand{\Needspace}[1]{}#1\par}%
+  \ifdim\dimexpr\ht\DocumentShortBlock+\dp\DocumentShortBlock\relax<.32\textheight
+    \Needspace{\dimexpr\ht\DocumentShortBlock+\dp\DocumentShortBlock+\medskipamount\relax}%
+  \else
+    \Needspace{5\baselineskip}%
+  \fi
+  % Unboxing does not add normal inter-paragraph baseline glue at the leading
+  % edge. Give the measured block standard vertical separation from prior text.
+  \addvspace{\medskipamount}%
+  \unvbox\DocumentShortBlock
 }
 \preto\section{\Needspace{5\baselineskip}}
 \preto\subsection{\Needspace{5\baselineskip}}
@@ -58,14 +82,27 @@
 \fancyfoot[C]{\small\color{Muted}\thepage}
 \renewcommand{\headrulewidth}{.35pt}
 \renewcommand{\footrulewidth}{0pt}
+% A single compact opening page, with profile-controlled TOC depth. Reserve a
+% wider page-number column for the multi-page BRD and example editions.
+\setlength{\cftbeforesecskip}{5pt}
+\setlength{\cftbeforesubsecskip}{2pt}
+\renewcommand{\cftsecfont}{\small\sffamily\bfseries}
+\renewcommand{\cftsubsecfont}{\small\sffamily}
+\renewcommand{\cftsecpagefont}{\small}
+\renewcommand{\cftsubsecpagefont}{\small}
+\cftsetpnumwidth{2em}
+\cftsetrmarg{3em}
 \newcommand{\DocumentTitle}[3]{%
   \thispagestyle{plain}
   {\sffamily\bfseries\color{Accent}\fontsize{23}{29}\selectfont #1\par}
   \vspace{3mm}
   {\sffamily\small\color{Muted}#2\par}
-  \vspace{5mm}
+  \ifstrempty{#3}{}{\vspace{4mm}#3\par}%
+  \begingroup
+  \renewcommand{\contentsname}{Содержание}%
   \tableofcontents
+  \endgroup
   \vspace{5mm}
   {\color{Accent}\rule{\linewidth}{.8pt}\par}
-  \vspace{5mm}
+  \clearpage
 }

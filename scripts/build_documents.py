@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the two committed PDFs; regenerate editable LaTeX only on request."""
+"""Build the three committed PDFs; regenerate editable LaTeX only on request."""
 from __future__ import annotations
 
 import argparse
@@ -17,6 +17,7 @@ BUILD = ROOT / '.build' / 'documents'
 LATEX = ROOT / 'docs' / 'latex'
 PDF = ROOT / 'docs' / 'pdf'
 EXAMPLE = ROOT / 'docs' / 'examples' / 'reporting-system'
+DOCUMENTS = ('brd', 'example', 'technical-decisions')
 
 
 def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess:
@@ -94,7 +95,8 @@ def normalize(value: object) -> object:
     return value
 
 
-def convert(path: Path, *, first_heading: str | None = None) -> str:
+def convert(path: Path, *, first_heading: str | None = None,
+            page_break_before: set[str] | None = None) -> str:
     ast = json.loads(run(['pandoc', str(path), '--from=gfm', '--to=json'],
                          capture_output=True, text=True).stdout)
     blocks = ast['blocks']
@@ -106,14 +108,36 @@ def convert(path: Path, *, first_heading: str | None = None) -> str:
             for block in blocks:
                 if block['t'] == 'Header':
                     block['c'][0] -= 1
-    ast['blocks'] = normalize(blocks)
+    # Publishing profiles name semantic boundaries, not page numbers. Apply
+    # breaks before normalization so Markdown regeneration retains them.
+    laid_out = []
+    for block in blocks:
+        if block['t'] == 'Header' and text_of(block['c'][2]) in (page_break_before or set()):
+            laid_out.append(raw(r'\clearpage'))
+        laid_out.append(block)
+    ast['blocks'] = normalize(laid_out)
+    # Guard top-level lists as a unit, including an adjacent heading or short
+    # introductory paragraph. Nested lists stay within the same measurement.
+    guarded = []
+    for block in ast['blocks']:
+        if block['t'] in ('BulletList', 'OrderedList'):
+            prefix = []
+            if guarded and (guarded[-1]['t'] == 'Header' or
+                            (guarded[-1]['t'] == 'Para' and len(text_of(guarded[-1])) < 180)):
+                prefix.insert(0, guarded.pop())
+            if guarded and guarded[-1]['t'] == 'Header':
+                prefix.insert(0, guarded.pop())
+            guarded.extend([raw(r'\KeepShortBlock{%'), *prefix, block, raw('}')])
+        else:
+            guarded.append(block)
+    ast['blocks'] = guarded
     latex = run(['pandoc', '--from=json', '--to=latex', '--wrap=none'],
                 input=json.dumps(ast, ensure_ascii=False), capture_output=True, text=True).stdout
     return keep_table_starts(latex)
 
 
 def keep_table_starts(latex: str) -> str:
-    """Reserve the measured header + first row, without keeping whole tables.
+    """Reserve measured opening rows, or a compact table, without boxing output.
 
     Include an immediately preceding heading in the reservation, so moving a
     table cannot leave its section title alone at the bottom of a page.
@@ -122,15 +146,19 @@ def keep_table_starts(latex: str) -> str:
         r'(?P<headings>(?:\\(?:sub)*section\{[^\n]+\}\s*)*)'
         r'\\begin\{longtable\}(?:\[[^\]]*\])?(?P<columns>.*?)'
         r'(?P<header>\\toprule.*?)\\endhead\s*'
-        r'.*?\\endlastfoot\s*(?P<row>.*?\\\\)\s*', re.S)
+        r'.*?\\endlastfoot\s*(?P<rows>.*?)\\end\{longtable\}', re.S)
 
     def reserve(match: re.Match) -> str:
         # Pandoc may emit a separate first-page header; measure it only once.
         header = match['header'].split(r'\endfirsthead')[0]
         headings = match['headings']
         heading_count = len(re.findall(r'\\(?:sub)*section\{', headings))
+        rows = re.findall(r'.*?\\\\\s*', match['rows'], re.S)
+        # Short tables can move together. Larger tables reserve two opening
+        # rows; the original longtable and repeated header remain breakable.
+        opening_rows = rows if len(rows) <= 4 else rows[:2]
         sample = (r'\begin{tabular}' + match['columns'] + header
-                  + match['row'] + '\n' + r'\end{tabular}')
+                  + ''.join(opening_rows) + '\n' + r'\end{tabular}')
         guard = (r'\KeepTableStart{' + str(heading_count) + '}{%\n'
                  + sample + '%\n}\n')
         return guard + match[0]
@@ -138,13 +166,19 @@ def keep_table_starts(latex: str) -> str:
     return pattern.sub(reserve, latex)
 
 
-def source(title: str, subtitle: str, description: str, body: str) -> str:
+def source(title: str, subtitle: str, description: str, body: str, *,
+           toc_depth: int = 1, intro_on_title: bool = False, font_size: int = 10) -> str:
+    if intro_on_title:
+        # Move the Markdown introduction to the opening page, preserving text.
+        description, section_body = body.split(r'\section', 1)
+        body = r'\section' + section_body
     return (r'% Editable publishing source. Rebuild without --refresh-tex to preserve edits.' + '\n'
-            + r'\documentclass[10pt,a4paper]{article}' + '\n'
+            + r'\documentclass[' + str(font_size) + r'pt,a4paper]{article}' + '\n'
             + r'\input{docs/latex/common.tex}' + '\n'
             + r'\hypersetup{pdftitle={' + title + r'},pdfauthor={},pdfsubject={' + subtitle + '}}\n'
             + r'\fancyhead[L]{\small SolutionArchitectAI}' + '\n'
             + r'\fancyhead[R]{\small ' + subtitle + '}\n'
+            + r'\setcounter{tocdepth}{' + str(toc_depth) + '}\n'
             + r'\begin{document}' + '\n'
             + r'\DocumentTitle{' + title + '}{' + subtitle + '}{' + description + '}\n'
             + body + '\n' + r'\end{document}' + '\n')
@@ -157,37 +191,56 @@ def refresh() -> None:
     (LATEX / 'brd.tex').write_text(source(
         'Архитектурное проектирование MVP системы SolutionArchitectAI', 'Бизнес-требования',
         '', brd))
-    example = convert(ROOT / 'docs' / 'examples' / 'reporting-system.md')
+    example = convert(ROOT / 'docs' / 'examples' / 'reporting-system.md',
+                      page_break_before={'Часть II. Синтетический корпоративный контекст'})
     example += '\n'
     example += convert(EXAMPLE / 'expected-result.md',
-                       first_heading='Часть III. Ожидаемый результат архитектурного проектирования')
+                       first_heading='Часть III. Ожидаемый результат архитектурного проектирования',
+                       page_break_before={'Часть III. Ожидаемый результат архитектурного проектирования'})
     (LATEX / 'example.tex').write_text(source(
         'Система формирования отчётности', 'Сквозной пример',
         'Синтетические требования, общая архитектурная модель, два представления решения и результаты проверок.',
-        example))
+        example, toc_depth=2))
+    decisions = convert(ROOT / 'docs' / 'technical' / 'technical-decisions-summary.md',
+                        page_break_before={'2. Backend', '4. Искусственный интеллект',
+                                           '5. Пользовательский интерфейс'})
+    (LATEX / 'technical-decisions.tex').write_text(source(
+        'SolutionArchitectAI. Ключевые технические решения', 'Технические решения',
+        '', decisions, intro_on_title=True, font_size=11))
     print('Refreshed editable LaTeX sources from Markdown.')
+
+
+def require_latex_sources() -> None:
+    for name in DOCUMENTS:
+        tex = LATEX / f'{name}.tex'
+        if not tex.exists():
+            raise SystemExit(f'Missing {tex.relative_to(ROOT)}; run with --refresh-tex first.')
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--refresh-tex', action='store_true',
-                        help='overwrite brd.tex and example.tex from the current Markdown before building')
+                        help='overwrite all three LaTeX sources from the current Markdown before building')
+    parser.add_argument('--output-dir', type=Path, default=PDF,
+                        help='where compiled PDFs are copied (default: docs/pdf)')
     args = parser.parse_args()
-    for path in (BUILD, LATEX, PDF):
+    for path in (BUILD, LATEX, args.output_dir):
         path.mkdir(parents=True, exist_ok=True)
     for command in ('xelatex', 'inkscape'):
         if not shutil.which(command):
             raise SystemExit(f'Missing required command: {command}')
     if args.refresh_tex:
         refresh()
+    require_latex_sources()
     env = os.environ.copy()
     if 'SOURCE_DATE_EPOCH' not in env:
-        epoch = run(['git', 'log', '-1', '--format=%ct', '--', 'docs/latex',
+        epoch = run(['git', 'log', '-1', '--format=%ct', '--',
+                     'docs/latex/brd.tex', 'docs/latex/example.tex',
                      'docs/BRD.md', 'docs/examples/reporting-system.md',
                      'docs/examples/reporting-system',
                      'docs/examples/reporting-system/data-flow.svg',
-                     'docs/examples/reporting-system/interactions.svg',
-                     'scripts/build_documents.py'], capture_output=True, text=True).stdout.strip()
+                     'docs/examples/reporting-system/interactions.svg'],
+                    capture_output=True, text=True).stdout.strip()
         env['SOURCE_DATE_EPOCH'] = epoch or '0'
     env['FORCE_SOURCE_DATE'] = '1'
     env['TZ'] = 'UTC'
@@ -195,25 +248,34 @@ def main() -> None:
         run(['inkscape', str(EXAMPLE / f'{name}.svg'), '--export-type=pdf',
              f'--export-filename={BUILD / (name + ".pdf")}'], env=env,
             capture_output=True)
-    for name in ('brd', 'example'):
+    for name in DOCUMENTS:
         tex = LATEX / f'{name}.tex'
-        if not tex.exists():
-            raise SystemExit(f'Missing {tex.relative_to(ROOT)}; run with --refresh-tex first.')
-        for _ in range(2):
+        for pass_number in range(1, 5):
+            # Two passes minimum; a changed TOC can itself change pagination.
+            before = [(BUILD / f'{name}.{ext}').read_bytes()
+                      if (BUILD / f'{name}.{ext}').exists() else b''
+                      for ext in ('aux', 'toc', 'out')]
             result = subprocess.run(['xelatex', '-no-shell-escape', '-halt-on-error', '-interaction=nonstopmode',
                                      '-file-line-error', f'-output-directory={BUILD}', str(tex)],
                                     cwd=ROOT, env=env, capture_output=True, text=True)
             if result.returncode:
                 print(result.stdout)
                 raise SystemExit(f'XeLaTeX failed; see {BUILD / (name + ".log")}')
+            after = [(BUILD / f'{name}.{ext}').read_bytes()
+                     if (BUILD / f'{name}.{ext}').exists() else b''
+                     for ext in ('aux', 'toc', 'out')]
+            if pass_number >= 2 and before == after:
+                break
+        else:
+            raise SystemExit(f'TOC/references did not converge after four passes: {name}')
         log = (BUILD / f'{name}.log').read_text(errors='replace')
         warnings = [line for line in log.splitlines()
                     if 'Overfull' in line or 'Missing character:' in line]
         if warnings:
             print('\n'.join(warnings))
             raise SystemExit(f'Layout or font errors in {name}; inspect the build log.')
-        shutil.copyfile(BUILD / f'{name}.pdf', PDF / f'{name}.pdf')
-        print(f'Built docs/pdf/{name}.pdf')
+        shutil.copyfile(BUILD / f'{name}.pdf', args.output_dir / f'{name}.pdf')
+        print(f'Built {args.output_dir / (name + ".pdf")}')
 
 
 if __name__ == '__main__':
