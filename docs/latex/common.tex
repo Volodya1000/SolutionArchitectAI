@@ -47,8 +47,8 @@
 \widowpenalty=10000
 \setlist{leftmargin=1.5em,itemsep=2pt,topsep=3pt}
 \providecommand{\tightlist}{\setlength{\itemsep}{1pt}\setlength{\parskip}{0pt}}
-\titleformat{\section}{\Large\sffamily\bfseries\color{Accent}}{}{0pt}{}
-\titleformat{\subsection}{\large\sffamily\bfseries\color{Accent}}{}{0pt}{}
+\titleformat{\section}{\large\sffamily\bfseries\color{Accent}}{}{0pt}{}
+\titleformat{\subsection}{\normalsize\sffamily\bfseries\color{Accent}}{}{0pt}{}
 \titleformat{\subsubsection}{\normalsize\sffamily\bfseries\color{Accent}}{}{0pt}{}
 \titlespacing*{\section}{0pt}{18pt}{8pt}
 \titlespacing*{\subsection}{0pt}{13pt}{6pt}
@@ -59,20 +59,13 @@
 \renewcommand{\headrulewidth}{.35pt}
 \renewcommand{\footrulewidth}{0pt}
 \newcommand{\DocumentTitle}[3]{%
-  \begin{titlepage}
-  \vspace*{12mm}
-  {\sffamily\color{Accent}\small АРХИТЕКТУРНОЕ ПРОЕКТИРОВАНИЕ\par}
-  \vspace{8mm}
-  {\sffamily\bfseries\fontsize{29}{36}\selectfont #1\par}
+  \thispagestyle{plain}
+  {\sffamily\bfseries\color{Accent}\fontsize{23}{29}\selectfont #1\par}
+  \vspace{3mm}
+  {\sffamily\small\color{Muted}#2\par}
   \vspace{5mm}
-  {\sffamily\Large\color{Muted}#2\par}
-  \vspace{7mm}
-  {\color{Accent}\rule{\linewidth}{1.2pt}\par}
-  \vspace{5mm}
-  {\large #3\par}
-  \vfill
   \tableofcontents
-  \vfill
-  {\small\color{Muted}SolutionArchitectAI\par}
-  \end{titlepage}
+  \vspace{5mm}
+  {\color{Accent}\rule{\linewidth}{.8pt}\par}
+  \vspace{5mm}
 }
