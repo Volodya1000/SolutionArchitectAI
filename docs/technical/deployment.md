@@ -26,7 +26,7 @@ Dishka lifespan закрывает clients/pools/tasks. SQL migrations выпо�
 
 ## Локальные модели
 
-Backend использует настроенный OpenAI-compatible endpoint LM Studio или vLLM через LiteLLM. `localhost` внутри контейнера — сам контейнер: для host endpoint нужен явно настроенный host gateway/DNS; для удалённого endpoint — доступная сеть и TLS по политике окружения. Ollama и обязательного облачного backend нет. Автоматическая отправка данных другому провайдеру запрещена. Fake LLM позволяет запустить обычный CI без inference server, реальная модель проходит отдельный capability/quality smoke.
+Backend использует настроенный OpenAI-compatible endpoint LM Studio или vLLM через LiteLLM. `localhost` внутри контейнера — сам контейнер: для host endpoint нужен явно настроенный host gateway/DNS; для удалённого endpoint — доступная сеть и TLS по политике окружения. Автоматическая отправка данных другому провайдеру запрещена. Fake LLM позволяет запустить обычный CI без inference server, реальная модель проходит отдельный capability/quality smoke.
 
 ## Конфигурация и ограничения адаптеров
 

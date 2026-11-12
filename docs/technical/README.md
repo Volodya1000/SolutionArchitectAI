@@ -28,9 +28,9 @@ flowchart TD
 | Область | Решение | Подробности |
 | --- | --- | --- |
 | Backend | Python, FastAPI, Dishka, PostgreSQL, SQLAlchemy 2.x, Alembic, Pydantic | [Backend](backend.md) |
-| LLM | LiteLLM SDK; Instructor + Pydantic для общей структурированной генерации; LM Studio и vLLM через настраиваемый endpoint | [Агенты](agents.md) |
-| Модель | Типизированный domain, независимые валидаторы, versioned JSON; YAML-манифеста нет | [Модель и хранение](backend.md#предметная-модель-и-представления) |
-| Состояние | PostgreSQL / Git / local или S3; журнал и восстановление вместо общей транзакции | [Согласованность](backend.md#согласованность-хранилищ) |
+| LLM | LiteLLM SDK; Instructor + Pydantic для общей структурированной генерации; LM Studio и vLLM через настраиваемый endpoint | [Structured output](structured-output.md) |
+| Модель | Python Domain Model с валидаторами; JSON для сохранения/восстановления | [Модель и хранение](domain-model.md) |
+| Состояние | PostgreSQL / Git / local или S3; журнал и восстановление вместо общей транзакции | [Согласованность](persistence.md#согласованность-хранилищ) |
 | Frontend | React, TypeScript, Vite, Router, TanStack Query; assistant-ui — рекомендуемый чат | [Сравнение и темы](frontend.md) |
 | Конфигурация | Pydantic Settings, несекретный YAML приложения, environment overrides и secret files | [Настройки](configuration.md) |
 | Поставка | Compose приложения и PostgreSQL; local storage по умолчанию, S3 опционально; inference server отдельно | [Развёртывание](deployment.md) |
@@ -53,8 +53,28 @@ Archi в среде не обнаружен; установки и практи�
 
 ## Связь с требованиями и границы
 
-FR-01–FR-05 поддерживают [роли и pipeline](agents.md); FR-06/08 — общую модель и её проекции; FR-07/09/10 — независимые проверки и выделение сомнительных предложений ИИ; FR-11 — [ветки, историю и согласование](backend.md#git-workflow). Обновление BRD и примера выполняется отдельным PR поверх этой ветки: до него старые формулировки BRD не отменяют описанные здесь изменения задания.
+FR-01–FR-05 поддерживают [роли и pipeline](agents.md); FR-06/08 — общую модель и её проекции; FR-07/09/10 — независимые проверки и выделение сомнительных предложений ИИ; FR-11 — [ветки, историю и согласование](git-workflow.md). Обновление BRD и примера выполняется отдельным PR поверх этой ветки: до него старые формулировки BRD не отменяют описанные здесь изменения задания.
 
 Kafka, 2FA и прокси синтетической системы отчётности не становятся зависимостями помощника. PostgreSQL помощника нужен для его операционного состояния независимо от PostgreSQL в примере.
 
 Открыты предметное согласование полного эталона, обязательность XML-обмена, окончательная корпоративная UI-библиотека, поддерживаемые входные форматы сверх Markdown/текста, модели и цели смыслового качества. Реальные закрытые данные, удалённый доступ и эксплуатация в конкретной организации не разрешаются этим проектированием.
+
+## Тематическая навигация
+
+| Тема | Документ |
+| --- | --- |
+| Backend: пакеты, зависимости, Protocol/ABC | [backend.md](backend.md) |
+| Python Domain Model, операции, инварианты и представления | [domain-model.md](domain-model.md) |
+| Порты PostgreSQL/Git/files и журнал согласованности | [persistence.md](persistence.md) |
+| Ветки задач, commit/approval/merge, восстановление | [git-workflow.md](git-workflow.md) |
+| Immutable файлы, S3 и source pins | [file-storage.md](file-storage.md) |
+| Scope, фабрики ресурсов, отмена и async | [resource-lifecycle.md](resource-lifecycle.md) |
+| Роли, контракты, промпты и полномочия | [agents.md](agents.md) |
+| Операции проектирования, зависимости, resume | [agent-pipeline.md](agent-pipeline.md) |
+| StructuredOutputGenerator и выбор библиотеки | [structured-output.md](structured-output.md) |
+| Контекст, покрытие источников, исследование RAG | [context-management.md](context-management.md) |
+| Один Settings, источники и RetryConfig | [configuration.md](configuration.md) |
+| Графическое рабочее место и чат | [frontend.md](frontend.md) |
+| Развёртывание и backup | [deployment.md](deployment.md) |
+| Качество и тестирование | [quality-and-testing.md](quality-and-testing.md) |
+| Вертикальные сценарии разработки | [implementation-plan.md](implementation-plan.md) |
