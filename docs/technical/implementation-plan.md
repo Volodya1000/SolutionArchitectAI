@@ -12,13 +12,13 @@
 
 ## 2. Общая модель, дерево и безопасная работа задачи
 
-Устойчивые ID, JSON schema_version/детерминированная сериализация, независимые валидаторы, общий Git repo на пространство и task branch от точного main. UI дерева/свойств/where-used, локальный файловый порт и immutable upload/source pin, PostgreSQL journal и idempotency. S3 adapter добавляется к тому же контракту при проверке storage portability, MinIO опционален.
+Спроектированная Python Domain Model, разрешённые операции и инварианты, устойчивые ID, независимые сериализатор/восстановление с JSON schema_version, общий Git repo на пространство и task branch от точного main. UI дерева/свойств/where-used, локальный файловый порт и immutable upload/source pin, PostgreSQL journal и idempotency. S3 adapter добавляется к тому же контракту при проверке storage portability, MinIO опционален.
 
-Готовность: один общий компонент на двух видах, изменение имени видно в обоих, layouts сохранены; удаление из вида не удаляет каталог; неизвестная ссылка/версия/duplicate key отклоняются без потери модели. Принятая человеком правка коммитится только в task branch; crash до/после ref update и повтор operation_id не создают дублей. ИИ не выполняет merge. Реальный Git/PostgreSQL/local integration и S3 contract suite проверяют соответствующие адаптеры.
+Готовность: один общий компонент на двух видах, изменение имени видно в обоих, layouts сохранены; удаление из вида не удаляет каталог; неизвестная ссылка/версия/duplicate key и нарушение доменного инварианта отклоняются без потери модели. Принятая человеком правка коммитится только в task branch; crash до/после ref update и повтор operation_id не создают дублей. ИИ не выполняет merge. Реальный Git/PostgreSQL/local integration и S3 contract suite проверяют соответствующие адаптеры.
 
-## 3. Анализ BRD, вопросы и типизированное предложение
+## 3. Извлечение требований из исходных материалов, вопросы и типизированное предложение
 
-Общий StructuredOutputGenerator (Instructor + LiteLLM + Pydantic), RetryConfig, промпты по Python-файлам, ContextBuilder, persisted pipeline. BRDAnalysisAgent и ClarificationAgent; ответы — use case, не домысел агента. ArchitectureDesignAgent использует те же механизмы, специализация данных/интеграций — схемы/промпты, не отдельные сервисы.
+Общий StructuredOutputGenerator (Instructor + LiteLLM + Pydantic), RetryConfig, промпты по Python-файлам, ContextBuilder, persisted pipeline. RequirementsExtractionAgent и ClarificationAgent; ответы — use case, не домысел агента. ArchitectureDesignAgent выполняет отдельные типизированные операции по [плану зависимостей](agent-pipeline.md); контекст, reuse, компоненты, данные, потоки и интеграции не объединяются в один вызов. Законченные актуальные результаты повторно используются после прерывания; изменение модели инвалидирует зависимые операции.
 
 Готовность: source refs, закрытые вопросы не дублируются, ожидание ответа переживает restart, отмена/deadline/capability error видны. Counts сетевых и validation retries ограничены общим бюджетом. Смена LM Studio → vLLM/другой поддерживаемый endpoint меняет конфигурацию, не агента. Stale proposal не применяется; обязательные правила не выпадают при переполнении контекста. Допущение связано с A-01/A-07 и не отменяет стандарт.
 
