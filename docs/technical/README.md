@@ -36,7 +36,7 @@ flowchart TD
 | Состояние | PostgreSQL / Git / local или S3; журнал и восстановление вместо общей транзакции | [Согласованность](persistence.md#согласованность-хранилищ) |
 | Frontend | React, TypeScript, Vite, React Router, TanStack Query; shadcn/ui + Tailwind CSS, assistant-ui, React Flow | [Рабочее место](frontend.md), [выбор библиотек](frontend-library-evaluation.md) |
 | Конфигурация | Pydantic Settings, несекретный YAML приложения, environment overrides и secret files | [Настройки](configuration.md) |
-| Поставка | `docker-compose.yml` для frontend/backend/PostgreSQL/PlantUML Server и durable Git/files; `docker-compose.ln.yml` для локального vLLM; production — OpenShift с одним пишущим backend | [Развёртывание](deployment.md) |
+| Поставка | `docker-compose.yml` для frontend/backend/PostgreSQL/PlantUML Server и durable Git/files; `docker-compose.vllm.yml` для локального vLLM; production — OpenShift с одним пишущим backend | [Развёртывание](deployment.md) |
 | Качество | Ruff, Mypy, Pylint, Bandit, import-linter, WPS231, pytest; ESLint, Prettier, TypeScript strict, Vitest, Playwright | [Проверки](quality-and-testing.md) |
 | Следующий результат | Ранний React → FastAPI → LangChain → локальная LLM с сохранённым чатом; затем первый LangGraph HITL-сценарий | [План](implementation-plan.md) |
 

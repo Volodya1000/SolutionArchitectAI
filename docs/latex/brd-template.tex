@@ -1,0 +1,210 @@
+% Editable publishing source. Rebuild without --refresh-tex to preserve edits.
+\documentclass[10pt,a4paper]{article}
+\input{docs/latex/common.tex}
+\hypersetup{pdftitle={Приложение А.2. Эталонный Markdown-шаблон BRD},pdfauthor={},pdfsubject={Шаблон BRD}}
+\fancyhead[L]{\small SolutionArchitectAI}
+\fancyhead[R]{\small Шаблон BRD}
+\setcounter{tocdepth}{0}
+\begin{document}
+\CompactDocumentTitle{Приложение А.2. Эталонный Markdown-шаблон BRD}{Шаблон BRD}{}
+\section{Бизнес-требования (BRD): {[}Название проекта / системы{]}}\label{ux431ux438ux437ux43dux435ux441-ux442ux440ux435ux431ux43eux432ux430ux43dux438ux44f-brd-ux43dux430ux437ux432ux430ux43dux438ux435-ux43fux440ux43eux435ux43aux442ux430--ux441ux438ux441ux442ux435ux43cux44b}
+
+\subsection{0. Метаданные документа}\label{0-ux43cux435ux442ux430ux434ux430ux43dux43dux44bux435-ux434ux43eux43aux443ux43cux435ux43dux442ux430}
+
+Идентификатор документа: BRD-{[}Код проекта{]}
+
+Версия / Редакция: v1.0 (Обязательно менять при любых правках для корректного анализа Diff)
+
+Дата утверждения: ГГГГ-ММ-ДД
+
+Автор (Бизнес-аналитик): {[}ФИО{]}
+
+Заказчик (Владелец продукта): {[}ФИО{]}
+
+Связанный корпоративный контекст: {[}Ссылки на стандарты безопасности, архитектурные политики или действующие исключения{]}
+
+\subsection{1. Цели и назначение системы}\label{1-ux446ux435ux43bux438-ux438-ux43dux430ux437ux43dux430ux447ux435ux43dux438ux435-ux441ux438ux441ux442ux435ux43cux44b}
+
+\subsubsection{1.1. Бизнес-проблема и предпосылки}\label{11-ux431ux438ux437ux43dux435ux441-ux43fux440ux43eux431ux43bux435ux43cux430-ux438-ux43fux440ux435ux434ux43fux43eux441ux44bux43bux43aux438}
+
+{[}Краткое описание решаемой проблемы и причин доработки/создания системы.{]}
+
+\subsubsection{1.2. Бизнес-цели}\label{12-ux431ux438ux437ux43dux435ux441-ux446ux435ux43bux438}
+
+GOAL-01: {[}Измеримая цель, например: сократить время обработки заявки с 2 дней до 15 минут.{]}
+
+GOAL-02: {[}Вторая цель.{]}
+
+\subsubsection{1.3. Границы ответственности (Scope)}\label{13-ux433ux440ux430ux43dux438ux446ux44b-ux43eux442ux432ux435ux442ux441ux442ux432ux435ux43dux43dux43eux441ux442ux438-scope}
+
+Входит в границы проектируемой системы (In-Scope):
+
+{[}Функция 1, например: приём и валидация заявок клиентов.{]}
+
+{[}Функция 2, например: расчёт скорингового балла.{]}
+
+Остаётся за пределами системы (Out-of-Scope / Внешние системы):
+
+{[}Функция 3, например: фактическое списание средств (выполняется в АБС).{]}
+
+{[}Функция 4, например: отправка SMS-уведомлений (выполняется через корпоративный шлюз).{]}
+
+\KeepTableStart{1}{%
+\begin{tabular}{@{}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 6\tabcolsep) * \real{0.2400}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 6\tabcolsep) * \real{0.2400}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 6\tabcolsep) * \real{0.3000}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 6\tabcolsep) * \real{0.2200}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+ID роли
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Название роли
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Тип участника (Человек / Внешняя система)
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Описание задач и прав в системе
+\end{minipage} \\
+\midrule\noalign{}
+ROLE-01 & Клиент (Физлицо) & Внешний пользователь & Подаёт заявку через мобильное приложение, просматривает статус. \\
+ROLE-02 & Менеджер верификации & Внутренний сотрудник & Проверяет заявки, попавшие на ручной разбор, утверждает или отклоняет их. \\
+ROLE-03 & Корпоративная АБС & Внешняя система & Хранит счета клиентов, принимает команды на открытие договора. \\
+
+\end{tabular}%
+}
+\subsection{2. Участники и бизнес-роли}\label{2-ux443ux447ux430ux441ux442ux43dux438ux43aux438-ux438-ux431ux438ux437ux43dux435ux441-ux440ux43eux43bux438}
+
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 6\tabcolsep) * \real{0.2400}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 6\tabcolsep) * \real{0.2400}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 6\tabcolsep) * \real{0.3000}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 6\tabcolsep) * \real{0.2200}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+ID роли
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Название роли
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Тип участника (Человек / Внешняя система)
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Описание задач и прав в системе
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+ROLE-01 & Клиент (Физлицо) & Внешний пользователь & Подаёт заявку через мобильное приложение, просматривает статус. \\
+ROLE-02 & Менеджер верификации & Внутренний сотрудник & Проверяет заявки, попавшие на ручной разбор, утверждает или отклоняет их. \\
+ROLE-03 & Корпоративная АБС & Внешняя система & Хранит счета клиентов, принимает команды на открытие договора. \\
+\end{longtable}
+
+\begin{landscape}
+
+\subsection{3. Функциональные требования (FR)}\label{3-ux444ux443ux43dux43aux446ux438ux43eux43dux430ux43bux44cux43dux44bux435-ux442ux440ux435ux431ux43eux432ux430ux43dux438ux44f-fr}
+
+\subsubsection{3.1. {[}Название бизнес-процесса, например: Подача заявки{]}}\label{31-ux43dux430ux437ux432ux430ux43dux438ux435-ux431ux438ux437ux43dux435ux441-ux43fux440ux43eux446ux435ux441ux441ux430-ux43dux430ux43fux440ux438ux43cux435ux440-ux43fux43eux434ux430ux447ux430-ux437ux430ux44fux432ux43aux438}
+
+FREQ-01: Система должна принимать от ROLE-01 заполненную анкету на кредит.
+
+FREQ-02: При получении анкеты система должна запрашивать кредитную историю клиента из внешней системы {[}Название системы{]}.
+
+FREQ-03: Если сумма кредита превышает 10 000 руб., система должна направлять заявку на ручное согласование ROLE-02.
+
+\KeepTableStart{1}{%
+\begin{tabular}{@{}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 12\tabcolsep) * \real{0.0800}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 12\tabcolsep) * \real{0.1400}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 12\tabcolsep) * \real{0.1500}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 12\tabcolsep) * \real{0.1400}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 12\tabcolsep) * \real{0.1800}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 12\tabcolsep) * \real{0.1600}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 12\tabcolsep) * \real{0.1500}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+ID данных
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Наименование набора данных
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Источник (Отправитель)
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Получатель
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Состав ключевых атрибутов
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Класс конфиденциальности
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Периодичность и условия передачи
+\end{minipage} \\
+\midrule\noalign{}
+DATA-01 & Анкета клиента & ROLE-01 (Клиент) & Проектируемая система & ФИО, паспортные данные, сумма, срок & Персональные данные (ПДн) & По событию (в момент отправки заявки) \\
+DATA-02 & Кредитный отчёт & Бюро кредитных историй (БКИ) & Проектируемая система & Скоринг-балл, список открытых кредитов & Конфиденциально & По запросу (синхронно при проверке заявки) \\
+DATA-03 & Реестр выданных кредитов & Проектируемая система & ROLE-03 (АБС) & ID заявки, ID клиента, сумма, ставка & Коммерческая тайна & Пакетно, 1 раз в сутки в 23:00 \\
+
+\end{tabular}%
+}
+\subsection{4. Описание данных и потоков (Data Requirements)}\label{4-ux43eux43fux438ux441ux430ux43dux438ux435-ux434ux430ux43dux43dux44bux445-ux438-ux43fux43eux442ux43eux43aux43eux432-data-requirements}
+
+\begin{longtable}[]{@{}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 12\tabcolsep) * \real{0.0800}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 12\tabcolsep) * \real{0.1400}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 12\tabcolsep) * \real{0.1500}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 12\tabcolsep) * \real{0.1400}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 12\tabcolsep) * \real{0.1800}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 12\tabcolsep) * \real{0.1600}}
+  >{\raggedright\arraybackslash}p{(\columnwidth - 12\tabcolsep) * \real{0.1500}}@{}}
+\toprule\noalign{}
+\begin{minipage}[b]{\linewidth}\raggedright
+ID данных
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Наименование набора данных
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Источник (Отправитель)
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Получатель
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Состав ключевых атрибутов
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Класс конфиденциальности
+\end{minipage} & \begin{minipage}[b]{\linewidth}\raggedright
+Периодичность и условия передачи
+\end{minipage} \\
+\midrule\noalign{}
+\endhead
+\bottomrule\noalign{}
+\endlastfoot
+DATA-01 & Анкета клиента & ROLE-01 (Клиент) & Проектируемая система & ФИО, паспортные данные, сумма, срок & Персональные данные (ПДн) & По событию (в момент отправки заявки) \\
+DATA-02 & Кредитный отчёт & Бюро кредитных историй (БКИ) & Проектируемая система & Скоринг-балл, список открытых кредитов & Конфиденциально & По запросу (синхронно при проверке заявки) \\
+DATA-03 & Реестр выданных кредитов & Проектируемая система & ROLE-03 (АБС) & ID заявки, ID клиента, сумма, ставка & Коммерческая тайна & Пакетно, 1 раз в сутки в 23:00 \\
+\end{longtable}
+
+\end{landscape}
+
+\subsection{5. Нефункциональные требования (NFR)}\label{5-ux43dux435ux444ux443ux43dux43aux446ux438ux43eux43dux430ux43bux44cux43dux44bux435-ux442ux440ux435ux431ux43eux432ux430ux43dux438ux44f-nfr}
+
+NFR-01 (Доступность / SLA): Система должна быть доступна в режиме 24/7 с коэффициентом доступности не ниже 99.99\%.
+
+NFR-02 (Производительность и нагрузка): Максимальное время ответа на синхронный запрос FREQ-01 не должно превышать 2 секунд при пиковой нагрузке 100 RPS.
+
+NFR-03 (Окно обслуживания и фоновые задачи): Пакетная выгрузка DATA-03 должна выполняться строго в ночное время, чтобы не создавать нагрузку на пользовательские операции.
+
+NFR-04 (Безопасность и защита каналов): Передача DATA-01 и DATA-02 по внешним сетям должна осуществляться исключительно по шифрованным каналам с взаимной аутентификацией (mTLS / ГОСТ).
+
+NFR-05 (Хранение и аудит): Все действия ROLE-02 по изменению статуса заявки должны логироваться и храниться не менее 5 лет.
+
+\subsection{6. Архитектурно значимые ограничения и допущения}\label{6-ux430ux440ux445ux438ux442ux435ux43aux442ux443ux440ux43dux43e-ux437ux43dux430ux447ux438ux43cux44bux435-ux43eux433ux440ux430ux43dux438ux447ux435ux43dux438ux44f-ux438-ux434ux43eux43fux443ux449ux435ux43dux438ux44f}
+
+\subsubsection{6.1. Ограничения (Constraints)}\label{61-ux43eux433ux440ux430ux43dux438ux447ux435ux43dux438ux44f-constraints}
+
+CONST-01: Интеграция с ROLE-03 (АБС) допускается только через корпоративную шину данных (ESB / Kafka); прямое подключение к БД АБС запрещено.
+
+CONST-02: Развёртывание компонентов системы допускается только в закрытом контуре ЦОД заказчика (использование публичных облаков запрещено).
+
+\subsubsection{6.2. Известные исключения из стандартов (если применимо)}\label{62-ux438ux437ux432ux435ux441ux442ux43dux44bux435-ux438ux441ux43aux43bux44eux447ux435ux43dux438ux44f-ux438ux437-ux441ux442ux430ux43dux434ux430ux440ux442ux43eux432-ux435ux441ux43bux438-ux43fux440ux438ux43cux435ux43dux438ux43cux43e}
+
+EXC-01: Для взаимодействия с БКИ допускается использование протокола SOAP вместо корпоративного стандарта REST API на основании согласованного архитектурного исключения №{[}Номер{]} от {[}Дата{]}.
+
+\subsubsection{6.3. Открытые вопросы и пробелы (для уточнения)}\label{63-ux43eux442ux43aux440ux44bux442ux44bux435-ux432ux43eux43fux440ux43eux441ux44b-ux438-ux43fux440ux43eux431ux435ux43bux44b-ux434ux43bux44f-ux443ux442ux43eux447ux43dux435ux43dux438ux44f}
+
+Q-01: Не определён формат файла для пакетной выгрузки DATA-03 (XML или JSON) --- требует уточнения со стороны команды АБС.
+
+\end{document}
