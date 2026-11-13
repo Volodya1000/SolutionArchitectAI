@@ -13,6 +13,21 @@ spec.loader.exec_module(publisher)
 
 
 class PublicationTests(unittest.TestCase):
+    def test_all_five_documents_have_markdown_sources_and_publishing_profiles(self):
+        self.assertEqual(publisher.DOCUMENTS, (
+            'brd', 'example', 'technical-decisions',
+            'brd-input-guidelines', 'brd-template'))
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.object(publisher, 'LATEX', Path(directory)):
+                publisher.refresh()
+            guidelines = (Path(directory) / 'brd-input-guidelines.tex').read_text()
+            template = (Path(directory) / 'brd-template.tex').read_text()
+        self.assertIn('Приложение А.1', guidelines)
+        self.assertIn('Приложение А.2', template)
+        self.assertIn('DATA-03', template)
+        self.assertIn(r'\begin{landscape}', template)
+        self.assertIn(r'\end{landscape}', template)
+
     def test_refresh_contains_review_material_and_third_summary(self):
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory)

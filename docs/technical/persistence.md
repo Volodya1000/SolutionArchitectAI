@@ -20,8 +20,8 @@ Checkpoints LangGraph сохраняют выполнение графа, а SQL
 | --- | --- |
 | prepared | SQL фиксирует intent и ключ идемпотентности; повтор с другим payload отклоняется; повтор завершённого результата возвращается до проверки текущего HEAD |
 | files_ready | immutable upload по заранее назначенным version/key; verify size/hash; pin/reservation. Сбой оставляет pending объект, повтор проверяет существующий, не перезаписывает |
-| git_prepared | кандидат проверен, commit создан, hash записан в журнал; неизменяемая staging ref удерживает commit до recovery |
-| git_published | CAS обновляет task ref; operation_id находится в metadata. Сбой до CAS оставляет прежний head; после CAS результат восстанавливается по commit/ref и журналу, без второго commit |
+| git_prepared | структурная целостность кандидата проверена синхронно, commit создан, hash записан в журнал; неизменяемая staging ref удерживает commit до recovery |
+| git_published | CAS обновляет task ref; operation_id находится в metadata. После публикации асинхронно проверяются топология и правила с отчётом A-07. Сбой до CAS оставляет прежний head; после CAS результат восстанавливается по commit/ref и журналу, без второго commit |
 | completed | SQL сохраняет итоговый hash, связи и pin; ответ выдаётся после сверки. Если SQL недоступен после CAS, операция pending/recovering, а не откатившаяся |
 
 Сбой между созданием commit и записью его hash восстанавливается по operation_id/staging ref. Recovery проверяет ожидаемого родителя и payload digest; при внешнем продвижении ref ищет результат в истории, неоднозначность блокирует новую запись. Короткая публикация защищена от отмены HTTP; disconnect не отменяет уже применённое действие. GET operation_id сообщает фактический исход. Cleanup не удаляет данные pending/published операций; при недоступном хранилище GC приостанавливается. Слепой retry всей команды недопустим.
