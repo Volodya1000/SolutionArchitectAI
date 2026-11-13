@@ -106,3 +106,15 @@
   {\color{Accent}\rule{\linewidth}{.8pt}\par}
   \clearpage
 }
+% Compact standalone profile: keep the title and body on the same opening page.
+% It intentionally has no table of contents or forced title-page break.
+\newcommand{\CompactDocumentTitle}[3]{%
+  \thispagestyle{plain}
+  {\sffamily\bfseries\color{Accent}\fontsize{23}{29}\selectfont #1\par}
+  \vspace{3mm}
+  {\sffamily\small\color{Muted}#2\par}
+  \ifstrempty{#3}{}{\vspace{4mm}#3\par}%
+  \vspace{5mm}
+  {\color{Accent}\rule{\linewidth}{.8pt}\par}
+  \vspace{4mm}
+}

@@ -180,20 +180,25 @@ def keep_table_starts(latex: str) -> str:
 
 
 def source(title: str, subtitle: str, description: str, body: str, *,
-           toc_depth: int = 1, intro_on_title: bool = False, font_size: int = 10) -> str:
+           toc_depth: int = 1, intro_on_title: bool = False, font_size: int = 10,
+           profile: str = 'standard') -> str:
+    if profile not in ('standard', 'compact'):
+        raise ValueError(f'Unknown document profile: {profile}')
     if intro_on_title:
         # Move the Markdown introduction to the opening page, preserving text.
         description, section_body = body.split(r'\section', 1)
         body = r'\section' + section_body
+    title_command = 'CompactDocumentTitle' if profile == 'compact' else 'DocumentTitle'
+    effective_toc_depth = 0 if profile == 'compact' else toc_depth
     return (r'% Editable publishing source. Rebuild without --refresh-tex to preserve edits.' + '\n'
             + r'\documentclass[' + str(font_size) + r'pt,a4paper]{article}' + '\n'
             + r'\input{docs/latex/common.tex}' + '\n'
             + r'\hypersetup{pdftitle={' + title + r'},pdfauthor={},pdfsubject={' + subtitle + '}}\n'
             + r'\fancyhead[L]{\small SolutionArchitectAI}' + '\n'
             + r'\fancyhead[R]{\small ' + subtitle + '}\n'
-            + r'\setcounter{tocdepth}{' + str(toc_depth) + '}\n'
+            + r'\setcounter{tocdepth}{' + str(effective_toc_depth) + '}\n'
             + r'\begin{document}' + '\n'
-            + r'\DocumentTitle{' + title + '}{' + subtitle + '}{' + description + '}\n'
+            + '\\' + title_command + '{' + title + '}{' + subtitle + '}{' + description + '}\n'
             + body + '\n' + r'\end{document}' + '\n')
 
 
@@ -223,12 +228,12 @@ def refresh() -> None:
     guidelines = convert(ROOT / 'docs' / 'brd-input-guidelines.md')
     (LATEX / 'brd-input-guidelines.tex').write_text(source(
         'Приложение А.1. Требования к входящим артефактам', 'Рекомендации к BRD',
-        '', guidelines))
+        '', guidelines, profile='compact'))
     template = convert(ROOT / 'docs' / 'templates' / 'brd-template.md',
                        preserve_heading_levels=True)
     (LATEX / 'brd-template.tex').write_text(source(
         'Приложение А.2. Эталонный Markdown-шаблон BRD', 'Шаблон BRD',
-        '', template))
+        '', template, profile='compact'))
     print('Refreshed editable LaTeX sources from Markdown.')
 
 

@@ -108,6 +108,18 @@ class PublicationTests(unittest.TestCase):
         for title in ('2. Backend', '4. Искусственный интеллект', '5. Пользовательский интерфейс'):
             self.assertRegex(technical, r'\\clearpage\s+(?:\\KeepShortBlock\{%\s+)?\\section\{' + title + r'\}')
 
+    def test_compact_profile_starts_content_after_title_without_toc_or_title_page(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.object(publisher, 'LATEX', Path(directory)):
+                publisher.refresh()
+            guidelines = (Path(directory) / 'brd-input-guidelines.tex').read_text()
+            template = (Path(directory) / 'brd-template.tex').read_text()
+        for latex in (guidelines, template):
+            self.assertIn(r'\CompactDocumentTitle{', latex)
+            self.assertNotIn(r'\tableofcontents', latex)
+            prefix = latex.split(r'\begin{document}', 1)[1].split(r'\CompactDocumentTitle', 1)[0]
+            self.assertNotIn(r'\clearpage', prefix)
+
     def test_refresh_is_repeatable_and_preserves_common_template(self):
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory)
