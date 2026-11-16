@@ -52,7 +52,7 @@ jobs:
       - name: Ensure ordinary build preserves LaTeX sources
         run: git diff --exit-code -- docs/latex
 
-      - name: Upload all three PDFs
+      - name: Upload all five PDFs
         uses: actions/upload-artifact@v4
         with:
           name: architecture-documents
@@ -60,4 +60,6 @@ jobs:
             .build/document-artifacts/brd.pdf
             .build/document-artifacts/example.pdf
             .build/document-artifacts/technical-decisions.pdf
+            .build/document-artifacts/brd-input-guidelines.pdf
+            .build/document-artifacts/brd-template.pdf
           if-no-files-found: error

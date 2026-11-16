@@ -13,6 +13,21 @@ spec.loader.exec_module(publisher)
 
 
 class PublicationTests(unittest.TestCase):
+    def test_all_five_documents_have_markdown_sources_and_publishing_profiles(self):
+        self.assertEqual(publisher.DOCUMENTS, (
+            'brd', 'example', 'technical-decisions',
+            'brd-input-guidelines', 'brd-template'))
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.object(publisher, 'LATEX', Path(directory)):
+                publisher.refresh()
+            guidelines = (Path(directory) / 'brd-input-guidelines.tex').read_text()
+            template = (Path(directory) / 'brd-template.tex').read_text()
+        self.assertIn('Приложение А.1', guidelines)
+        self.assertIn('Приложение А.2', template)
+        self.assertIn('DATA-03', template)
+        self.assertIn(r'\begin{landscape}', template)
+        self.assertIn(r'\end{landscape}', template)
+
     def test_refresh_contains_review_material_and_third_summary(self):
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory)
@@ -92,6 +107,18 @@ class PublicationTests(unittest.TestCase):
         self.assertNotIn(r'\clearpage' + '\n' + r'\section', brd)
         for title in ('2. Backend', '4. Искусственный интеллект', '5. Пользовательский интерфейс'):
             self.assertRegex(technical, r'\\clearpage\s+(?:\\KeepShortBlock\{%\s+)?\\section\{' + title + r'\}')
+
+    def test_compact_profile_starts_content_after_title_without_toc_or_title_page(self):
+        with tempfile.TemporaryDirectory() as directory:
+            with patch.object(publisher, 'LATEX', Path(directory)):
+                publisher.refresh()
+            guidelines = (Path(directory) / 'brd-input-guidelines.tex').read_text()
+            template = (Path(directory) / 'brd-template.tex').read_text()
+        for latex in (guidelines, template):
+            self.assertIn(r'\CompactDocumentTitle{', latex)
+            self.assertNotIn(r'\tableofcontents', latex)
+            prefix = latex.split(r'\begin{document}', 1)[1].split(r'\CompactDocumentTitle', 1)[0]
+            self.assertNotIn(r'\clearpage', prefix)
 
     def test_refresh_is_repeatable_and_preserves_common_template(self):
         with tempfile.TemporaryDirectory() as directory:

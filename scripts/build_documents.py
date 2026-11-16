@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Build the three committed PDFs; regenerate editable LaTeX only on request."""
+"""Build the five committed PDFs; regenerate editable LaTeX only on request."""
 from __future__ import annotations
 
 import argparse
@@ -17,7 +17,8 @@ BUILD = ROOT / '.build' / 'documents'
 LATEX = ROOT / 'docs' / 'latex'
 PDF = ROOT / 'docs' / 'pdf'
 EXAMPLE = ROOT / 'docs' / 'examples' / 'reporting-system'
-DOCUMENTS = ('brd', 'example', 'technical-decisions')
+DOCUMENTS = ('brd', 'example', 'technical-decisions',
+             'brd-input-guidelines', 'brd-template')
 
 
 def run(command: list[str], **kwargs: object) -> subprocess.CompletedProcess:
@@ -86,6 +87,8 @@ def normalize(value: object) -> object:
             widths = [.25, .44, .22, .09] if 'Порт' in header else [.24, .24, .30, .22]
         elif len(columns) == 5:
             widths = [.235, .235, .28, .17, .08]
+        elif len(columns) == 7 and 'ID данных' in header:
+            widths = [.08, .14, .15, .14, .18, .16, .15]
         else:
             widths = [1 / len(columns)] * len(columns)
         for column, width in zip(columns, widths):
@@ -96,7 +99,8 @@ def normalize(value: object) -> object:
 
 
 def convert(path: Path, *, first_heading: str | None = None,
-            page_break_before: set[str] | None = None) -> str:
+            page_break_before: set[str] | None = None,
+            preserve_heading_levels: bool = False) -> str:
     ast = json.loads(run(['pandoc', str(path), '--from=gfm', '--to=json'],
                          capture_output=True, text=True).stdout)
     blocks = ast['blocks']
@@ -105,16 +109,25 @@ def convert(path: Path, *, first_heading: str | None = None,
             blocks[0]['c'][2] = [{'t': 'Str', 'c': first_heading}]
         else:
             blocks.pop(0)
-            for block in blocks:
-                if block['t'] == 'Header':
-                    block['c'][0] -= 1
+            if not preserve_heading_levels:
+                for block in blocks:
+                    if block['t'] == 'Header':
+                        block['c'][0] -= 1
     # Publishing profiles name semantic boundaries, not page numbers. Apply
     # breaks before normalization so Markdown regeneration retains them.
     laid_out = []
+    landscape_table = False
     for block in blocks:
+        if (path.name == 'brd-template.md' and block['t'] == 'Header'
+                and text_of(block['c'][2]).startswith('3. Функциональные требования')):
+            laid_out.append(raw(r'\begin{landscape}'))
+            landscape_table = True
         if block['t'] == 'Header' and text_of(block['c'][2]) in (page_break_before or set()):
             laid_out.append(raw(r'\clearpage'))
         laid_out.append(block)
+        if landscape_table and block['t'] == 'Table':
+            laid_out.append(raw(r'\end{landscape}'))
+            landscape_table = False
     ast['blocks'] = normalize(laid_out)
     # Guard top-level lists as a unit, including an adjacent heading or short
     # introductory paragraph. Nested lists stay within the same measurement.
@@ -167,20 +180,25 @@ def keep_table_starts(latex: str) -> str:
 
 
 def source(title: str, subtitle: str, description: str, body: str, *,
-           toc_depth: int = 1, intro_on_title: bool = False, font_size: int = 10) -> str:
+           toc_depth: int = 1, intro_on_title: bool = False, font_size: int = 10,
+           profile: str = 'standard') -> str:
+    if profile not in ('standard', 'compact'):
+        raise ValueError(f'Unknown document profile: {profile}')
     if intro_on_title:
         # Move the Markdown introduction to the opening page, preserving text.
         description, section_body = body.split(r'\section', 1)
         body = r'\section' + section_body
+    title_command = 'CompactDocumentTitle' if profile == 'compact' else 'DocumentTitle'
+    effective_toc_depth = 0 if profile == 'compact' else toc_depth
     return (r'% Editable publishing source. Rebuild without --refresh-tex to preserve edits.' + '\n'
             + r'\documentclass[' + str(font_size) + r'pt,a4paper]{article}' + '\n'
             + r'\input{docs/latex/common.tex}' + '\n'
             + r'\hypersetup{pdftitle={' + title + r'},pdfauthor={},pdfsubject={' + subtitle + '}}\n'
             + r'\fancyhead[L]{\small SolutionArchitectAI}' + '\n'
             + r'\fancyhead[R]{\small ' + subtitle + '}\n'
-            + r'\setcounter{tocdepth}{' + str(toc_depth) + '}\n'
+            + r'\setcounter{tocdepth}{' + str(effective_toc_depth) + '}\n'
             + r'\begin{document}' + '\n'
-            + r'\DocumentTitle{' + title + '}{' + subtitle + '}{' + description + '}\n'
+            + '\\' + title_command + '{' + title + '}{' + subtitle + '}{' + description + '}\n'
             + body + '\n' + r'\end{document}' + '\n')
 
 
@@ -207,6 +225,15 @@ def refresh() -> None:
     (LATEX / 'technical-decisions.tex').write_text(source(
         'SolutionArchitectAI. Ключевые технические решения', 'Технические решения',
         '', decisions, intro_on_title=True, font_size=11))
+    guidelines = convert(ROOT / 'docs' / 'brd-input-guidelines.md')
+    (LATEX / 'brd-input-guidelines.tex').write_text(source(
+        'Приложение А.1. Требования к входящим артефактам', 'Рекомендации к BRD',
+        '', guidelines, profile='compact'))
+    template = convert(ROOT / 'docs' / 'templates' / 'brd-template.md',
+                       preserve_heading_levels=True)
+    (LATEX / 'brd-template.tex').write_text(source(
+        'Приложение А.2. Эталонный Markdown-шаблон BRD', 'Шаблон BRD',
+        '', template, profile='compact'))
     print('Refreshed editable LaTeX sources from Markdown.')
 
 
@@ -220,7 +247,7 @@ def require_latex_sources() -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--refresh-tex', action='store_true',
-                        help='overwrite all three LaTeX sources from the current Markdown before building')
+                        help='overwrite all five LaTeX sources from the current Markdown before building')
     parser.add_argument('--output-dir', type=Path, default=PDF,
                         help='where compiled PDFs are copied (default: docs/pdf)')
     args = parser.parse_args()

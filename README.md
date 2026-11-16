@@ -11,12 +11,16 @@
 - [BRD MVP — PDF](docs/pdf/brd.pdf).
 - [Пример системы — PDF](docs/pdf/example.pdf): входные требования, контекст, таблицы, диаграммы, решения и результаты проверок.
 - [Ключевые технические решения — PDF](docs/pdf/technical-decisions.pdf): краткий обзор стека и архитектурных границ.
+- [Приложение А.1 — PDF](docs/pdf/brd-input-guidelines.pdf): рекомендации к входящим BRD.
+- [Приложение А.2 — PDF](docs/pdf/brd-template.pdf): эталонный Markdown-шаблон BRD.
 
 [Редактирование LaTeX и сборка PDF](docs/PDF.md). PDF хранятся в репозитории вместе с исходными Markdown и LaTeX.
 
 | Документ | Для чего читать |
 | --- | --- |
 | [BRD MVP](docs/BRD.md) | Функции, ограничения, результаты и критерии приёмки |
+| [Приложение А.1](docs/brd-input-guidelines.md) | Рекомендации к входящим BRD |
+| [Приложение А.2](docs/templates/brd-template.md) | Самостоятельный эталонный Markdown-шаблон BRD |
 | [Принципы архитектуры](docs/architecture.md) | Предложения по модели архитектуры, диаграммам и интеграциям |
 | [Техническое проектирование](docs/technical/README.md) | Планируемый стек, контракты агентов, конфигурация, развёртывание, качество и план реализации |
 | [Ключевые технические решения](docs/technical/technical-decisions-summary.md) | Краткий технический обзор для архитектора и ведущих разработчиков |
@@ -24,10 +28,10 @@
 | [Ожидаемый результат](docs/examples/reporting-system/expected-result.md) | Таблицы и диаграммы с русскими названиями, решения и проверки |
 | [Согласование](docs/review.md) | Открытые решения и порядок приёмки |
 
-Для внешнего ревью предназначены три PDF; изучать репозиторий не требуется. Markdown, JSON и LaTeX остаются редактируемыми исходниками. После согласования эталон используется для проверки MVP.
+Для внешнего ревью предназначены пять PDF; изучать репозиторий не требуется. Markdown, JSON и LaTeX остаются редактируемыми исходниками. После согласования эталон используется для проверки MVP.
 
 [JSON-модель примера](docs/examples/reporting-system/model.json) хранит общие объекты и дерево представлений; обычные архитектурные операции будущего приложения выполняются через UI. [Техническая архитектура](docs/technical/README.md) описывает PostgreSQL/Git/files, агентов и локальные LLM.
 
 Основная ветка приложения — `review/base`. PR предлагаются к ней; `main` в продуктовой документации — будущая согласованная ветка общего архитектурного репозитория. Merge выполняет человек.
 
-Планируемый MVP: Python 3.13 + uv + FastAPI; React/TypeScript/Vite, React Router, TanStack Query, shadcn/ui + Tailwind CSS, assistant-ui и React Flow ([выбор библиотек](docs/technical/frontend-library-evaluation.md)). [Локальное окружение](docs/technical/deployment.md) — `docker-compose.yml` с frontend, backend, PostgreSQL и PlantUML Server; `docker-compose.ln.yml` добавит локальный vLLM без внешнего LLM API-ключа. Будущий production — Red Hat OpenShift с одним активным пишущим backend для Git. Контейнеры и приложение пока не реализуются.
+Планируемый MVP: Python 3.13 + uv + FastAPI; React/TypeScript/Vite, React Router, TanStack Query, shadcn/ui + Tailwind CSS, assistant-ui и React Flow ([выбор библиотек](docs/technical/frontend-library-evaluation.md)). [Локальное окружение](docs/technical/deployment.md) — `docker-compose.yml` с frontend, backend, PostgreSQL и PlantUML Server; `docker-compose.vllm.yml` добавит локальный vLLM без внешнего LLM API-ключа. Будущий production — Red Hat OpenShift с одним активным пишущим backend для Git. Контейнеры и приложение пока не реализуются.
