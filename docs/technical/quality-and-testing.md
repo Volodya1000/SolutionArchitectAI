@@ -135,12 +135,17 @@ Fake judge проверяет формат/переходы, но не дока�
 | Проверка | Выбор и обоснование |
 | --- | --- |
 | Линтер | ESLint flat config, typescript-eslint recommendedTypeChecked, React Hooks и jsx-a11y: типовые async, hooks и accessibility ошибки |
+| Архитектурные границы | [eslint-plugin-boundaries](https://github.com/javierbrea/eslint-plugin-boundaries) проверяет разрешённые зависимости `app → pages → features → shared`, запрет обратных импортов и обращений к внутренностям соседних features; [eslint-plugin-import-x](https://github.com/un-ts/eslint-plugin-import-x) с `import-x/no-cycle` проверяет циклы. Правила пересекающихся импортов не дублируются. |
+| React Fast Refresh | [eslint-plugin-react-refresh](https://github.com/ArnaudBarre/eslint-plugin-react-refresh) с конфигурацией для Vite защищает границы экспорта React-компонентов при HMR. |
+| Сложность и вложенность | Встроенные правила ESLint `complexity: ["error", {"max": 10}]` (цикломатическая сложность) и `max-depth: ["error", {"max": 3}]` (вложенность блоков); `max-nested-callbacks: ["error", {"max": 3}]` для callback-пирамид. Они измеряют разные свойства, не когнитивную сложность и не вложенность JSX. |
 | Formatter | Prettier отдельно; eslint-config-prettier отключает конфликтующие stylistic rules, см. [руководство](https://prettier.io/docs/integrating-with-linters) |
-| Типы | TypeScript strict и `tsc --noEmit` отдельной проверкой: Vite build не заменяет typecheck |
+| Типы | TypeScript `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noFallthroughCasesInSwitch`, `noImplicitOverride` и отдельный `tsc --noEmit`: Vite build не заменяет typecheck |
 | Unit/component | [Vitest](https://vitest.dev/guide/) + React Testing Library/user-event; jsdom для DOM-сценариев, MSW на границе HTTP |
 | E2E | Playwright для небольшого набора сквозных сценариев frontend↔backend↔Git с fake LLM; Cypress — альтернатива без явного преимущества здесь |
 
-[Typed linting](https://typescript-eslint.io/getting-started/typed-linting/) дополняет компилятор; не запускаем все строгие stylistic rules сразу.
+[Typed linting](https://typescript-eslint.io/getting-started/typed-linting/) дополняет компилятор; не запускаем все строгие stylistic rules сразу. В `tsconfig` одновременно включаются `strict: true`, `noUncheckedIndexedAccess: true`, `exactOptionalPropertyTypes: true`, `noFallthroughCasesInSwitch: true` и `noImplicitOverride: true`; настройки проверяются компиляцией и негативными типовыми примерами при создании frontend.
+
+Архитектурные проверки охватывают `frontend/src` и TS path aliases: `shared` не импортирует `features/pages/app`, `features` не импортируют внутренние модули соседних features и верхние слои, `pages` не импортирует `app`; исключения допустимы только через явно согласованный публичный контракт. При появлении исходников проверяем минимум разрешённый импорт, запрещённый импорт и цикл; пустой `src` не считается доказательством работоспособности конфигурации. Для `complexity` и `max-depth` пороги применяются к написанному вручную TypeScript/TSX, без generated OpenAPI-кода; JSX-дерево упрощается декомпозицией компонентов и ревью, `max-depth` не измеряет JSX. Обоснованные исключения локальны и документируются, blanket-disable не допускается.
 Component-тесты проверяют доступные роли, ввод, ошибку/повтор, dirty-state при обновлении и конфликт версии; не проверяют внутренние hooks/структуру state.
 Это соответствует [принципам Testing Library](https://testing-library.com/docs/guiding-principles/).
 E2E нужны, потому что одни component-тесты не проверят сохранение Git, скачивание артефакта и UI после рестарта.
@@ -156,12 +161,17 @@ SOLID применяется к реальным границам, KISS/YAGNI о
 
 | Когда | Будущие проверки |
 | --- | --- |
-| Каждый PR с документацией | Относительные ссылки, scope diff и Markdown; существующая PDF-сборка сохраняется |
+| Каждый PR с документацией | Относительные ссылки, scope diff, `markdownlint-cli2` и `typos` с учётом русскоязычных текстов; существующая PDF-сборка сохраняется |
 | Каждый PR с backend | Locked install, Ruff check/format check, Mypy, Pylint, Bandit, import-linter, WPS231, unit и локальные integration без внешних LLM |
-| Каждый PR с frontend | Locked install, ESLint, Prettier check, tsc, Vitest, production build |
+| Каждый PR с frontend | `pnpm install --frozen-lockfile`, ESLint (включая boundaries, import-x/no-cycle, React Refresh, complexity/depth), Prettier check, `tsc --noEmit`, Vitest, production build |
+| При изменении GitHub Actions/YAML | `actionlint` для workflows и `yamllint` для YAML (с согласованным исключением конфликтующих требований форматирования) |
 | При сквозных изменениях | Короткий Playwright-набор с реальным backend/Git и fake LLM; артефакты ошибок |
 | При появлении контейнеров | Compose config/build, readiness и smoke с persistent volume; восстановление после рестарта |
 | При изменении инструкций/моделей | Отдельный запуск синтетических eval, comparison отчётов; без обязательного реального LLM-вызова каждого PR |
+
+Для frontend выбран pnpm 12: версия пакетного менеджера фиксируется точным `packageManager` в будущем `frontend/package.json`, `pnpm-lock.yaml` коммитится, `package-lock.json` для frontend не создаётся. Backend продолжает использовать uv. В отдельных Git worktree собственные `node_modules` и один воспроизводимый lockfile для каждой ветки; pnpm автоматически использует общее хранилище пакетов на подходящем диске. Глобальные настройки/пути кэша разработчика не меняются самим репозиторием. Сопоставить Node.js в CI и на рабочих станциях нужно на первом frontend-интеграционном smoke: локально проверена установка Node 26 и pnpm 12, но совместимость полного React-стека ещё не проверялась.
+
+`markdownlint-cli2` проверяет формат Markdown, `typos` — английские имена/термины и опечатки с настроенными исключениями для русского корпуса; нельзя обещать полную русскую орфографию. `yamllint` проверяет YAML, а `actionlint` — семантику GitHub Actions. `typos` не блокирует PR из-за русскоязычного текста или технических идентификаторов, пока конфигурация исключений не проверена на текущих документах. Проверки работают на реальном наборе файлов, а не только на новых пустых примерах; существующий `.github/workflows/build-pdf.yml` сохраняется. GitHub Actions применяют минимальные `permissions`, фиксированные версии действий и `concurrency` с отменой устаревших PR-запусков, где это уместно.
 
 Обновления зависимостей проходят те же проверки, проверку известных уязвимостей lock-файлов и ревью изменений API; новый линтер добавляется только ради конкретного пробела.
 Правила import-linter ниже включаются в CI сразу после появления соответствующих пакетов; без фиктивных missing-module исключений.
