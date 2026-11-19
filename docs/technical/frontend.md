@@ -38,7 +38,7 @@ Mutation применения передаёт expected_commit/operation_id. З�
 
 Рекомендуем WCAG 2.2 AA как цель проверки доступности, не уже полученную сертификацию. Focus, labels, контраст, 200% zoom, screen reader и длинные русские тексты проверяются в обеих темах; live announcements streaming дозированы. Узкий экран использует вкладки с сохранением ввода. Git diff показывает JSON/.puml с понятными названиями объектов; JSON не обычный редактор архитектуры.
 
-Предлагаемая структура: `app/` (router/providers/theme), `pages/` (композиция), `features/` (workspace-tree, object-details, tasks, chat, proposals, verification, artifacts, history), `shared/api` и `shared/ui`. Shared не импортирует features/pages; нет циклических barrel exports. OpenAPI-типы можно генерировать, но они не заменяют runtime server validation.
+Предлагаемая структура: `app/` (router/providers/theme), `pages/` (композиция), `features/` (workspace-tree, object-details, tasks, chat, proposals, verification, artifacts, history), `shared/api` и `shared/ui`. Shared не импортирует features/pages; нет циклических barrel exports. Направления импортов `app → pages → features → shared` и отсутствие циклов контролируются `eslint-plugin-boundaries` и `eslint-plugin-import-x`; для взаимодействия features выбираются публичные контракты, а не внутренние пути. Правила сложности и вложенности обработчиков/хуков, React Refresh и усиленный TypeScript перечислены в [плане проверок](quality-and-testing.md#frontend). OpenAPI-типы можно генерировать, но они не заменяют runtime server validation.
 
 ## Графическое редактирование и review MVP
 
