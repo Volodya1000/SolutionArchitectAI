@@ -134,11 +134,11 @@ Fake judge проверяет формат/переходы, но не дока�
 
 | Проверка | Выбор и обоснование |
 | --- | --- |
-| Линтер | ESLint flat config, typescript-eslint recommendedTypeChecked, React Hooks и jsx-a11y: типовые async, hooks и accessibility ошибки |
+| Линтер | ESLint flat config, typescript-eslint recommendedTypeChecked, `eslint-plugin-react-hooks` и jsx-a11y: типовые async, Hooks и accessibility ошибки. React Hooks rules проверяют Rules of Hooks и зависимости Effects. |
 | Архитектурные границы | [eslint-plugin-boundaries](https://github.com/javierbrea/eslint-plugin-boundaries) проверяет разрешённые зависимости `app → pages → features → shared`, запрет обратных импортов и обращений к внутренностям соседних features; [eslint-plugin-import-x](https://github.com/un-ts/eslint-plugin-import-x) с `import-x/no-cycle` проверяет циклы. Правила пересекающихся импортов не дублируются. |
 | React Fast Refresh | [eslint-plugin-react-refresh](https://github.com/ArnaudBarre/eslint-plugin-react-refresh) с конфигурацией для Vite защищает границы экспорта React-компонентов при HMR. |
 | Сложность и вложенность | Встроенные правила ESLint `complexity: ["error", {"max": 10}]` (цикломатическая сложность) и `max-depth: ["error", {"max": 3}]` (вложенность блоков); `max-nested-callbacks: ["error", {"max": 3}]` для callback-пирамид. Они измеряют разные свойства, не когнитивную сложность и не вложенность JSX. |
-| Formatter | Prettier отдельно; eslint-config-prettier отключает конфликтующие stylistic rules, см. [руководство](https://prettier.io/docs/integrating-with-linters) |
+| Formatter | Prettier отдельно: автоматически форматирует TypeScript/TSX, JSON, CSS и другие поддерживаемые файлы, обеспечивая единый стиль; он не выполняет статический анализ. `eslint-config-prettier` отключает конфликтующие stylistic rules, см. [руководство](https://prettier.io/docs/integrating-with-linters) |
 | Типы | TypeScript `strict`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`, `noFallthroughCasesInSwitch`, `noImplicitOverride` и отдельный `tsc --noEmit`: Vite build не заменяет typecheck |
 | Unit/component | [Vitest](https://vitest.dev/guide/) + React Testing Library/user-event; jsdom для DOM-сценариев, MSW на границе HTTP |
 | E2E | Playwright для небольшого набора сквозных сценариев frontend↔backend↔Git с fake LLM; Cypress — альтернатива без явного преимущества здесь |
