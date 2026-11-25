@@ -1,0 +1,4 @@
+[flake8]
+select = WPS231
+max-cognitive-score = 12
+exclude = .venv

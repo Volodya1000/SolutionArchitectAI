@@ -1,0 +1,10 @@
+llm:
+  context_window: 4096
+  output_limit: 512
+  concurrency: 1
+  temperature: 0.2
+  retry:
+    network_retries: 1
+    max_total_requests: 2
+    deadline_seconds: 120
+    request_timeout_seconds: 60

@@ -2,3 +2,16 @@
 .build/
 __pycache__/
 *.pyc
+.venv/
+node_modules/
+dist/
+.env
+.env.test
+secrets/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+playwright-report/
+test-results/

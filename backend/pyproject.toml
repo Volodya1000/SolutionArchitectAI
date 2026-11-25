@@ -1,0 +1,85 @@
+[project]
+name = "solution-architect-ai"
+version = "0.1.0"
+description = "Local architecture assistant"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "alembic==1.20.1",
+    "dishka==1.10.1",
+    "fastapi==0.165.0",
+    "httpx==0.28.1",
+    "langchain-core==1.8.4",
+    "langchain-openai==1.8.5",
+    "psycopg[binary,pool]==3.3.9",
+    "pydantic==2.14.4",
+    "pydantic-settings==2.16.3",
+    "pyyaml==6.0.4",
+    "sqlalchemy[asyncio]==2.1.9",
+    "uvicorn[standard]==0.54.0",
+]
+
+[build-system]
+requires = ["hatchling==1.33.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/solution_architect_ai"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = ["integration: requires local PostgreSQL and fake LLM"]
+
+[tool.mypy]
+python_version = "3.13"
+strict = true
+plugins = ["pydantic.mypy"]
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+allowed-confusables = ["Н", "е"] # Intentional Russian prose in prompts.
+select = ["F", "E4", "E7", "E9", "B", "UP", "I", "ASYNC", "BLE", "A", "C4", "SIM", "PIE", "RET", "RUF", "PGH", "DTZ", "G", "LOG", "T20", "ARG", "PT", "C901", "PLR0912", "PLR0913", "PLR0915"]
+
+[tool.ruff.lint.mccabe]
+max-complexity = 10
+
+[tool.ruff.lint.pylint]
+max-args = 6
+max-branches = 12
+max-statements = 50
+
+[tool.bandit]
+exclude_dirs = ["tests"]
+
+[tool.pylint.main]
+py-version = "3.13"
+
+[tool.pylint.messages_control]
+# Ruff owns syntax/style/complexity; keep Pylint's inference and design diagnostics.
+disable = ["missing-module-docstring", "missing-class-docstring", "missing-function-docstring", "line-too-long", "wrong-import-order", "ungrouped-imports", "invalid-name", "too-few-public-methods", "too-many-arguments", "too-many-positional-arguments", "too-many-branches", "too-many-statements", "duplicate-code"]
+
+[tool.pylint.design]
+max-attributes = 12
+
+[tool.pylint.typecheck]
+# Alembic intentionally installs these proxy functions dynamically.
+generated-members = ['op\.(create_table|execute|drop_table|add_column|drop_column)$', 'context\.(configure|begin_transaction|run_migrations|config)$']
+
+[dependency-groups]
+dev = [
+    "bandit==1.9.4",
+    "flake8==7.5.0",
+    "import-linter==2.17",
+    "mypy==2.4.1",
+    "pylint==4.1.4",
+    "pytest==9.2.0",
+    "pytest-cov==7.1.0",
+    "pytest-socket==0.8.1",
+    "ruff==0.17.6",
+    "types-pyyaml==6.0.12.20261122",
+    "wemake-python-styleguide==1.9.0",
+    "yamllint==1.38.0",
+]

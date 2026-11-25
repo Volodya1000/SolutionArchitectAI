@@ -1,0 +1,16 @@
+extends: default
+ignore: |
+  .build/
+  backend/.venv/
+  frontend/node_modules/
+  frontend/pnpm-lock.yaml
+rules:
+  # Preserve the existing PDF workflow and Windows checkout line endings.
+  new-lines: disable
+  document-start: disable
+  line-length: disable
+  truthy:
+    allowed-values: ['true', 'false']
+    check-keys: false
+  comments:
+    min-spaces-from-content: 1

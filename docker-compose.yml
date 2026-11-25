@@ -1,0 +1,99 @@
+name: solutionarchitectai
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: base
+    environment: &backend-environment
+      SAA_MODE: production
+      SAA_DATABASE__CREDENTIALS__PASSWORD: ${SAA_DATABASE__CREDENTIALS__PASSWORD:-local-development-only}
+      SAA_LLM__BASE_URL: ${SAA_LLM__BASE_URL:-http://fake-llm:8000/v1}
+      SAA_LLM__MODEL: ${SAA_LLM__MODEL:-fake-chat}
+      SAA_LLM__API_KEY: ${SAA_LLM__API_KEY:-local-no-external-key}
+    volumes: &backend-volumes
+      - git-data:/data/git
+      - file-data:/data/files
+      - ./config:/app/config:ro
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health/ready', timeout=3)"]
+      interval: 5s
+      timeout: 4s
+      retries: 15
+    networks: [default, rendering]
+  migrate:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+      target: base
+    environment: *backend-environment
+    volumes: *backend-volumes
+    command: ["python", "-m", "solution_architect_ai.di.migrate"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://127.0.0.1:8080/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+  plantuml:
+    image: plantuml/plantuml-server:jetty@sha256:3719f4a9b0b061f1aa42d14d130388f831954ca65685d521b6c5b72301e993e6
+    environment:
+      PLANTUML_SECURITY_PROFILE: SANDBOX
+      JAVA_OPTIONS: -Xmx256m
+    networks: [rendering]
+    mem_limit: 384m
+    cpus: 1
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:8080/ > /dev/null"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+  postgres:
+    image: postgres:17-alpine@sha256:f9cf3e1f0066f0eb0c48707d864f0ac5941e9ff454a072077d97a4d278d07d73
+    environment:
+      POSTGRES_DB: solution_architect
+      POSTGRES_USER: solution_architect
+      POSTGRES_PASSWORD: ${SAA_DATABASE__CREDENTIALS__PASSWORD:-local-development-only}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    ports:
+      - "127.0.0.1:5433:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U solution_architect -d solution_architect"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+  fake-llm:
+    build:
+      context: .
+      dockerfile: tools/fake_llm/Dockerfile
+    ports:
+      - "127.0.0.1:8001:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/v1/models', timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+volumes:
+  postgres-data:
+  git-data:
+  file-data:
+networks:
+  rendering:
+    internal: true

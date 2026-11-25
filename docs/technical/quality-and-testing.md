@@ -182,7 +182,7 @@ SOLID применяется к реальным границам, KISS/YAGNI о
 
 | Contract | Конкретное ограничение |
 | --- | --- |
-| Layers | `di` → `presentation | infrastructure | persistence | config` → `application` → `domain`; порядок сверху вниз. Pipe означает независимые siblings, не последовательную зависимость адаптеров |
+| Layers | `di` → `presentation \| infrastructure \| persistence \| config` → `application` → `domain`; порядок сверху вниз. Pipe означает независимые siblings, не последовательную зависимость адаптеров |
 | Forbidden imports | domain запрещены application/adapters/presentation/config/di и внешние sqlalchemy, fastapi, langchain_core, langchain_openai, langgraph, dishka; application запрещены реализации/SDK/config/di |
 | Independence | presentation, infrastructure, persistence независимы; не применять ко всем фичам без различия, если между ними есть законные application-контракты |
 | Acyclic siblings | Для внутренних feature-пакетов domain/application — запрет циклов при разрешённых однонаправленных зависимостях; на выбранной версии проверить поддержку соответствующего contract |
