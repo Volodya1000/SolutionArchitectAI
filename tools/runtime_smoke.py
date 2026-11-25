@@ -83,6 +83,8 @@ def graceful_shutdown() -> None:
 
 
 def run_smoke() -> None:
+    if api("/model")["model"] != "fake-chat":
+        raise ValueError("Runtime fault injection requires the fake-chat profile")
     first = str(api("/chats", {"title": "Проверка сохранности"})["id"])
     second = str(api("/chats", {"title": "Независимый чат"})["id"])
     run = start(first, "Проверка сохранения истории")

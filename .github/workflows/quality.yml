@@ -83,6 +83,9 @@ jobs:
           pnpm exec playwright install --with-deps chromium
           pnpm test:e2e
       - name: Restart and failure smoke
+        env:
+          SAA_LLM__BASE_URL: http://fake-llm:8000/v1
+          SAA_LLM__MODEL: fake-chat
         run: uv run --project backend python tools/runtime_smoke.py
       - name: Container diagnostics
         if: always()
