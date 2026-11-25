@@ -72,14 +72,26 @@ def validate_env_path(model: type[BaseModel], names: list[str]) -> None:
     validate_env_path(nested, names[1:])
 
 
-def validate_secret_directory(directory: Path) -> None:
+def contains_path(data: object, names: list[str]) -> bool:
+    if not isinstance(data, Mapping) or names[0] not in data:
+        return False
+    return len(names) == 1 or contains_path(data[names[0]], names[1:])
+
+
+def validate_secret_directory(directory: Path, *sources: Mapping[str, object]) -> None:
     permitted = {"SAA_DATABASE__CREDENTIALS__PASSWORD", "SAA_LLM__API_KEY"}
     for path in directory.iterdir():
         key = path.name.upper()
         if not path.is_file() or key not in permitted:
             raise ValueError("Unsupported secret file")
-        if key in os.environ:
+        if secret_conflicts(key, sources):
             raise ValueError("A secret cannot be set in both file and environment")
+
+
+def secret_conflicts(key: str, sources: tuple[Mapping[str, object], ...]) -> bool:
+    return key in os.environ or any(
+        contains_path(source, key[4:].lower().split("__")) for source in sources
+    )
 
 
 def contains_secret_override(data: object) -> bool:

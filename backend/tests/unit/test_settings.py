@@ -75,3 +75,20 @@ def test_invalid_yaml_traceback_does_not_expose_values(tmp_path: Path) -> None:
 def test_production_rejects_secrets_from_init(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match=r".+"):
         Settings(config_root=tmp_path, mode="production", llm={"api_key": "test-only"})
+
+
+def test_dotenv_cannot_duplicate_a_mounted_secret(tmp_path: Path) -> None:
+    (tmp_path / "secrets").mkdir()
+    (tmp_path / "secrets/SAA_LLM__API_KEY").write_text("file-secret", encoding="utf-8")
+    (tmp_path / ".env").write_text("SAA_LLM__API_KEY=dotenv-secret", encoding="utf-8")
+    with pytest.raises(ValueError, match=r".+"):
+        load_settings(tmp_path, "development")
+
+
+def test_malformed_env_traceback_does_not_expose_values(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("SAA_LLM", "[secret-env-trace")
+    with pytest.raises(ValueError, match=r".+") as error:
+        load_settings(tmp_path, "production")
+    assert "secret-env-trace" not in "".join(traceback.format_exception(error.value))

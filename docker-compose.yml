@@ -11,6 +11,17 @@ services:
       SAA_LLM__BASE_URL: ${SAA_LLM__BASE_URL:-http://fake-llm:8000/v1}
       SAA_LLM__MODEL: ${SAA_LLM__MODEL:-fake-chat}
       SAA_LLM__API_KEY: ${SAA_LLM__API_KEY:-local-no-external-key}
+      SAA_LLM__CONTEXT_WINDOW:
+      SAA_LLM__OUTPUT_LIMIT:
+      SAA_LLM__CONCURRENCY:
+      SAA_LLM__TEMPERATURE:
+      SAA_LLM__RETRY__NETWORK_RETRIES:
+      SAA_LLM__RETRY__MAX_TOTAL_REQUESTS:
+      SAA_LLM__RETRY__DEADLINE_SECONDS:
+      SAA_LLM__RETRY__REQUEST_TIMEOUT_SECONDS:
+      SAA_LLM__RETRY__BACKOFF_INITIAL:
+      SAA_LLM__RETRY__BACKOFF_MAX:
+      SAA_LLM__RETRY__JITTER:
     volumes: &backend-volumes
       - git-data:/data/git
       - file-data:/data/files
@@ -26,6 +37,7 @@ services:
       timeout: 4s
       retries: 15
     networks: [default, rendering]
+    stop_grace_period: 20s
   migrate:
     build:
       context: .

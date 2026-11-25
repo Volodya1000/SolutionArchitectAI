@@ -50,6 +50,8 @@ it('restores the draft when a chat is reopened', async () => {
 });
 
 it('shows a send error and retries the same command without duplicating messages', async () => {
+  const saved = { command_id: crypto.randomUUID(), content: 'Вопрос' };
+  sessionStorage.setItem('pending:a', JSON.stringify(saved));
   const commands: unknown[] = [];
   server.use(
     http.post('/api/chats/a/runs', async ({ request }) => {
@@ -91,6 +93,7 @@ it('shows a send error and retries the same command without duplicating messages
   await userEvent.click(screen.getByRole('button', { name: 'Повторить отправку' }));
   await waitFor(() => expect(screen.getByText('Сохранённый ответ')).toBeVisible());
   expect(commands).toHaveLength(2);
+  expect(commands[0]).toEqual(saved);
   expect(commands[0]).toEqual(commands[1]);
   await waitFor(() => expect(screen.getByRole('textbox', { name: 'Сообщение' })).toHaveValue(''));
   expect(screen.getAllByText('Вопрос', { exact: true })).toHaveLength(1);

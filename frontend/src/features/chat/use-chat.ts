@@ -10,6 +10,7 @@ import {
   type Snapshot,
 } from '../../shared/api/client';
 import { mergeSnapshot } from './stream';
+import { readPending, savePending } from './pending-command';
 
 function useOnline() {
   const [online, setOnline] = useState(navigator.onLine);
@@ -34,7 +35,7 @@ export function useChat(chatId: string) {
     queryFn: () => request(`/chats/${chatId}`, snapshotSchema),
   });
   const [connectionError, setConnectionError] = useState(false);
-  const pending = useRef<{ command_id: string; content: string } | null>(null);
+  const pending = useRef(readPending(chatId));
   const run = query.data?.runs.find((item) => !terminal(item));
   const runId = run?.id;
   const refresh = () => client.invalidateQueries({ queryKey: key });
@@ -42,11 +43,13 @@ export function useChat(chatId: string) {
     mutationFn: async (content: string) => {
       if (pending.current?.content !== content)
         pending.current = { command_id: crypto.randomUUID(), content };
+      savePending(chatId, pending.current);
       const value = await request(`/chats/${chatId}/runs`, runSchema, {
         method: 'POST',
         body: JSON.stringify(pending.current),
       });
       pending.current = null;
+      savePending(chatId, null);
       return value;
     },
     onSettled: refresh,

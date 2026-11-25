@@ -1,0 +1,3 @@
+# Fix GHSA-238p-pmpm-9mq7 in the Markdown linter's math parser.
+overrides:
+  micromark-extension-math>katex: 0.18.2

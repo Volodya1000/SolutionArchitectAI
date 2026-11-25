@@ -54,7 +54,7 @@ class Settings(BaseSettings):
         secret_dir = root / "secrets"
         secrets: tuple[PydanticBaseSettingsSource, ...] = ()
         if secret_dir.exists():
-            validate_secret_directory(secret_dir)
+            validate_secret_directory(secret_dir, env_settings(), dotenv_settings())
             secrets = (
                 NestedSecretsSettingsSource(
                     file_secret_settings,

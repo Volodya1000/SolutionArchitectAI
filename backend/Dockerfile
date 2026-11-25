@@ -9,7 +9,7 @@ COPY backend/alembic.ini ./
 RUN uv sync --locked --no-dev && mkdir -p /data/git /data/files && chmod -R g=u /data /app
 ENV PATH="/app/backend/.venv/bin:$PATH" SAA_CONFIG_ROOT=/app
 USER 10001:0
-CMD ["uvicorn", "solution_architect_ai.di.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
+CMD ["uvicorn", "solution_architect_ai.di.main:create_app", "--factory", "--host", "0.0.0.0", "--port", "8000", "--workers", "1", "--timeout-graceful-shutdown", "3"]
 
 FROM base AS test
 USER 0

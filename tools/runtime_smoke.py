@@ -61,12 +61,34 @@ def stream_disconnect(chat: str) -> None:
     assert await_run(run_id)["status"] == "cancelled"
 
 
+def graceful_shutdown() -> None:
+    chat = str(api("/chats", {"title": "Штатная остановка с SSE"})["id"])
+    run_id = start(chat, "[slow] graceful shutdown")
+    partial = str(await_run(run_id, terminal=False)["content"])
+    with HTTP.open(BASE + f"/api/runs/{run_id}/events", timeout=15) as stream:
+        assert stream.readline().startswith(b"id:")
+        started = time.monotonic()
+        compose("stop", "backend")
+        assert time.monotonic() - started < 15
+    container = subprocess.check_output(["docker", "compose", "ps", "-aq", "backend"],
+        cwd=ROOT, text=True).strip()
+    exit_code = subprocess.check_output(["docker", "inspect", "-f", "{{.State.ExitCode}}", container],
+        cwd=ROOT, text=True).strip()
+    assert exit_code == "0", "Backend was forcibly killed instead of closing its resources"
+    compose("up", "-d", "--wait", "backend")
+    restored = api("/runs/" + run_id)
+    assert restored["status"] == "failed"
+    assert restored["error_code"] == "process_interrupted"
+    assert str(restored["content"]).startswith(partial)
+
+
 def run_smoke() -> None:
     first = str(api("/chats", {"title": "Проверка сохранности"})["id"])
     second = str(api("/chats", {"title": "Независимый чат"})["id"])
     run = start(first, "Проверка сохранения истории")
     assert await_run(run)["status"] == "completed"
     stream_disconnect(first)
+    graceful_shutdown()
     interrupted = start(first, "[slow] abrupt restart")
     partial = str(await_run(interrupted, terminal=False)["content"])
     compose("kill", "-s", "SIGKILL", "backend")
@@ -92,7 +114,7 @@ def run_smoke() -> None:
         compose("up", "-d", "--wait", "postgres")
     assert api("/health/ready")["status"] == "ready"
     assert len(api(f"/chats/{first}")["messages"]) == 6
-    print("Runtime smoke passed: SSE disconnect, cancellation, abrupt restart, PostgreSQL restart/outage, isolated history.")
+    print("Runtime smoke passed: SSE disconnect, cancellation, graceful shutdown, abrupt restart, PostgreSQL restart/outage, isolated history.")
 
 
 if __name__ == "__main__":

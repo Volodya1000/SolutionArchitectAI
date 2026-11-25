@@ -56,6 +56,7 @@ jobs:
           node scripts/check-contracts.mjs
           pnpm test
           pnpm build
+          pnpm audit --audit-level low
       - name: Repository gates
         run: |
           uv run --project backend python tools/check_links.py
@@ -64,6 +65,8 @@ jobs:
           uv run --project backend yamllint .
           node frontend/node_modules/markdownlint-cli2/markdownlint-cli2-bin.mjs
           .build/quality-tools/typos/typos
+          uv export --project backend --frozen --no-emit-project --format requirements-txt --output-file .build/backend-requirements.txt
+          uvx pip-audit==2.10.1 --require-hashes --no-deps --disable-pip -r .build/backend-requirements.txt
       - name: Start clean Compose with fake LLM
         run: |
           docker compose config --quiet

@@ -129,7 +129,11 @@ test('a lost start response is retried with the same command', async ({ page }) 
   });
   await send(page, 'Ответ на потерянную команду');
   await expect(page.getByRole('button', { name: 'Повторить отправку' })).toBeVisible();
-  await page.getByRole('button', { name: 'Повторить отправку' }).click();
+  await page.reload();
+  await expect(page.getByRole('textbox', { name: 'Сообщение' })).toHaveValue(
+    'Ответ на потерянную команду',
+  );
+  await page.getByRole('button', { name: 'Отправить сообщение' }).click();
   await expect(page.getByText('Ответ завершён', { exact: true })).toBeVisible();
   const response = await page.request.get(`/api/chats/${url.split('/').at(-1) ?? ''}`);
   const data: unknown = await response.json();

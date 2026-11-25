@@ -70,7 +70,12 @@ class PostgresStore(Queries):
         return await self.get_run(run.id)
 
     async def locked_run(self, run_id: UUID) -> RunRow:
-        row = await self.session.scalar(select(RunRow).where(RunRow.id == run_id).with_for_update())
+        row = await self.session.scalar(
+            select(RunRow)
+            .where(RunRow.id == run_id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
         if row is None:
             raise Missing("run")
         return row
@@ -81,6 +86,8 @@ class PostgresStore(Queries):
         row = await self.locked_run(run_id)
         status = RunStatus(row.status)
         if status.terminal or status == target:
+            return await self.get_run(run_id)
+        if target == RunStatus.RUNNING and status != RunStatus.QUEUED:
             return await self.get_run(run_id)
         if status == RunStatus.CANCELLING and target == RunStatus.COMPLETED:
             return await self.get_run(run_id)

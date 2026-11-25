@@ -121,7 +121,9 @@ class RunWorker:
             run = await store.get_run(run_id)
             if run.status != RunStatus.QUEUED:
                 return
-            await store.set_status(run_id, RunStatus.RUNNING)
+            claimed = await store.set_status(run_id, RunStatus.RUNNING)
+            if claimed.status != RunStatus.RUNNING:
+                return
             snapshot = await store.snapshot(run.chat_id)
         messages = self.context(snapshot.messages)
         attempts = min(self.policy.retries + 1, self.policy.requests)

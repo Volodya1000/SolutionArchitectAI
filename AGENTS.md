@@ -2,8 +2,8 @@
 
 ## Repository state and scope
 
-- SolutionArchitectAI currently contains specifications and documentation; the React frontend has not yet been scaffolded. Do not install frontend dependencies until its `package.json` exists.
-- Follow [frontend architecture](docs/technical/frontend.md) and [quality/testing plan](docs/technical/quality-and-testing.md). The checks described there are planned, not already passing.
+- PR 1 supplies the backend, React frontend, local Compose runtime, and chat tests alongside the specifications. Frontend dependencies require `frontend/package.json`.
+- Follow [frontend architecture](docs/technical/frontend.md) and [quality/testing plan](docs/technical/quality-and-testing.md). Applicable PR 1 checks are configured in `.github/workflows/quality.yml`; later-stage checks remain planned. Run the checks before claiming they pass.
 - Do not merge a task branch or an AI proposal without the user's authorization.
 
 ## Frontend package manager

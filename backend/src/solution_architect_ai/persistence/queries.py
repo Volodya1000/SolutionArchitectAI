@@ -34,12 +34,19 @@ class Queries:
         return row
 
     async def get_run(self, run_id: UUID) -> RunView:
-        row = await self.session.get(RunRow, run_id)
-        if row is None:
+        result = await self.session.execute(
+            select(RunRow, MessageRow)
+            .join(MessageRow, MessageRow.id == RunRow.assistant_message_id)
+            .where(RunRow.id == run_id)
+            .execution_options(populate_existing=True)
+        )
+        pair = result.one_or_none()
+        if pair is None:
             raise Missing("run")
-        message = await self.session.get(MessageRow, row.assistant_message_id)
-        if message is None:
-            raise Missing("message")
+        return self.run_view(*pair)
+
+    @staticmethod
+    def run_view(row: RunRow, message: MessageRow) -> RunView:
         return RunView(
             id=row.id,
             chat_id=row.chat_id,
@@ -56,14 +63,18 @@ class Queries:
 
     async def snapshot(self, chat_id: UUID) -> ChatSnapshot:
         chat = await self.chat(chat_id)
-        messages = await self.session.scalars(
-            select(MessageRow).where(MessageRow.chat_id == chat_id).order_by(MessageRow.position)
+        result = await self.session.execute(
+            select(MessageRow, RunRow)
+            .outerjoin(RunRow, RunRow.assistant_message_id == MessageRow.id)
+            .where(MessageRow.chat_id == chat_id)
+            .order_by(MessageRow.position)
+            .execution_options(populate_existing=True)
         )
-        runs = await self.session.scalars(select(RunRow.id).where(RunRow.chat_id == chat_id))
+        pairs = result.all()
         return ChatSnapshot(
             chat=ChatView.model_validate(chat),
-            messages=[MessageView.model_validate(row) for row in messages],
-            runs=[await self.get_run(run_id) for run_id in runs],
+            messages=[MessageView.model_validate(message) for message, _ in pairs],
+            runs=[self.run_view(run, message) for message, run in pairs if run is not None],
         )
 
     async def pending(self) -> list[RunView]:

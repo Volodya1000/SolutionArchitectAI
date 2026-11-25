@@ -178,7 +178,7 @@ SOLID применяется к реальным границам, KISS/YAGNI о
 
 ## Архитектурные импорты
 
-[import-linter](https://import-linter.readthedocs.io/en/stable/contract_types/) дополняет Ruff/Mypy: проверяет граф импортов, а не форматирование/типы. Выбираем отдельный `backend/.importlinter`, команда CI `lint-imports --config backend/.importlinter` из корня с установленным backend package. Конфиг появится вместе с пакетами, здесь — проект проверок.
+[import-linter](https://import-linter.readthedocs.io/en/stable/contract_types/) дополняет Ruff/Mypy: проверяет граф импортов, а не форматирование/типы. Конфигурация — `backend/.importlinter`, команда CI `uv run --locked lint-imports .importlinter` из `backend` с установленным backend package.
 
 | Contract | Конкретное ограничение |
 | --- | --- |
