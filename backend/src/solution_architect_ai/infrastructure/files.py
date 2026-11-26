@@ -4,7 +4,7 @@ import re
 from _hashlib import HASH
 from collections.abc import AsyncIterator
 from hashlib import sha256
-from pathlib import Path
+from pathlib import Path, PurePath, PureWindowsPath
 from typing import BinaryIO, Final
 from uuid import uuid4
 
@@ -13,6 +13,17 @@ from solution_architect_ai.application.document_ports import StagedFile
 
 _KEY: Final[re.Pattern[str]] = re.compile(r"[0-9a-f-]{36}/[0-9a-f-]{36}\Z")
 _TEMP: Final[re.Pattern[str]] = re.compile(r"[0-9a-f]{32}\Z")
+
+
+def comparison_path(path: PurePath) -> PurePath:
+    if not isinstance(path, PureWindowsPath):
+        return path
+    value: str = str(path)
+    if value[:8].casefold() == "\\\\?\\unc\\":
+        return PureWindowsPath("\\\\" + value[8:])
+    if value.startswith("\\\\?\\") and re.fullmatch(r"[A-Za-z]:", path.drive[4:]):
+        return PureWindowsPath(value[4:])
+    return path
 
 
 class LocalFileStorage:
@@ -26,7 +37,7 @@ class LocalFileStorage:
             raise DocumentFailure(DocumentErrorCode.INVALID_KEY)
         base: Path = self.root / ".pending" if temporary else self.root
         target: Path = base / key
-        if not target.resolve().is_relative_to(self.root):
+        if not comparison_path(target.resolve()).is_relative_to(comparison_path(self.root)):
             raise DocumentFailure(DocumentErrorCode.INVALID_KEY)
         if target.is_symlink() or target.parent.is_symlink():
             raise DocumentFailure(DocumentErrorCode.INVALID_KEY)
