@@ -72,7 +72,7 @@ uv sync --locked --project backend
 uv run --locked --project backend python -m tools.quality setup
 ```
 
-После установки commit запускает `fast` (статический анализ, форматирование, архитектура и unit-тесты), push — `full` с аудитами, integration, E2E и отказами runtime. CI вызывает тот же `full`. Можно запускать эти режимы вручную через `uv run --locked --project backend python -m tools.quality fast` / `… full`. Полная проверка использует временный fake-стенд с собственными портами и данными; работающий чат с LM Studio/vLLM сохраняется. Подробнее — [quality-and-testing](docs/technical/quality-and-testing.md#локальные-hooks-и-ci).
+Setup также подготавливает Chromium, если не выбран установленный Edge; в Linux для системных зависимостей могут потребоваться права sudo. Перед push переключитесь на отправляемую ветку и сохраните изменения в commit. После установки commit запускает `fast` (статический анализ, форматирование, архитектура и unit-тесты), push — `full` с аудитами, integration, E2E и отказами runtime. CI вызывает тот же `full`. Можно запускать эти режимы вручную через `uv run --locked --project backend python -m tools.quality fast` / `… full`. Полная проверка использует временный fake-стенд с собственными портами и данными; работающий чат с LM Studio/vLLM сохраняется. Подробнее — [quality-and-testing](docs/technical/quality-and-testing.md#локальные-hooks-и-ci).
 
 Backend integration-тесты требуют отдельную БД и fake endpoint:
 
@@ -87,7 +87,7 @@ uv run --project backend python -m solution_architect_ai.di.migrate
 uv run --project backend pytest backend/tests --disable-socket --allow-hosts=127.0.0.1,localhost --allow-unix-socket
 ```
 
-`createdb` нужен только при первом создании тестовой БД. Playwright: `$env:PLAYWRIGHT_CHANNEL='chrome'; pnpm.cmd --dir frontend test:e2e` при работающем Compose с fake-профилем. При изменении опубликованных портов задайте `SAA_APP_URL` для Playwright/runtime smoke и соответствующие `SAA_DATABASE__PORT` / `SAA_LLM__BASE_URL` для backend-тестов. `uv run --project backend python tools/runtime_smoke.py` дополнительно перезапускает backend/PostgreSQL и проверяет отказ БД; запускайте его отдельно от других integration/E2E-тестов.
+`createdb` нужен только при первом создании тестовой БД. Playwright: `$env:PLAYWRIGHT_CHANNEL='chrome'; pnpm.cmd --dir frontend test:e2e` при работающем Compose с fake-профилем. При изменении опубликованных портов задайте `SAA_APP_URL` для Playwright и соответствующие `SAA_DATABASE__PORT` / `SAA_LLM__BASE_URL` для backend-тестов. `uv run --locked --project backend python -m tools.runtime_smoke` создаёт собственный временный fake-стенд, перезапускает в нём backend/PostgreSQL и проверяет отказ БД. Рабочий Compose-проект этот smoke не использует.
 
 Run имеет неизменяемые терминальные статусы, `incomplete` отдельно от статуса, UUID команды для идемпотентного запуска и монотонный sequence. SSE передаёт полные сохранённые снимки; reconnect не запускает LLM повторно. После прерывания процесса run становится failed/incomplete и автоматически не повторяется. Закрытие вкладки не отменяет генерацию; кнопка остановки отправляет отдельную серверную команду. Backend подтверждает остановку локального потока, без гарантии прекращения вычислений внешнего сервера.
 

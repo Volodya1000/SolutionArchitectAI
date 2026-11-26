@@ -19,6 +19,27 @@ TARGETS: Final[tuple[str, ...]] = ("backend/src", "backend/tests", "tools")
 CONFIG: Final[str] = "backend/pyproject.toml"
 
 
+def git_output(arguments: Sequence[str]) -> str:
+    executable: str | None = shutil.which("git")
+    if executable is None:
+        raise RuntimeError("Git is required for checkout validation")
+    # Read repository state with fixed argument vectors.
+    result: subprocess.CompletedProcess[str] = subprocess.run(  # nosec B603
+        [executable, *arguments], cwd=ROOT, check=True, capture_output=True, text=True, timeout=30
+    )
+    return result.stdout.strip()
+
+
+def validate_push_checkout() -> None:
+    if not os.environ.get("PRE_COMMIT_REMOTE_NAME"):
+        return
+    branch: str | None = os.environ.get("PRE_COMMIT_LOCAL_BRANCH")
+    if not branch or git_output(["rev-parse", branch]) != git_output(["rev-parse", "HEAD"]):
+        raise RuntimeError("Checkout the branch being pushed before running its full checks")
+    if git_output(["status", "--porcelain", "--untracked-files=normal"]):
+        raise RuntimeError("Commit or stash changes before pushing the checked revision")
+
+
 def run(title: str, arguments: Sequence[str], env: Mapping[str, str], *, cwd: Path = ROOT) -> None:
     print(f"Quality: {title}", flush=True)
     subprocess.run(  # nosec B603
@@ -61,6 +82,7 @@ def setup(env: dict[str, str]) -> None:
         env,
     )
     run("pinned repository tools", python_tool("tools.install_quality_tools"), env)
+    browser_environment(env)
     run(
         "install commit and push hooks",
         [
@@ -148,6 +170,9 @@ def fast(env: dict[str, str]) -> None:
             CONFIG,
             "backend/tests/unit",
             "backend/tests/quality/test_quality_runtime.py",
+            "backend/tests/quality/test_quality_runner.py",
+            "backend/tests/quality/test_runtime_smoke.py",
+            "backend/tests/quality/test_gates.py::test_resource_construction_stays_in_composition_and_scoped_factories",
             "--disable-socket",
             "--allow-hosts=127.0.0.1,localhost",
             "--allow-unix-socket",
@@ -198,17 +223,17 @@ def audit(env: dict[str, str]) -> None:
 
 def browser_environment(env: dict[str, str]) -> dict[str, str]:
     result: dict[str, str] = dict(env)
-    if result.get("CI"):
+    if os.name == "nt" and not result.get("CI"):
+        base: str = os.environ.get("PROGRAMFILES(X86)", "")
+        if base and (Path(base) / "Microsoft/Edge/Application/msedge.exe").is_file():
+            result.setdefault("PLAYWRIGHT_CHANNEL", "msedge")
+    if not result.get("PLAYWRIGHT_CHANNEL"):
         run(
-            "CI Chromium and system dependencies",
+            "Chromium and system dependencies",
             [pnpm(), "exec", "playwright", "install", "--with-deps", "chromium"],
             result,
             cwd=ROOT / "frontend",
         )
-    elif os.name == "nt" and not result.get("PLAYWRIGHT_CHANNEL"):
-        base: str = os.environ.get("PROGRAMFILES(X86)", "")
-        if base and (Path(base) / "Microsoft/Edge/Application/msedge.exe").is_file():
-            result["PLAYWRIGHT_CHANNEL"] = "msedge"
     return result
 
 
@@ -222,12 +247,12 @@ def acceptance(env: dict[str, str]) -> None:
             runtime.backend,
         )
         run(
-            "all Python tests including PostgreSQL",
+            "PostgreSQL and adapter integration tests",
             python_tool(
                 "pytest",
                 "-c",
                 CONFIG,
-                "backend/tests",
+                "backend/tests/integration",
                 "--disable-socket",
                 "--allow-hosts=127.0.0.1,localhost",
                 "--allow-unix-socket",
@@ -242,7 +267,13 @@ def acceptance(env: dict[str, str]) -> None:
 
 
 def full(env: dict[str, str]) -> None:
+    validate_push_checkout()
     fast(env)
+    run(
+        "Python quality gate probes",
+        python_tool("pytest", "-c", CONFIG, "backend/tests/quality"),
+        env,
+    )
     run(
         "frontend architecture and type probes",
         ["node", "scripts/check-contracts.mjs"],

@@ -55,3 +55,16 @@ Execution:
 - Both Git hooks are installed. A staged F821 probe was rejected by actual
   git commit and a push to a temporary local bare remote; HEAD and the remote
   stayed unchanged. The probe was removed without bypassing either hook.
+
+- Final review fixes isolate settings tests from Docker overrides, copy only tracked
+  YAML into the host-side QA configuration root, and prevent standalone fault
+  smoke from targeting an unscoped Compose project or a mismatched URL.
+- Fresh setup prepares Chromium when an installed browser is not selected;
+  pre-push rejects a different checkout or dirty checked code.
+- The cancellation race test observes PostgreSQL's actual blocker PID before
+  releasing the cancellation transaction. Fast checks include composition rules.
+- Full local runner passed: 83 distinct Python tests, 22 Vitest, 11 Playwright,
+  audits, build and restart/database-failure smoke. Scoped cleanup removed its
+  temporary image tags, networks and volumes; the real model stayed available.
+- Real Qwen UI streaming, explicit cancellation and persisted partial history
+  were verified after deploying the final application code.

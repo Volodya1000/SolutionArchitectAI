@@ -2,11 +2,11 @@
 
 import json
 import os
-import re
 import shutil
 
 # Launch the controlled Docker commands below.
 import subprocess  # nosec B404
+import sys
 import time
 import urllib.error
 import urllib.request
@@ -23,6 +23,7 @@ from solution_architect_ai.application.dto import (
     RunView,
 )
 from solution_architect_ai.domain.runs import RunErrorCode, RunStatus
+from tools.quality_runtime import RuntimeEnvironment, compose_command, isolated_runtime
 
 ROOT: Final[Path] = Path(__file__).resolve().parents[1]
 BASE: Final[str] = os.environ.get("SAA_APP_URL", "http://127.0.0.1:8080").rstrip("/")
@@ -55,20 +56,19 @@ def docker(*arguments: str) -> str:
 
 def compose(*arguments: str) -> str:
     project: str | None = os.environ.get("SAA_QUALITY_PROJECT")
-    if project is None:
-        return docker("compose", *arguments)
-    if re.fullmatch(r"saa-quality-[a-z0-9-]+", project) is None:
-        raise ValueError("Expected a dedicated saa-quality-* Compose project")
-    return docker(
-        "compose",
-        "--project-name",
-        project,
-        "--env-file",
-        str(ROOT / ".env.quality"),
-        "--file",
-        str(ROOT / "docker-compose.yml"),
-        *arguments,
-    )
+    if not project:
+        raise ValueError("Runtime fault smoke requires SAA_QUALITY_PROJECT")
+    command: list[str] = compose_command(ROOT, project)
+    return docker(*command[1:], *arguments)
+
+
+def validate_target() -> None:
+    address: str = compose("port", "frontend", "8080")
+    loopback: str = "127.0.0.1:"
+    if not address.startswith(loopback) or not address.removeprefix(loopback).isdecimal():
+        raise ValueError("The isolated frontend must publish a loopback port")
+    if f"http://{address}" != BASE:
+        raise ValueError("SAA_APP_URL must match the isolated frontend's published address")
 
 
 def require(condition: bool, message: str) -> None:
@@ -184,6 +184,7 @@ def database_outage() -> None:
 
 
 def run_smoke() -> None:
+    validate_target()
     status: ModelStatus = ModelStatus.model_validate_json(api("/model"), strict=True)
     require(status.model == "fake-chat", "Runtime fault injection requires the fake-chat profile")
     first: UUID = create_chat("Проверка сохранности")
@@ -207,5 +208,21 @@ def run_smoke() -> None:
     )
 
 
+def main() -> None:
+    if "SAA_QUALITY_PROJECT" in os.environ:
+        run_smoke()
+        return
+    runtime: RuntimeEnvironment
+    with isolated_runtime(ROOT) as runtime:
+        # A fresh interpreter reads the isolated application's URL from its environment.
+        subprocess.run(  # nosec B603
+            [sys.executable, "-m", "tools.runtime_smoke"],
+            cwd=ROOT,
+            env=runtime.browser,
+            check=True,
+            timeout=1800,
+        )
+
+
 if __name__ == "__main__":
-    run_smoke()
+    main()

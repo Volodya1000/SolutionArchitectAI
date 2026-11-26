@@ -5,8 +5,8 @@ from uuid import UUID, uuid4
 
 import pytest
 from dishka import AsyncContainer, make_async_container
-from sqlalchemy import event
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+from sqlalchemy import event, text
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, async_sessionmaker
 
 from solution_architect_ai.application.dto import ChatView, RunView, StartRun
 from solution_architect_ai.application.errors import Missing
@@ -84,29 +84,58 @@ async def test_append_rejects_runs_outside_the_store_task(running: Running) -> N
         assert (await store.queries.get_run(running.run_id)).content == ""
 
 
+async def backend_pid(session: AsyncSession) -> int:
+    pid: object = await session.scalar(text("SELECT pg_backend_pid()"))
+    assert isinstance(pid, int)
+    return pid
+
+
+async def append_after_cancel(
+    running: Running, sessions: async_sessionmaker[AsyncSession], writer_pid: asyncio.Future[int]
+) -> bool:
+    writer: AsyncSession
+    async with sessions.begin() as writer:
+        writer_pid.set_result(await backend_pid(writer))
+        return await SqlAlchemyStore(writer).append(running.run_id, "late")
+
+
+async def wait_for_blocker(engine: AsyncEngine, writer_pid: int, blocker_pid: int) -> None:
+    observer: AsyncConnection
+    async with engine.connect() as observer:
+        while True:
+            blocked: bool | None = await observer.scalar(
+                text("SELECT :blocker = ANY(pg_blocking_pids(:writer))"),
+                {"blocker": blocker_pid, "writer": writer_pid},
+            )
+            if blocked:
+                return
+            await asyncio.sleep(0.01)
+
+
 async def test_append_waiting_for_cancel_rechecks_status(running: Running) -> None:
-    sent: asyncio.Event = asyncio.Event()
-
-    def record(_connection: object, _cursor: object, statement: str, *_rest: object) -> None:
-        if "UPDATE" in statement.upper():
-            sent.set()
-
-    async def append_late() -> bool:
-        writer: ChatStore
-        async with running.stores.open() as writer:
-            return await writer.append(running.run_id, "late")
-
-    store: ChatStore
+    sessions: async_sessionmaker[AsyncSession] = async_sessionmaker(running.engine)
+    writer_pid: asyncio.Future[int] = asyncio.get_running_loop().create_future()
     tasks: asyncio.TaskGroup
-    async with asyncio.TaskGroup() as tasks, running.stores.open() as store:
-        await store.set_status(running.run_id, RunStatus.CANCELLING)
-        event.listen(running.engine.sync_engine, "before_cursor_execute", record)
-        try:
-            late: asyncio.Task[bool] = tasks.create_task(append_late())
-            async with asyncio.timeout(3):
-                await sent.wait()
-        finally:
-            event.remove(running.engine.sync_engine, "before_cursor_execute", record)
+    owner: AsyncSession
+    # Exit the cancellation transaction only after PostgreSQL reports that its
+    # backend holds the lock blocking the writer. The task group then joins the writer.
+    async with asyncio.timeout(5), asyncio.TaskGroup() as tasks, sessions.begin() as owner:
+        store: SqlAlchemyStore = SqlAlchemyStore(owner)
+        assert await store.append(running.run_id, "first")
+        cancelling: RunView = await store.set_status(running.run_id, RunStatus.CANCELLING)
+        owner_pid: int = await backend_pid(owner)
+        late: asyncio.Task[bool] = tasks.create_task(
+            append_after_cancel(running, sessions, writer_pid)
+        )
+        await wait_for_blocker(running.engine, await writer_pid, owner_pid)
+
     assert not late.result()
-    async with running.stores.open() as store:
-        assert (await store.queries.get_run(running.run_id)).content == ""
+    reader: ChatStore
+    async with running.stores.open() as reader:
+        assert await reader.queries.get_run(running.run_id) == cancelling
+        terminal: RunView = await reader.set_status(running.run_id, RunStatus.CANCELLED)
+        assert terminal.status == RunStatus.CANCELLED
+        assert terminal.sequence == cancelling.sequence + 1
+        assert terminal.content == "first"
+        assert not await reader.append(running.run_id, "after cancellation")
+        assert await reader.queries.get_run(running.run_id) == terminal

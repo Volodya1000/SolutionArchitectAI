@@ -2,6 +2,7 @@
 
 import os
 import re
+import shutil
 
 # Only scoped Docker commands are executed, with explicit argument vectors.
 import subprocess  # nosec B404
@@ -110,11 +111,14 @@ def published_port(
 def service_environments(
     root: Path, command: list[str], env: dict[str, str], directory: Path, project: str
 ) -> RuntimeEnvironment:
+    config_root: Path = directory / "config-root"
+    (config_root / "config").mkdir(parents=True)
+    shutil.copyfile(root / "config/app.yaml", config_root / "config/app.yaml")
     backend: dict[str, str] = dict(env)
     backend.update(
         {
             "SAA_MODE": "test",
-            "SAA_CONFIG_ROOT": str(root),
+            "SAA_CONFIG_ROOT": str(config_root),
             "SAA_DATABASE__HOST": "127.0.0.1",
             "SAA_DATABASE__PORT": published_port(root, command, env, "postgres", 5432),
             "SAA_DATABASE__DATABASE": "solution_architect_test",
@@ -173,7 +177,10 @@ def cleanup_runtime(
     )
     (directory / "compose.log").write_text(logs.stdout + logs.stderr, encoding="utf-8")
     cleanup: subprocess.CompletedProcess[str] = compose(
-        root, [*command, "down", "--volumes", "--remove-orphans"], env, check=False
+        root,
+        [*command, "down", "--volumes", "--remove-orphans", "--rmi", "local"],
+        env,
+        check=False,
     )
     if cleanup.returncode and not failed:
         raise RuntimeError("Quality project cleanup failed; see compose.log")
