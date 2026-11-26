@@ -98,7 +98,7 @@ async def preferences(service: FromDishka[ChatService]) -> Preferences:
 
 @router.put("/preferences")
 async def save_preferences(body: Preferences, service: FromDishka[ChatService]) -> Preferences:
-    return await service.preferences(body)
+    return await service.update_preferences(body)
 
 
 @router.get("/health/ready")

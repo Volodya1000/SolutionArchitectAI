@@ -20,7 +20,7 @@ from solution_architect_ai.application.ports import LLM, ResourceProbe, StoreFac
 from solution_architect_ai.config.settings import Settings
 from solution_architect_ai.infrastructure.health import LocalResourceProbe
 from solution_architect_ai.infrastructure.llm import LangChainLLM
-from solution_architect_ai.persistence.factory import PostgresFactory
+from solution_architect_ai.persistence.factory import SqlAlchemyStoreFactory
 
 
 def database_url(settings: Settings) -> URL:
@@ -56,7 +56,7 @@ class AppProvider(Provider):
     @provide(scope=Scope.APP)
     def stores(self, engine: AsyncEngine) -> StoreFactory:
         sessions = async_sessionmaker[AsyncSession](engine, expire_on_commit=False)
-        return PostgresFactory(sessions)
+        return SqlAlchemyStoreFactory(sessions)
 
     @provide(scope=Scope.APP)
     async def llm(self, settings: Settings) -> AsyncIterator[LLM]:

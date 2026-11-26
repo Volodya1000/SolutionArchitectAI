@@ -42,9 +42,13 @@ class ChatService:
         async with self.stores.open() as store:
             return await store.set_status(run_id, RunStatus.CANCELLING)
 
-    async def preferences(self, value: Preferences | None = None) -> Preferences:
+    async def preferences(self) -> Preferences:
         async with self.stores.open() as store:
-            return await store.preferences(value)
+            return await store.preferences()
+
+    async def update_preferences(self, value: Preferences) -> Preferences:
+        async with self.stores.open() as store:
+            return await store.update_preferences(value)
 
     async def ready(self) -> None:
         async with self.stores.open() as store:

@@ -7,23 +7,24 @@ from solution_architect_ai.application.contracts import (
     ChatView,
     Conflict,
     Missing,
+    Preferences,
     RunView,
     StartRun,
 )
-from solution_architect_ai.domain.runs import RunStatus, transition
-from solution_architect_ai.persistence.models import ChatRow, MessageRow, RunRow
-from solution_architect_ai.persistence.queries import TASK_ID, Queries
+from solution_architect_ai.domain.runs import RunStatus, resolve_transition
+from solution_architect_ai.persistence.models import ChatRow, MessageRow, PreferenceRow, RunRow
+from solution_architect_ai.persistence.queries import Queries
 
 
-class PostgresStore(Queries):
+class SqlAlchemyStore(Queries):
     async def create_chat(self, title: str) -> ChatView:
-        row = ChatRow(task_id=TASK_ID, title=title)
+        row = ChatRow(task_id=self.task_id, title=title)
         self.session.add(row)
         await self.session.flush()
         return ChatView.model_validate(row)
 
     async def start(self, chat_id: UUID, command: StartRun, model: str, digest: str) -> RunView:
-        await self.chat(chat_id, lock=True)
+        await self.chat_row(chat_id, lock=True)
         payload_digest = sha256(command.content.encode()).hexdigest()
         old = await self.session.scalar(
             select(RunRow).where(
@@ -67,13 +68,14 @@ class PostgresStore(Queries):
         )
         self.session.add(run)
         await self.session.flush()
-        return await self.get_run(run.id)
+        return self.run_view(run, assistant)
 
     async def locked_run(self, run_id: UUID) -> RunRow:
         row = await self.session.scalar(
             select(RunRow)
-            .where(RunRow.id == run_id)
-            .with_for_update()
+            .join(ChatRow, ChatRow.id == RunRow.chat_id)
+            .where(RunRow.id == run_id, ChatRow.task_id == self.task_id)
+            .with_for_update(of=RunRow)
             .execution_options(populate_existing=True)
         )
         if row is None:
@@ -85,31 +87,41 @@ class PostgresStore(Queries):
     ) -> RunView:
         row = await self.locked_run(run_id)
         status = RunStatus(row.status)
-        if status.terminal or status == target:
-            return await self.get_run(run_id)
-        if target == RunStatus.RUNNING and status != RunStatus.QUEUED:
-            return await self.get_run(run_id)
-        if status == RunStatus.CANCELLING and target == RunStatus.COMPLETED:
-            return await self.get_run(run_id)
-        row.status = transition(status, target).value
+        resolved = resolve_transition(status, target, error)
+        message = await self.assistant_message(row)
+        if resolved == status:
+            return self.run_view(row, message)
+        row.status = resolved.value
         row.sequence += 1
         row.error_code = error
         row.incomplete = target != RunStatus.COMPLETED
-        message = await self.session.get(MessageRow, row.assistant_message_id)
-        if message is None:
-            raise Missing("message")
         message.incomplete = row.incomplete
         await self.session.flush()
-        return await self.get_run(run_id)
+        return self.run_view(row, message)
+
+    async def assistant_message(self, row: RunRow) -> MessageRow:
+        # All answer writers first hold this run's lock; refresh a previously read entity.
+        message = await self.session.get(
+            MessageRow, row.assistant_message_id, populate_existing=True
+        )
+        if message is None:
+            raise Missing("message")
+        return message
 
     async def append(self, run_id: UUID, text: str) -> bool:
         row = await self.locked_run(run_id)
         if row.status != RunStatus.RUNNING:
             return False
-        message = await self.session.get(MessageRow, row.assistant_message_id)
-        if message is None:
-            raise Missing("message")
+        message = await self.assistant_message(row)
         message.content += text
         row.sequence += 1
         await self.session.flush()
         return True
+
+    async def update_preferences(self, value: Preferences) -> Preferences:
+        row = await self.session.get(PreferenceRow, 1, with_for_update=True, populate_existing=True)
+        if row is None:
+            raise Missing("preferences")
+        row.theme = value.theme
+        await self.session.flush()
+        return Preferences(theme=row.theme)

@@ -16,7 +16,7 @@ from solution_architect_ai.application.ports import StoreFactory
 from solution_architect_ai.config.settings import Settings
 from solution_architect_ai.di.main import bootstrap
 from solution_architect_ai.di.providers import AppProvider
-from solution_architect_ai.persistence.factory import PostgresFactory
+from solution_architect_ai.persistence.factory import SqlAlchemyStoreFactory
 
 pytestmark = [pytest.mark.anyio, pytest.mark.integration]
 
@@ -79,7 +79,7 @@ async def test_failed_connection_initialization_releases_pool_slot() -> None:
         "postgresql+psycopg", username="test", password="local-test", host="127.0.0.1", port=1
     )
     engine = create_async_engine(url, connect_args={"connect_timeout": 1})
-    stores = PostgresFactory(async_sessionmaker[AsyncSession](engine))
+    stores = SqlAlchemyStoreFactory(async_sessionmaker[AsyncSession](engine))
     try:
         with pytest.raises(StorageUnavailable):
             async with stores.open() as store:

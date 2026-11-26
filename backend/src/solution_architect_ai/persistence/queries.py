@@ -10,24 +10,30 @@ from solution_architect_ai.application.contracts import (
     Missing,
     Preferences,
     RunView,
+    StorageUnavailable,
 )
 from solution_architect_ai.persistence.models import ChatRow, MessageRow, PreferenceRow, RunRow
+from solution_architect_ai.persistence.schema import migration_heads
 
-TASK_ID = UUID("10000000-0000-4000-8000-000000000002")
+DEFAULT_TASK_ID = UUID("10000000-0000-4000-8000-000000000002")
 
 
 class Queries:
-    def __init__(self, session: AsyncSession) -> None:
+    def __init__(self, session: AsyncSession, *, task_id: UUID = DEFAULT_TASK_ID) -> None:
         self.session = session
+        self.task_id = task_id
 
     async def list_chats(self) -> list[ChatView]:
         rows = await self.session.scalars(
-            select(ChatRow).where(ChatRow.task_id == TASK_ID).order_by(ChatRow.created_at.desc())
+            select(ChatRow)
+            .where(ChatRow.task_id == self.task_id)
+            .order_by(ChatRow.created_at.desc())
         )
         return [ChatView.model_validate(row) for row in rows]
 
-    async def chat(self, chat_id: UUID, *, lock: bool = False) -> ChatRow:
-        query = select(ChatRow).where(ChatRow.id == chat_id, ChatRow.task_id == TASK_ID)
+    async def chat_row(self, chat_id: UUID, *, lock: bool = False) -> ChatRow:
+        """Load a persistence entity; writers lock the chat before allocating positions."""
+        query = select(ChatRow).where(ChatRow.id == chat_id, ChatRow.task_id == self.task_id)
         row = await self.session.scalar(query.with_for_update() if lock else query)
         if row is None:
             raise Missing("chat")
@@ -37,7 +43,8 @@ class Queries:
         result = await self.session.execute(
             select(RunRow, MessageRow)
             .join(MessageRow, MessageRow.id == RunRow.assistant_message_id)
-            .where(RunRow.id == run_id)
+            .join(ChatRow, ChatRow.id == RunRow.chat_id)
+            .where(RunRow.id == run_id, ChatRow.task_id == self.task_id)
             .execution_options(populate_existing=True)
         )
         pair = result.one_or_none()
@@ -62,7 +69,7 @@ class Queries:
         )
 
     async def snapshot(self, chat_id: UUID) -> ChatSnapshot:
-        chat = await self.chat(chat_id)
+        chat = await self.chat_row(chat_id)
         result = await self.session.execute(
             select(MessageRow, RunRow)
             .outerjoin(RunRow, RunRow.assistant_message_id == MessageRow.id)
@@ -78,20 +85,26 @@ class Queries:
         )
 
     async def pending(self) -> list[RunView]:
-        ids = await self.session.scalars(
-            select(RunRow.id).where(RunRow.status.in_(["queued", "running", "cancelling"]))
+        result = await self.session.execute(
+            select(RunRow, MessageRow)
+            .join(MessageRow, MessageRow.id == RunRow.assistant_message_id)
+            .join(ChatRow, ChatRow.id == RunRow.chat_id)
+            .where(
+                RunRow.status.in_(["queued", "running", "cancelling"]),
+                ChatRow.task_id == self.task_id,
+            )
+            .order_by(RunRow.created_at, RunRow.id)
+            .execution_options(populate_existing=True)
         )
-        return [await self.get_run(run_id) for run_id in ids]
+        return [self.run_view(run, message) for run, message in result.all()]
 
-    async def preferences(self, value: Preferences | None = None) -> Preferences:
-        row = await self.session.get(PreferenceRow, 1, with_for_update=True)
+    async def preferences(self) -> Preferences:
+        row = await self.session.get(PreferenceRow, 1)
         if row is None:
             raise Missing("preferences")
-        if value is not None:
-            row.theme = value.theme
         return Preferences(theme=row.theme)
 
     async def ready(self) -> None:
-        version = await self.session.scalar(text("SELECT version_num FROM alembic_version"))
-        if version != "0002_profile":
-            raise Missing("schema")
+        versions = await self.session.scalars(text("SELECT version_num FROM alembic_version"))
+        if frozenset(versions) != migration_heads():
+            raise StorageUnavailable("schema_not_current")

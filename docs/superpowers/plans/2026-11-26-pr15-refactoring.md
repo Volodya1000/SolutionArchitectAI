@@ -106,3 +106,9 @@ Files: backend launcher / Dockerfile, Compose, `.env.example`, runtime docs.
   bundled Chromium was absent). ESLint, TypeScript, Prettier and Vite build pass.
 - Task 2: typed event regression RED (missing contract), then GREEN; existing
   Unicode/newline SSE framing and heartbeat tests pass.
+
+- Task 3: PostgreSQL regressions RED confirmed N+1, read locks, duplicate answer
+  association, stale-schema exception and redundant SELECT. After migration and
+  fixes, the complete backend suite passed: 61 tests with network restrictions.
+- Task 3 ruling: retain strict `transition`; `resolve_transition` owns replay and
+  cancellation precedence in the domain. The store contains no transition policy.

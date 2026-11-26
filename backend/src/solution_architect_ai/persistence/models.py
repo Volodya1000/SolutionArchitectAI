@@ -47,7 +47,10 @@ class MessageRow(Base):
 
 class RunRow(Base):
     __tablename__ = "runs"
-    __table_args__ = (UniqueConstraint("chat_id", "command_id"),)
+    __table_args__ = (
+        UniqueConstraint("chat_id", "command_id"),
+        UniqueConstraint("assistant_message_id", name="uq_runs_assistant_message_id"),
+    )
     id: Mapped[UUID] = mapped_column(primary_key=True, default=uuid4)
     chat_id: Mapped[UUID] = mapped_column(ForeignKey("chats.id"), index=True)
     command_id: Mapped[UUID]
