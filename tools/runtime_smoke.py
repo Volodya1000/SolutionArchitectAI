@@ -3,8 +3,6 @@
 import json
 import os
 import shutil
-
-# Launch the controlled Docker commands below.
 import subprocess  # nosec B404
 import sys
 import time
@@ -47,7 +45,7 @@ def docker(*arguments: str) -> str:
     executable: str | None = shutil.which("docker")
     if executable is None:
         raise RuntimeError("Docker is required for runtime smoke checks")
-    # Arguments are defined by this script or are a container ID returned by Docker.
+
     result: subprocess.CompletedProcess[str] = subprocess.run(  # nosec B603
         [executable, *arguments], cwd=ROOT, check=True, capture_output=True, text=True, timeout=120
     )
@@ -214,7 +212,6 @@ def main() -> None:
         return
     runtime: RuntimeEnvironment
     with isolated_runtime(ROOT) as runtime:
-        # A fresh interpreter reads the isolated application's URL from its environment.
         subprocess.run(  # nosec B603
             [sys.executable, "-m", "tools.runtime_smoke"],
             cwd=ROOT,

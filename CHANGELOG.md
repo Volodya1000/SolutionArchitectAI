@@ -1,35 +1,43 @@
-# Changelog
+# История изменений
 
-All notable changes are recorded here. This project follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
+Здесь фиксируются значимые изменения проекта по принципам
+[Keep a Changelog](https://keepachangelog.com/ru/1.1.0/).
 
-## [Unreleased]
+## [Unreleased] — Не выпущено
 
-### Added
+### Добавлено
 
-- Independent architecture chats with PostgreSQL history, durable streamed
-  answers, server cancellation and recovery after interruption.
-- Light, Dark and System themes, persistent drafts, keyboard operation and
-  responsive chat layout.
-- Local Docker Compose runtime with fake LLM, LM Studio and optional vLLM
-  profiles using an OpenAI-compatible API.
-- Shared local and CI quality checks, pre-commit and pre-push hooks, and isolated
-  integration/E2E checks that preserve the developer's active model and data.
+- Независимые архитектурные чаты с историей в PostgreSQL, сохранением потока
+  ответа, серверной отменой и восстановлением после прерывания.
+- Светлая, тёмная и системная темы, сохраняемые черновики, управление
+  с клавиатуры и адаптивная вёрстка чата.
+- Локальное окружение Docker Compose с тестовой LLM, LM Studio и дополнительным
+  профилем vLLM через OpenAI-совместимый API.
+- Общие локальные проверки и CI, Git hooks перед commit и push, изолированные
+  интеграционные и браузерные тесты, сохраняющие рабочую модель и данные.
 
-### Fixed
+### Исправлено
 
-- Incomplete answer markers remain attached to their original messages.
-- Retrying an acknowledged command preserves a newer draft across navigation.
-- SSE recovers after temporary server errors and slow history requests.
-- Oversized messages retain their text and receive a useful validation message.
+- Пометки незавершённых ответов остаются у соответствующих сообщений.
+- Подтверждение повторной отправки сохраняет новый черновик при смене чата.
+- SSE восстанавливается после временных ошибок сервера и медленного чтения истории.
+- Слишком длинные сообщения сохраняются и получают понятное объяснение ограничения.
 
-### Changed
+### Изменено
 
-- Separated application DTOs and errors, clarified transactional storage
-  responsibilities, and strengthened Python typing across source, tests and tools.
-- Reduced streaming database round trips while preserving partial-answer
-  durability and cancellation ordering.
-- Context selection accounts for system/template overhead and keeps dialog turns
-  intact when trimming history.
-- Container endpoints are configurable; PDF builds run only for publication
-  inputs, while application quality runs once per PR update and on main.
+- Введены обязательные пороги покрытия: backend — 90% с учётом ветвлений;
+  frontend — 80% строк, инструкций и функций и 70% ветвлений.
+- Повторами генерации управляет Tenacity с сохранением deadline, Retry-After
+  и запрета повторять уже частично сохранённый ответ.
+
+- Разделены DTO, прикладные исключения и порты; уточнены обязанности хранилища
+  и усилена типизация Python в исходниках, тестах и инструментах.
+- Роли сообщений представлены строковым перечислением; конкретный системный
+  промпт отделён от обработки истории и бюджета контекста.
+- Поясняющие комментарии в Python удалены; технические директивы анализаторов сохранены.
+- Сокращено число SQL-запросов при стриминге с сохранением долговечности
+  частичного ответа и порядка отмены.
+- Самостоятельная оценка по байтам заменена приблизительным счётчиком LangChain;
+  учитываются системный промпт, префикс и резерв ответа, сохраняются целые пары сообщений.
+- Адреса и порты контейнеров настраиваются; PDF собираются при изменении входов
+  публикации, а проверки приложения запускаются один раз для PR и при push в main.

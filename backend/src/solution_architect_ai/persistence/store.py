@@ -18,6 +18,7 @@ from solution_architect_ai.domain.commands import (
     replay_run,
 )
 from solution_architect_ai.domain.errors import StartConflict
+from solution_architect_ai.domain.messages import MessageRole
 from solution_architect_ai.domain.runs import (
     ACTIVE_STATUSES,
     RunErrorCode,
@@ -52,10 +53,16 @@ class SqlAlchemyStore:
         assistant_position: int
         user_position, assistant_position = message_positions(last_position)
         user: MessageRow = MessageRow(
-            chat_id=chat_id, role="user", content=command.content, position=user_position
+            chat_id=chat_id,
+            role=MessageRole.USER.value,
+            content=command.content,
+            position=user_position,
         )
         assistant: MessageRow = MessageRow(
-            chat_id=chat_id, role="assistant", position=assistant_position, incomplete=True
+            chat_id=chat_id,
+            role=MessageRole.ASSISTANT.value,
+            position=assistant_position,
+            incomplete=True,
         )
         self.session.add_all([user, assistant])
         await self.session.flush()
@@ -114,7 +121,7 @@ class SqlAlchemyStore:
         return run_view(row, message)
 
     async def assistant_message(self, row: RunRow) -> MessageRow:
-        # All answer writers first hold this run's lock; refresh a previously read entity.
+
         message: MessageRow | None = await self.session.get(
             MessageRow, row.assistant_message_id, populate_existing=True
         )
@@ -123,8 +130,7 @@ class SqlAlchemyStore:
         return message
 
     async def append(self, run_id: UUID, text: str) -> bool:
-        # PostgreSQL locks/rechecks the run before its RETURNING row can drive the
-        # answer update. Each streamed delta becomes durable in one statement.
+
         answer_id: UUID | None = await self.session.scalar(
             sql_text("""
                 WITH claimed AS (
@@ -147,8 +153,7 @@ class SqlAlchemyStore:
         )
         if answer_id is not None:
             return True
-        # A stopped run is a cancellation signal. Preserve the distinct missing-run
-        # error (including task scope) on the uncommon unsuccessful path.
+
         await self.locked_run(run_id)
         return False
 

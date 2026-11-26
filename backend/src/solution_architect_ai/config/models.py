@@ -4,8 +4,6 @@ from urllib.parse import SplitResult, urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
-from solution_architect_ai.application.context import FIXED_INPUT_COST, MESSAGE_OVERHEAD
-
 
 class Section(BaseModel):
     model_config: ClassVar[ConfigDict] = ConfigDict(
@@ -55,6 +53,7 @@ class LLMSettings(Section):
     context_window: int = Field(default=4096, ge=512)
     output_limit: int = Field(default=512, ge=1)
     temperature: float = Field(default=0.2, ge=0, le=2)
+    approximate_chars_per_token: float = Field(default=1, gt=0, le=4)
     concurrency: int = Field(default=1, ge=1, le=4)
     retry: RetryConfig = Field(default_factory=RetryConfig)
 
@@ -65,7 +64,7 @@ class LLMSettings(Section):
             raise ValueError("LLM endpoint must be an HTTP URL")
         if url.username or url.password or url.query or url.fragment:
             raise ValueError("LLM URL cannot contain credentials, query or fragment")
-        if self.output_limit + FIXED_INPUT_COST + MESSAGE_OVERHEAD >= self.context_window:
+        if self.output_limit >= self.context_window:
             raise ValueError("output limit leaves no input budget")
         return self
 

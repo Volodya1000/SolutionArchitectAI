@@ -1,7 +1,5 @@
 import ast
 import os
-
-# Launch the quality tools in isolated probe subprocesses.
 import subprocess  # nosec B404
 import sys
 from collections.abc import Iterator
@@ -39,7 +37,7 @@ def test_tools_reject_the_intended_defect(
 ) -> None:
     probe: Path = tmp_path / "probe.py"
     probe.write_text(source, encoding="utf-8")
-    # Use this interpreter and repository-defined arguments without a shell.
+
     result: subprocess.CompletedProcess[str] = subprocess.run(  # nosec B603
         [sys.executable, "-m", module, *arguments, str(probe)],
         capture_output=True,
@@ -72,7 +70,7 @@ def test_import_contract_rejects_a_domain_to_persistence_dependency(tmp_path: Pa
         "import solution_architect_ai.persistence\n", encoding="utf-8"
     )
     config: Path = Path(__file__).parents[2] / ".importlinter"
-    # Use this interpreter and repository-defined arguments without a shell.
+
     result: subprocess.CompletedProcess[str] = subprocess.run(  # nosec B603
         [
             sys.executable,

@@ -3,6 +3,7 @@ llm:
   output_limit: 512
   concurrency: 1
   temperature: 0.2
+  approximate_chars_per_token: 1.0
   retry:
     network_retries: 1
     max_total_requests: 2

@@ -117,8 +117,7 @@ async def test_append_waiting_for_cancel_rechecks_status(running: Running) -> No
     writer_pid: asyncio.Future[int] = asyncio.get_running_loop().create_future()
     tasks: asyncio.TaskGroup
     owner: AsyncSession
-    # Exit the cancellation transaction only after PostgreSQL reports that its
-    # backend holds the lock blocking the writer. The task group then joins the writer.
+
     async with asyncio.timeout(5), asyncio.TaskGroup() as tasks, sessions.begin() as owner:
         store: SqlAlchemyStore = SqlAlchemyStore(owner)
         assert await store.append(running.run_id, "first")

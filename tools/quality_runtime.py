@@ -3,8 +3,6 @@
 import os
 import re
 import shutil
-
-# Only scoped Docker commands are executed, with explicit argument vectors.
 import subprocess  # nosec B404
 import sys
 from collections.abc import Iterator, Mapping, Sequence
@@ -14,7 +12,6 @@ from pathlib import Path
 from typing import Final
 from uuid import uuid4
 
-# Internal container binding; published ports are always loopback.
 CONTAINER_HOST: Final[str] = "0.0.0.0"  # nosec B104
 
 PORT_VARIABLES: Final[tuple[str, ...]] = (
@@ -50,7 +47,7 @@ def runtime_environment(original: Mapping[str, str]) -> dict[str, str]:
     )
     name: str
     for name in PORT_VARIABLES:
-        result[name] = "0"  # Let Docker allocate free published ports atomically.
+        result[name] = "0"
     return result
 
 
@@ -135,7 +132,7 @@ def service_environments(
     browser["SAA_APP_URL"] = "http://127.0.0.1:" + published_port(
         root, command, env, "frontend", 8080
     )
-    # Runtime fault smoke must restart this same isolated project with the fake profile.
+
     browser["SAA_QUALITY_PROJECT"] = project
     return RuntimeEnvironment(backend=backend, browser=browser)
 

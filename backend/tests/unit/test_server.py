@@ -6,7 +6,6 @@ import uvicorn
 
 from solution_architect_ai.di import container
 
-# Uvicorn is replaced with a callback, so the expected host never opens a socket.
 BIND_ALL_HOST: Final[str] = "0.0.0.0"  # nosec B104
 
 

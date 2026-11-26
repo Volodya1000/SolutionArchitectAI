@@ -15,6 +15,7 @@ dependencies = [
     "pydantic-settings==2.16.3",
     "pyyaml==6.0.4",
     "sqlalchemy[asyncio]==2.1.9",
+    "tenacity==9.2.1",
     "uvicorn[standard]==0.54.0",
 ]
 
@@ -30,6 +31,16 @@ testpaths = ["tests"]
 pythonpath = [".."]
 addopts = "-ra --strict-markers"
 markers = ["integration: requires local PostgreSQL and fake LLM"]
+
+[tool.coverage.run]
+branch = true
+source = ["backend/src/solution_architect_ai"]
+
+[tool.coverage.report]
+include_namespace_packages = true
+fail_under = 90
+precision = 2
+show_missing = true
 
 [tool.mypy]
 python_version = "3.13"

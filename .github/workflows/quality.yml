@@ -43,3 +43,5 @@ jobs:
             .build/quality/**/compose.log
             frontend/playwright-report/
             frontend/test-results/
+            .build/frontend-coverage/
+            .build/backend-coverage.*

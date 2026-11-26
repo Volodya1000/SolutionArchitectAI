@@ -13,5 +13,6 @@ secrets/
 .ruff_cache/
 .coverage
 htmlcov/
+coverage/
 playwright-report/
 test-results/

@@ -3,8 +3,6 @@
 import argparse
 import os
 import shutil
-
-# Fixed development tool argument vectors; no shell commands.
 import subprocess  # nosec B404
 import sys
 from collections.abc import Mapping, Sequence
@@ -23,7 +21,7 @@ def git_output(arguments: Sequence[str]) -> str:
     executable: str | None = shutil.which("git")
     if executable is None:
         raise RuntimeError("Git is required for checkout validation")
-    # Read repository state with fixed argument vectors.
+
     result: subprocess.CompletedProcess[str] = subprocess.run(  # nosec B603
         [executable, *arguments], cwd=ROOT, check=True, capture_output=True, text=True, timeout=30
     )
@@ -67,6 +65,7 @@ def clean_environment() -> dict[str, str]:
         key: value for key, value in os.environ.items() if not key.startswith(("SAA_", "COMPOSE_"))
     }
     env["PYTHONUTF8"] = "1"
+    env["COVERAGE_FILE"] = str(ROOT / ".build" / "backend.coverage")
     return env
 
 
@@ -173,6 +172,10 @@ def fast(env: dict[str, str]) -> None:
             "backend/tests/quality/test_quality_runner.py",
             "backend/tests/quality/test_runtime_smoke.py",
             "backend/tests/quality/test_gates.py::test_resource_construction_stays_in_composition_and_scoped_factories",
+            "--cov",
+            "--cov-config=backend/pyproject.toml",
+            "--cov-report=",
+            "--cov-fail-under=0",
             "--disable-socket",
             "--allow-hosts=127.0.0.1,localhost",
             "--allow-unix-socket",
@@ -241,10 +244,20 @@ def acceptance(env: dict[str, str]) -> None:
     prepared: dict[str, str] = browser_environment(env)
     runtime: RuntimeEnvironment
     with isolated_runtime(ROOT) as runtime:
+        backend: dict[str, str] = dict(runtime.backend)
+        backend["COVERAGE_FILE"] = env["COVERAGE_FILE"]
         run(
             "migrate dedicated test database",
-            python_tool("solution_architect_ai.di.migrate"),
-            runtime.backend,
+            python_tool(
+                "coverage",
+                "run",
+                "--rcfile",
+                CONFIG,
+                "--append",
+                "-m",
+                "solution_architect_ai.di.migrate",
+            ),
+            backend,
         )
         run(
             "PostgreSQL and adapter integration tests",
@@ -253,11 +266,17 @@ def acceptance(env: dict[str, str]) -> None:
                 "-c",
                 CONFIG,
                 "backend/tests/integration",
+                "--cov",
+                "--cov-config=backend/pyproject.toml",
+                "--cov-append",
+                "--cov-report=term-missing:skip-covered",
+                "--cov-report=xml:.build/backend-coverage.xml",
+                "--cov-report=json:.build/backend-coverage.json",
                 "--disable-socket",
                 "--allow-hosts=127.0.0.1,localhost",
                 "--allow-unix-socket",
             ),
-            runtime.backend,
+            backend,
         )
         browser: dict[str, str] = dict(runtime.browser)
         if "PLAYWRIGHT_CHANNEL" in prepared:

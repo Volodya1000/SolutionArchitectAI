@@ -10,7 +10,7 @@
     "lint": "eslint .",
     "format:check": "prettier --check .",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
+    "test": "vitest run --coverage",
     "test:e2e": "playwright test"
   },
   "dependencies": {
@@ -41,6 +41,7 @@
     "@types/react-dom": "19.3.0",
     "@typescript-eslint/parser": "8.74.0",
     "@vitejs/plugin-react": "6.3.0",
+    "@vitest/coverage-v8": "5.1.1",
     "eslint": "^9.39.5",
     "eslint-config-prettier": "10.1.8",
     "eslint-import-resolver-typescript": "4.4.5",

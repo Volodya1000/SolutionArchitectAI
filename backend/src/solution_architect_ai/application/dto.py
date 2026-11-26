@@ -4,10 +4,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, StringConstraints
 
+from solution_architect_ai.domain.messages import MessageRole
 from solution_architect_ai.domain.runs import RunErrorCode, RunStatus
 
 type Theme = Literal["light", "dark", "system"]
-type Role = Literal["user", "assistant"]
 type Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=16000)]
 
 
@@ -33,7 +33,7 @@ class ChatView(DTO):
 
 class MessageView(DTO):
     id: UUID
-    role: Role
+    role: MessageRole
     content: str
     position: int
     incomplete: bool
@@ -53,7 +53,7 @@ class RunView(DTO):
     sequence: int
     content: str
     incomplete: bool
-    # Older databases can contain an opaque provider error. New writes use RunErrorCode.
+
     error_code: RunErrorCode | str | None
     model: str
     config_digest: str

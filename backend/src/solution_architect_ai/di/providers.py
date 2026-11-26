@@ -16,10 +16,12 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from solution_architect_ai.application.chat import ChatService
-from solution_architect_ai.application.generation import GenerationPolicy, RunWorker
-from solution_architect_ai.application.ports import LLM, ResourceProbe, StoreFactory
+from solution_architect_ai.application.generation import RunWorker
+from solution_architect_ai.application.ports import LLM, ResourceProbe, StoreFactory, TokenCounter
+from solution_architect_ai.application.retry import GenerationPolicy
 from solution_architect_ai.config.models import DatabaseSettings, LLMSettings
 from solution_architect_ai.config.settings import Settings
+from solution_architect_ai.infrastructure.context import LangChainTokenCounter
 from solution_architect_ai.infrastructure.health import LocalResourceProbe
 from solution_architect_ai.infrastructure.llm import LangChainLLM
 from solution_architect_ai.persistence.factory import SqlAlchemyStoreFactory
@@ -88,7 +90,13 @@ class AppProvider(Provider):
             yield LangChainLLM(model)
 
     @provide(scope=Scope.APP)
-    def worker(self, stores: StoreFactory, llm: LLM, settings: Settings) -> RunWorker:
+    def tokens(self, settings: Settings) -> TokenCounter:
+        return LangChainTokenCounter(settings.llm.approximate_chars_per_token)
+
+    @provide(scope=Scope.APP)
+    def worker(
+        self, stores: StoreFactory, llm: LLM, settings: Settings, tokens: TokenCounter
+    ) -> RunWorker:
         profile: LLMSettings = settings.llm
         policy: GenerationPolicy = GenerationPolicy(
             concurrency=profile.concurrency,
@@ -100,7 +108,9 @@ class AppProvider(Provider):
             backoff_max=profile.retry.backoff_max,
             jitter=profile.retry.jitter,
         )
-        return RunWorker(stores, llm, policy)
+        if tokens.count([]) >= policy.input_budget:
+            raise ValueError("output limit leaves no input budget for the system prompt")
+        return RunWorker(stores, llm, policy, tokens)
 
     @provide(scope=Scope.APP)
     def service(

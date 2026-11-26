@@ -2,8 +2,6 @@
 
 import re
 import shutil
-
-# Git lists only the tracked Markdown files.
 import subprocess  # nosec B404
 from pathlib import Path
 from urllib.parse import SplitResult, unquote, urlsplit
@@ -29,7 +27,7 @@ def check() -> None:
     git: str | None = shutil.which("git")
     if git is None:
         raise RuntimeError("Git is required to list tracked Markdown files")
-    # Use the installed Git and fixed read-only arguments without a shell.
+
     result: subprocess.CompletedProcess[str] = subprocess.run(  # nosec B603
         [git, "ls-files", "*.md"], cwd=root, check=True, capture_output=True, text=True
     )

@@ -1,22 +1,46 @@
+from collections.abc import Iterator
+from typing import Final
+
 import pytest
+from tenacity import AsyncRetrying
 
-from solution_architect_ai.application.generation import GenerationPolicy, retry_delay
+from solution_architect_ai.application.errors import GenerationFailure
+from solution_architect_ai.application.retry import GenerationPolicy
+from solution_architect_ai.domain.runs import RunErrorCode
 
 
-@pytest.mark.parametrize(
-    ("attempt", "retry_after", "expected"), [(0, 0, 1), (1, 0, 2), (3, 0, 2), (0, 5, 5)]
-)
-def test_backoff_is_capped_and_respects_server_retry_after(
-    attempt: int, retry_after: float, expected: float
-) -> None:
+@pytest.mark.anyio
+async def test_retry_delays_follow_server_floor_and_capped_exponential_backoff() -> None:
     policy: GenerationPolicy = GenerationPolicy(
         concurrency=1,
-        deadline=10,
-        retries=2,
-        requests=3,
+        deadline=15,
+        retries=3,
+        requests=4,
         backoff=1,
         input_budget=100,
         backoff_max=2,
-        jitter=0,
+        jitter=0.125,
     )
-    assert retry_delay(policy, attempt, retry_after) == expected
+    delays: list[float] = []
+    floors: Iterator[float] = iter((0, 5, 0, 0))
+
+    async def record(delay: float) -> None:
+        delays.append(delay)
+
+    async def retryable(error: BaseException) -> bool:
+        return isinstance(error, GenerationFailure) and error.retryable
+
+    async def unavailable() -> None:
+        raise GenerationFailure(
+            RunErrorCode.LLM_UNAVAILABLE, retryable=True, retry_after=next(floors)
+        )
+
+    retries: AsyncRetrying = policy.retrying(retryable).copy(sleep=record)
+    with pytest.raises(GenerationFailure, match=RunErrorCode.LLM_UNAVAILABLE):
+        await retries(unavailable)
+    assert len(delays) == 3
+    delay: float
+    floor: float
+    expected: Final[tuple[int, ...]] = (1, 5, 2)
+    for delay, floor in zip(delays, expected, strict=True):
+        assert floor <= delay <= floor + policy.jitter

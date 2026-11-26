@@ -8,7 +8,6 @@ from pydantic import SecretStr
 from solution_architect_ai.config.models import LLMSettings
 from solution_architect_ai.config.settings import Settings, load_settings
 
-# The configured test listener is inspected without opening a socket.
 BIND_ALL_HOST: Final[str] = "0.0.0.0"  # nosec B104
 
 

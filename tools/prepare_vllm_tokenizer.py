@@ -32,7 +32,7 @@ def prepare() -> Path:
             f"https://huggingface.co/{manifest['repository']}/resolve/{manifest['revision']}/{name}"
         )
         response: BinaryIO
-        # The checked-in manifest fixes the HTTPS host inputs and expected file checksum.
+
         with urllib.request.urlopen(url, timeout=60) as response:  # nosec B310
             data: bytes = response.read(20 * 1024 * 1024)
         if hashlib.sha256(data).hexdigest() != digest:

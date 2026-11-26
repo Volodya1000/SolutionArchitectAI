@@ -1,6 +1,4 @@
 from pathlib import Path
-
-# Only the result type is used for the mocked Docker CLI.
 from subprocess import CompletedProcess  # nosec B404
 from unittest.mock import Mock
 

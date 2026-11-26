@@ -5,34 +5,17 @@ from datetime import UTC, datetime
 from email.utils import parsedate_to_datetime
 from math import isfinite
 
-from langchain_core.messages import (
-    AIMessage,
-    AIMessageChunk,
-    BaseMessage,
-    HumanMessage,
-    SystemMessage,
-)
+from langchain_core.messages import AIMessageChunk
 from langchain_openai import ChatOpenAI
 from openai import APIConnectionError, APIError, APIStatusError, APITimeoutError, AsyncOpenAI
 from openai.pagination import AsyncPage
 from openai.types import Model
 
-from solution_architect_ai.application.context import SYSTEM_PROMPT
 from solution_architect_ai.application.dto import MessageView, ModelStatus
 from solution_architect_ai.application.errors import GenerationFailure
 from solution_architect_ai.application.ports import Chunk
 from solution_architect_ai.domain.runs import RunErrorCode
-
-
-def build_messages(messages: list[MessageView]) -> list[BaseMessage]:
-    inputs: list[BaseMessage] = [SystemMessage(content=SYSTEM_PROMPT)]
-    inputs.extend(
-        HumanMessage(content=item.content)
-        if item.role == "user"
-        else AIMessage(content=item.content)
-        for item in messages
-    )
-    return inputs
+from solution_architect_ai.infrastructure.prompts import build_messages
 
 
 def convert_chunk(chunk: AIMessageChunk) -> Chunk:

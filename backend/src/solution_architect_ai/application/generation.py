@@ -1,42 +1,36 @@
 import asyncio
 import logging
 from collections.abc import AsyncIterator
-from dataclasses import dataclass
 from datetime import UTC, datetime
-from random import SystemRandom
+from functools import partial
 from uuid import UUID
+
+from tenacity import AsyncRetrying
 
 from solution_architect_ai.application.context import select_context
 from solution_architect_ai.application.dto import ChatSnapshot, MessageView, PendingRun, RunView
 from solution_architect_ai.application.errors import GenerationFailure, StorageUnavailable
-from solution_architect_ai.application.ports import LLM, ChatStore, Chunk, StoreFactory
+from solution_architect_ai.application.ports import (
+    LLM,
+    ChatStore,
+    Chunk,
+    StoreFactory,
+    TokenCounter,
+)
+from solution_architect_ai.application.retry import GenerationPolicy
 from solution_architect_ai.domain.runs import RunErrorCode, RunStatus
 
 logger: logging.Logger = logging.getLogger(__name__)
 
 
-@dataclass(frozen=True)
-class GenerationPolicy:
-    concurrency: int
-    deadline: float
-    retries: int
-    requests: int
-    backoff: float
-    input_budget: int
-    backoff_max: float = 2
-    jitter: float = 0.1
-
-
-def retry_delay(policy: GenerationPolicy, attempt: int, retry_after: float) -> float:
-    exponential: float = min(policy.backoff * (2.0**attempt), policy.backoff_max)
-    return max(exponential, retry_after) + SystemRandom().uniform(0, policy.jitter)
-
-
 class RunWorker:
-    def __init__(self, stores: StoreFactory, llm: LLM, policy: GenerationPolicy) -> None:
+    def __init__(
+        self, stores: StoreFactory, llm: LLM, policy: GenerationPolicy, tokens: TokenCounter
+    ) -> None:
         self.stores: StoreFactory = stores
         self.llm: LLM = llm
         self.policy: GenerationPolicy = policy
+        self.tokens: TokenCounter = tokens
         self.active: dict[UUID, asyncio.Task[None]] = {}
         self.stopping: asyncio.Event = asyncio.Event()
 
@@ -141,31 +135,20 @@ class RunWorker:
             if claimed.status != RunStatus.RUNNING:
                 return
             snapshot: ChatSnapshot = await store.queries.snapshot(run.chat_id)
-        messages: list[MessageView] = select_context(snapshot.messages, self.policy.input_budget)
-        attempts: int = min(self.policy.retries + 1, self.policy.requests)
-        attempt: int
-        for attempt in range(attempts):
-            delay: float | None = await self.attempt(
-                run_id, messages, attempt, attempt + 1 == attempts
-            )
-            if delay is None:
-                await self.finish(run_id, RunStatus.COMPLETED)
-                return
-            await asyncio.sleep(delay)
+        messages: list[MessageView] = await asyncio.to_thread(
+            select_context, snapshot.messages, self.policy.input_budget, self.tokens
+        )
+        retries: AsyncRetrying = self.policy.retrying(partial(self.can_retry, run_id))
+        await retries(self.consume, run_id, messages)
+        await self.finish(run_id, RunStatus.COMPLETED)
 
-    async def attempt(
-        self, run_id: UUID, messages: list[MessageView], attempt: int, last: bool
-    ) -> float | None:
-        try:
-            await self.consume(run_id, messages)
-        except GenerationFailure as error:
-            store: ChatStore
-            async with self.stores.open() as store:
-                current: RunView = await store.queries.get_run(run_id)
-            if current.content or not error.retryable or last:
-                raise
-            return retry_delay(self.policy, attempt, error.retry_after)
-        return None
+    async def can_retry(self, run_id: UUID, error: BaseException) -> bool:
+        if not isinstance(error, GenerationFailure) or not error.retryable:
+            return False
+        store: ChatStore
+        async with self.stores.open() as store:
+            current: RunView = await store.queries.get_run(run_id)
+        return not current.content
 
     async def consume(self, run_id: UUID, messages: list[MessageView]) -> None:
         finish: str | None = None

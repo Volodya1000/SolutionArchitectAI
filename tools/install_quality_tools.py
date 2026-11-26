@@ -54,7 +54,7 @@ def install(name: str) -> Path:
     directory.mkdir(parents=True, exist_ok=True)
     binary: Path = directory / (name + (".exe" if system == "Windows" else ""))
     url: str = f"https://github.com/{repository}/releases/download/{version}/{archive}"
-    # The HTTPS release URL is pinned and the data is checked before writing an executable.
+
     response: BinaryIO
     with urllib.request.urlopen(url, timeout=60) as response:  # nosec B310
         data: bytes = response.read()

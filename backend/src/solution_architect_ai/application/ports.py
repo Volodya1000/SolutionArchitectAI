@@ -17,7 +17,6 @@ from solution_architect_ai.application.dto import (
 from solution_architect_ai.domain.runs import RunErrorCode, RunStatus
 
 
-# This port keeps application use cases independent of SQL sessions and ORM entities.
 class ChatQueries(Protocol):
     async def list_chats(self) -> list[ChatView]: ...
     async def snapshot(self, chat_id: UUID) -> ChatSnapshot: ...
@@ -44,7 +43,6 @@ class StoreFactory(Protocol):
     def open(self) -> AbstractAsyncContextManager[ChatStore]: ...
 
 
-# Readiness must check durable volumes without coupling use cases to filesystem I/O.
 class ResourceProbe(Protocol):
     async def check(self) -> None: ...
 
@@ -55,7 +53,10 @@ class Chunk:
     finish: str | None = None
 
 
-# A context manager guarantees cleanup when generation is cancelled or truncated.
+class TokenCounter(Protocol):
+    def count(self, messages: list[MessageView]) -> int: ...
+
+
 class LLM(Protocol):
     async def status(self) -> ModelStatus: ...
 

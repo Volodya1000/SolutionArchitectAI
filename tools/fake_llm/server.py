@@ -5,7 +5,6 @@ import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Final, Literal, TypedDict
 
-# Compose clients connect over the container network.
 LISTEN_HOST: Final[str] = "0.0.0.0"  # nosec B104
 MODEL: Final[str] = "fake-chat"
 type FinishReason = Literal["length", "stop"]
