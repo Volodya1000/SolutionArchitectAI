@@ -9,7 +9,7 @@ from solution_architect_ai.application.generation import GenerationPolicy, retry
 def test_backoff_is_capped_and_respects_server_retry_after(
     attempt: int, retry_after: float, expected: float
 ) -> None:
-    policy = GenerationPolicy(
+    policy: GenerationPolicy = GenerationPolicy(
         concurrency=1,
         deadline=10,
         retries=2,

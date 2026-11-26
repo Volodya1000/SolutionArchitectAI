@@ -1,7 +1,10 @@
 import ast
 import os
-import subprocess
+
+# Launch the quality tools in isolated probe subprocesses.
+import subprocess  # nosec B404
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -17,7 +20,12 @@ import pytest
             "class Item:\n    value = 1\nItem().absent()\n",
             "E1101",
         ),
-        ("bandit", ["-q"], "import subprocess\nsubprocess.run('echo bad', shell=True)\n", "B602"),
+        (
+            "bandit",
+            ["-q"],
+            "import subprocess\nsubprocess.run('echo bad', shell=True)\n",
+            "B602",
+        ),
         (
             "flake8",
             ["--select=WPS231", "--max-cognitive-score=12"],
@@ -29,9 +37,10 @@ import pytest
 def test_tools_reject_the_intended_defect(
     tmp_path: Path, module: str, arguments: list[str], source: str, diagnostic: str
 ) -> None:
-    probe = tmp_path / "probe.py"
+    probe: Path = tmp_path / "probe.py"
     probe.write_text(source, encoding="utf-8")
-    result = subprocess.run(
+    # Use this interpreter and repository-defined arguments without a shell.
+    result: subprocess.CompletedProcess[str] = subprocess.run(  # nosec B603
         [sys.executable, "-m", module, *arguments, str(probe)],
         capture_output=True,
         text=True,
@@ -43,9 +52,10 @@ def test_tools_reject_the_intended_defect(
 
 
 def test_import_contract_rejects_a_domain_to_persistence_dependency(tmp_path: Path) -> None:
-    package = tmp_path / "solution_architect_ai"
+    package: Path = tmp_path / "solution_architect_ai"
     package.mkdir()
     (package / "__init__.py").touch()
+    name: str
     for name in (
         "domain",
         "application",
@@ -55,14 +65,15 @@ def test_import_contract_rejects_a_domain_to_persistence_dependency(tmp_path: Pa
         "di",
         "config",
     ):
-        directory = package / name
+        directory: Path = package / name
         directory.mkdir()
         (directory / "__init__.py").touch()
     (package / "domain/invalid.py").write_text(
         "import solution_architect_ai.persistence\n", encoding="utf-8"
     )
-    config = Path(__file__).parents[2] / ".importlinter"
-    result = subprocess.run(
+    config: Path = Path(__file__).parents[2] / ".importlinter"
+    # Use this interpreter and repository-defined arguments without a shell.
+    result: subprocess.CompletedProcess[str] = subprocess.run(  # nosec B603
         [
             sys.executable,
             "-c",
@@ -80,23 +91,32 @@ def test_import_contract_rejects_a_domain_to_persistence_dependency(tmp_path: Pa
     assert "BROKEN" in result.stdout
 
 
+def constructor_calls(tree: ast.AST, names: set[str]) -> Iterator[ast.Call]:
+    node: ast.AST
+    name: str
+    for node in ast.walk(tree):
+        match node:
+            case ast.Call(func=ast.Name(id=name) | ast.Attribute(attr=name)) if name in names:
+                yield node
+
+
 def test_resource_construction_stays_in_composition_and_scoped_factories() -> None:
-    source = Path(__file__).parents[2] / "src/solution_architect_ai"
-    owners = {"di/providers.py", "di/migrate.py", "persistence/factory.py"}
-    constructors = {"AsyncSession", "create_async_engine", "async_sessionmaker", "AsyncClient"}
+    source: Path = Path(__file__).parents[2] / "src/solution_architect_ai"
+    owners: set[str] = {"di/providers.py", "di/migrate.py", "persistence/factory.py"}
+    constructors: set[str] = {
+        "AsyncSession",
+        "create_async_engine",
+        "async_sessionmaker",
+        "AsyncClient",
+    }
     violations: list[str] = []
+    path: Path
     for path in source.rglob("*.py"):
-        relative = path.relative_to(source).as_posix()
+        relative: str = path.relative_to(source).as_posix()
         if relative in owners:
             continue
-        tree = ast.parse(path.read_text(encoding="utf-8"))
-        for node in ast.walk(tree):
-            if isinstance(node, ast.Call):
-                name = (
-                    node.func.id
-                    if isinstance(node.func, ast.Name)
-                    else getattr(node.func, "attr", "")
-                )
-                if name in constructors:
-                    violations.append(f"{relative}:{node.lineno}")
-    assert violations == []
+        tree: ast.Module = ast.parse(path.read_text(encoding="utf-8"))
+        violations.extend(
+            f"{relative}:{node.lineno}" for node in constructor_calls(tree, constructors)
+        )
+    assert not violations

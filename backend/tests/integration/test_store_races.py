@@ -1,35 +1,40 @@
 import os
-from collections.abc import AsyncIterator
-from typing import Any
-from uuid import uuid4
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
+from contextlib import contextmanager
+from typing import Final
+from uuid import UUID, uuid4
 
 import pytest
-from dishka import make_async_container
-from sqlalchemy import event, select, text
+from dishka import AsyncContainer, make_async_container
+from solution_architect_ai.application.dto import (
+    ChatSnapshot,
+    ChatView,
+    MessageView,
+    PendingRun,
+    Preferences,
+    RunView,
+    StartRun,
+)
+from solution_architect_ai.application.errors import Missing, StorageUnavailable
+from sqlalchemy import Result, Select, event, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from solution_architect_ai.application.contracts import (
-    Missing,
-    Preferences,
-    StartRun,
-    StorageUnavailable,
-)
-from solution_architect_ai.application.ports import StoreFactory
+from solution_architect_ai.application.ports import ChatStore, StoreFactory
 from solution_architect_ai.config.settings import Settings
 from solution_architect_ai.di.main import bootstrap
 from solution_architect_ai.di.providers import AppProvider
 from solution_architect_ai.domain.runs import RunStatus
-from solution_architect_ai.persistence.models import RunRow, TaskRow
+from solution_architect_ai.persistence.models import MessageRow, RunRow, TaskRow
 from solution_architect_ai.persistence.store import SqlAlchemyStore
 
-pytestmark = [pytest.mark.anyio, pytest.mark.integration]
+pytestmark: Final[list[pytest.MarkDecorator]] = [pytest.mark.anyio, pytest.mark.integration]
 
 
-@pytest.fixture
-async def resources() -> AsyncIterator[tuple[StoreFactory, AsyncEngine]]:
+@pytest.fixture(name="resources")
+async def database_resources() -> AsyncIterator[tuple[StoreFactory, AsyncEngine]]:
     assert os.environ.get("SAA_DATABASE__DATABASE", "").endswith("_test")
-    container = make_async_container(AppProvider(), context={Settings: bootstrap()})
+    container: AsyncContainer = make_async_container(AppProvider(), context={Settings: bootstrap()})
     try:
         yield await container.get(StoreFactory), await container.get(AsyncEngine)
     finally:
@@ -39,18 +44,20 @@ async def resources() -> AsyncIterator[tuple[StoreFactory, AsyncEngine]]:
 async def test_cancel_wins_before_worker_claims_run(
     resources: tuple[StoreFactory, AsyncEngine],
 ) -> None:
-    stores, _ = resources
+    stores: StoreFactory = resources[0]
+    store: ChatStore
     async with stores.open() as store:
-        chat = await store.create_chat("Гонка отмены")
-        run = await store.start(
+        chat: ChatView = await store.create_chat("Гонка отмены")
+        run: RunView = await store.start(
             chat.id, StartRun(command_id=uuid4(), content="Вопрос"), "fake", "x"
         )
     async with stores.open() as store:
-        stale = await store.get_run(run.id)
+        stale: RunView = await store.queries.get_run(run.id)
         assert stale.status == RunStatus.QUEUED
+        cancelling: ChatStore
         async with stores.open() as cancelling:
             await cancelling.set_status(run.id, RunStatus.CANCELLING)
-        claimed = await store.set_status(run.id, RunStatus.RUNNING)
+        claimed: RunView = await store.set_status(run.id, RunStatus.RUNNING)
     assert claimed.status == RunStatus.CANCELLING
     async with stores.open() as store:
         await store.set_status(run.id, RunStatus.CANCELLED)
@@ -59,130 +66,161 @@ async def test_cancel_wins_before_worker_claims_run(
 async def test_snapshot_never_pairs_terminal_status_with_older_message(
     resources: tuple[StoreFactory, AsyncEngine], monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    stores: StoreFactory
+    engine: AsyncEngine
     stores, engine = resources
+    store: ChatStore
     async with stores.open() as store:
-        chat = await store.create_chat("Согласованный снимок")
-        run = await store.start(
+        chat: ChatView = await store.create_chat("Согласованный снимок")
+        run: RunView = await store.start(
             chat.id, StartRun(command_id=uuid4(), content="Вопрос"), "fake", "x"
         )
         await store.set_status(run.id, RunStatus.RUNNING)
         await store.append(run.id, "Начало")
-    sessions = async_sessionmaker[AsyncSession](engine, expire_on_commit=False)
+    sessions: async_sessionmaker[AsyncSession] = async_sessionmaker[AsyncSession](
+        engine, expire_on_commit=False
+    )
+    session: AsyncSession
     async with sessions() as session, session.begin():
-        original = session.execute
-        interleaved = False
+        interleaved: bool = False
 
-        async def execute(*args: Any, **kwargs: Any) -> Any:
+        original: Callable[[Select[MessageRow, RunRow]], Awaitable[Result[MessageRow, RunRow]]] = (
+            session.execute
+        )
+
+        async def execute(statement: Select[MessageRow, RunRow]) -> Result[MessageRow, RunRow]:
             nonlocal interleaved
-            result = await original(*args, **kwargs)
-            if not interleaved and "FROM messages" in str(args[0]):
+            result: Result[MessageRow, RunRow] = await original(statement)
+            if not interleaved and "FROM messages" in str(statement):
                 interleaved = True
+                writer: ChatStore
                 async with stores.open() as writer:
                     await writer.append(run.id, " и конец")
                     await writer.set_status(run.id, RunStatus.COMPLETED)
             return result
 
         monkeypatch.setattr(session, "execute", execute)
-        snapshot = await SqlAlchemyStore(session).snapshot(chat.id)
+        snapshot: ChatSnapshot = await SqlAlchemyStore(session).queries.snapshot(chat.id)
         assert interleaved
-        answer = snapshot.messages[-1]
-        view = snapshot.runs[-1]
+        answer: MessageView = snapshot.messages[-1]
+        view: RunView = snapshot.runs[-1]
         assert view.content == answer.content
         assert view.incomplete == answer.incomplete
         if view.status == RunStatus.COMPLETED:
             assert answer.content == "Начало и конец"
 
 
-def record_selects(engine: AsyncEngine, statements: list[str]) -> Any:
-    def record(_connection: Any, _cursor: Any, statement: str, *_args: Any) -> None:
+@contextmanager
+def record_selects(engine: AsyncEngine) -> Iterator[list[str]]:
+    statements: list[str] = []
+
+    def record(_connection: object, _cursor: object, statement: str, *_args: object) -> None:
         if statement.lstrip().upper().startswith("SELECT"):
             statements.append(statement)
 
     event.listen(engine.sync_engine, "before_cursor_execute", record)
-    return record
+    try:
+        yield statements
+    finally:
+        event.remove(engine.sync_engine, "before_cursor_execute", record)
 
 
 async def test_pending_fetches_all_runs_in_one_statement(
     resources: tuple[StoreFactory, AsyncEngine],
 ) -> None:
+    stores: StoreFactory
+    engine: AsyncEngine
     stores, engine = resources
-    created = []
+    store: ChatStore
+    created: list[RunView] = []
+    index: int
     async with stores.open() as store:
         for index in range(2):
-            chat = await store.create_chat(f"Pending {index}")
+            chat: ChatView = await store.create_chat(f"Pending {index}")
             created.append(
                 await store.start(
                     chat.id, StartRun(command_id=uuid4(), content="Вопрос"), "fake", "x"
                 )
             )
-    statements: list[str] = []
-    listener = record_selects(engine, statements)
-    try:
+    statements: list[str]
+    with record_selects(engine) as statements:
         async with stores.open() as store:
-            pending = await store.pending()
-    finally:
-        event.remove(engine.sync_engine, "before_cursor_execute", listener)
+            pending: list[PendingRun] = await store.queries.pending()
     assert {run.id for run in created} <= {run.id for run in pending}
     assert len(statements) == 1
+    assert "messages" not in statements[0].lower()
+    run: RunView
     async with stores.open() as store:
         for run in created:
-            await store.set_status(run.id, RunStatus.FAILED, "test_cleanup")
+            await store.set_status(run.id, RunStatus.FAILED)
 
 
 async def test_preference_reads_do_not_lock_and_writes_are_explicit(
     resources: tuple[StoreFactory, AsyncEngine],
 ) -> None:
+    stores: StoreFactory
+    engine: AsyncEngine
     stores, engine = resources
-    statements: list[str] = []
-    listener = record_selects(engine, statements)
-    try:
+    store: ChatStore
+    statements: list[str]
+    with record_selects(engine) as statements:
         async with stores.open() as store:
-            before = await store.preferences()
-    finally:
-        event.remove(engine.sync_engine, "before_cursor_execute", listener)
+            before: Preferences = await store.queries.preferences()
     assert all("FOR UPDATE" not in statement for statement in statements)
     async with stores.open() as store:
         await store.update_preferences(Preferences(theme="dark"))
     async with stores.open() as store:
-        assert (await store.preferences()).theme == "dark"
+        assert (await store.queries.preferences()).theme == "dark"
         await store.update_preferences(before)
 
 
 async def test_task_scope_applies_to_creating_listing_and_loading_chat(
     resources: tuple[StoreFactory, AsyncEngine],
 ) -> None:
+    stores: StoreFactory
+    engine: AsyncEngine
     stores, engine = resources
+    store: ChatStore
     async with stores.open() as store:
-        local = await store.create_chat("Local task")
-    sessions = async_sessionmaker[AsyncSession](engine, expire_on_commit=False)
+        local: ChatView = await store.create_chat("Local task")
+    sessions: async_sessionmaker[AsyncSession] = async_sessionmaker[AsyncSession](
+        engine, expire_on_commit=False
+    )
+    session: AsyncSession
     async with sessions() as session, session.begin():
-        task = await session.scalar(select(TaskRow))
+        task: TaskRow | None = await session.scalar(select(TaskRow))
         assert task is not None
-        task_id = uuid4()
+        task_id: UUID = uuid4()
         session.add(TaskRow(id=task_id, project_id=task.project_id, title="Other task"))
         await session.flush()
-        scoped = SqlAlchemyStore(session, task_id=task_id)
-        other = await scoped.create_chat("Scoped chat")
+        scoped: SqlAlchemyStore = SqlAlchemyStore(session, task_id=task_id)
+        other: ChatView = await scoped.create_chat("Scoped chat")
         assert other.task_id == task_id
-        assert [chat.id for chat in await scoped.list_chats()] == [other.id]
+        assert [chat.id for chat in await scoped.queries.list_chats()] == [other.id]
         with pytest.raises(Missing):
-            await scoped.snapshot(local.id)
-        assert (await scoped.snapshot(other.id)).chat.id == other.id
+            await scoped.queries.snapshot(local.id)
+        assert (await scoped.queries.snapshot(other.id)).chat.id == other.id
         with pytest.raises(Missing):
-            await SqlAlchemyStore(session).snapshot(other.id)
+            await SqlAlchemyStore(session).queries.snapshot(other.id)
 
 
 async def test_assistant_message_cannot_belong_to_two_runs(
     resources: tuple[StoreFactory, AsyncEngine],
 ) -> None:
+    stores: StoreFactory
+    engine: AsyncEngine
     stores, engine = resources
+    store: ChatStore
     async with stores.open() as store:
-        chat = await store.create_chat("Unique answer")
-        run = await store.start(
+        chat: ChatView = await store.create_chat("Unique answer")
+        run: RunView = await store.start(
             chat.id, StartRun(command_id=uuid4(), content="Вопрос"), "fake", "x"
         )
-        await store.set_status(run.id, RunStatus.FAILED, "test_cleanup")
-    sessions = async_sessionmaker[AsyncSession](engine, expire_on_commit=False)
+        await store.set_status(run.id, RunStatus.FAILED)
+    sessions: async_sessionmaker[AsyncSession] = async_sessionmaker[AsyncSession](
+        engine, expire_on_commit=False
+    )
+    session: AsyncSession
     async with sessions() as session:
         session.add(
             RunRow(
@@ -202,39 +240,42 @@ async def test_assistant_message_cannot_belong_to_two_runs(
 async def test_readiness_reports_stale_schema_as_storage_unavailable(
     resources: tuple[StoreFactory, AsyncEngine],
 ) -> None:
-    _, engine = resources
-    sessions = async_sessionmaker[AsyncSession](engine, expire_on_commit=False)
+    engine: AsyncEngine = resources[1]
+    sessions: async_sessionmaker[AsyncSession] = async_sessionmaker[AsyncSession](
+        engine, expire_on_commit=False
+    )
+    session: AsyncSession
     async with sessions() as session:
-        await SqlAlchemyStore(session).ready()
+        await SqlAlchemyStore(session).queries.ready()
         await session.execute(text("UPDATE alembic_version SET version_num = '0001_chat'"))
         with pytest.raises(StorageUnavailable, match="schema"):
-            await SqlAlchemyStore(session).ready()
+            await SqlAlchemyStore(session).queries.ready()
         await session.rollback()
 
 
 async def test_status_write_uses_loaded_rows_and_keeps_cancel_precedence(
     resources: tuple[StoreFactory, AsyncEngine],
 ) -> None:
+    stores: StoreFactory
+    engine: AsyncEngine
     stores, engine = resources
+    store: ChatStore
     async with stores.open() as store:
-        chat = await store.create_chat("Loaded rows")
-        run = await store.start(
+        chat: ChatView = await store.create_chat("Loaded rows")
+        run: RunView = await store.start(
             chat.id, StartRun(command_id=uuid4(), content="Вопрос"), "fake", "x"
         )
-    statements: list[str] = []
-    listener = record_selects(engine, statements)
-    try:
+    statements: list[str]
+    with record_selects(engine) as statements:
         async with stores.open() as store:
-            claimed = await store.set_status(run.id, RunStatus.RUNNING)
-    finally:
-        event.remove(engine.sync_engine, "before_cursor_execute", listener)
+            claimed: RunView = await store.set_status(run.id, RunStatus.RUNNING)
     assert claimed.status == RunStatus.RUNNING
     assert len(statements) == 2
     async with stores.open() as store:
         await store.append(run.id, "Частичный ответ")
-        cancelling = await store.set_status(run.id, RunStatus.CANCELLING)
-        late = await store.set_status(run.id, RunStatus.COMPLETED)
+        cancelling: RunView = await store.set_status(run.id, RunStatus.CANCELLING)
+        late: RunView = await store.set_status(run.id, RunStatus.COMPLETED)
         assert late == cancelling
-        cancelled = await store.set_status(run.id, RunStatus.CANCELLED)
+        cancelled: RunView = await store.set_status(run.id, RunStatus.CANCELLED)
         assert cancelled.content == "Частичный ответ"
         assert cancelled.incomplete

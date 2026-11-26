@@ -1,22 +1,40 @@
 """Fetch only pinned tokenizer/config files; never download model weights."""
+
 import hashlib
-import json
 import urllib.request
 from pathlib import Path
+from typing import BinaryIO, Final, TypedDict
+
+from pydantic import TypeAdapter
+
+
+class Manifest(TypedDict):
+    repository: str
+    revision: str
+    files: dict[str, str]
+
+
+MANIFEST: Final[TypeAdapter[Manifest]] = TypeAdapter(Manifest)
 
 
 def prepare() -> Path:
-    root = Path(__file__).resolve().parents[1]
-    manifest = json.loads((root / "tools/vllm-tokenizer.json").read_text(encoding="utf-8"))
-    directory = root / ".build/vllm-tokenizer"
+    root: Path = Path(__file__).resolve().parents[1]
+    manifest: Manifest = MANIFEST.validate_json((root / "tools/vllm-tokenizer.json").read_bytes())
+    directory: Path = root / ".build/vllm-tokenizer"
     directory.mkdir(parents=True, exist_ok=True)
+    name: str
+    digest: str
     for name, digest in manifest["files"].items():
-        target = directory / name
+        target: Path = directory / name
         if target.is_file() and hashlib.sha256(target.read_bytes()).hexdigest() == digest:
             continue
-        url = f'https://huggingface.co/{manifest["repository"]}/resolve/{manifest["revision"]}/{name}'
-        with urllib.request.urlopen(url, timeout=60) as response:
-            data = response.read(20 * 1024 * 1024)
+        url: str = (
+            f"https://huggingface.co/{manifest['repository']}/resolve/{manifest['revision']}/{name}"
+        )
+        response: BinaryIO
+        # The checked-in manifest fixes the HTTPS host inputs and expected file checksum.
+        with urllib.request.urlopen(url, timeout=60) as response:  # nosec B310
+            data: bytes = response.read(20 * 1024 * 1024)
         if hashlib.sha256(data).hexdigest() != digest:
             raise ValueError("Tokenizer checksum mismatch")
         target.write_bytes(data)

@@ -1,7 +1,7 @@
 import pytest
 
 from solution_architect_ai.domain import runs
-from solution_architect_ai.domain.runs import RunStatus, transition
+from solution_architect_ai.domain.runs import RunErrorCode, RunStatus, transition
 
 
 @pytest.mark.parametrize("status", [RunStatus.COMPLETED, RunStatus.FAILED, RunStatus.CANCELLED])
@@ -42,4 +42,6 @@ def test_racing_status_commands_obey_domain_precedence(
 
 def test_successful_transition_cannot_carry_an_error() -> None:
     with pytest.raises(ValueError, match="error"):
-        runs.resolve_transition(RunStatus.RUNNING, RunStatus.COMPLETED, "llm_failed")
+        runs.resolve_transition(
+            RunStatus.RUNNING, RunStatus.COMPLETED, RunErrorCode.LLM_UNAVAILABLE
+        )
