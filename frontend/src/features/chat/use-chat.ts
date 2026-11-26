@@ -1,16 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
+import { request, runSchema, scopeKey, snapshotSchema, terminal } from '../../shared/api/client';
 import {
-  envelopeSchema,
-  request,
-  runSchema,
-  scopeKey,
-  snapshotSchema,
-  terminal,
-  type Snapshot,
-} from '../../shared/api/client';
-import { mergeSnapshot } from './stream';
+  InputValidationError,
+  MESSAGE_LIMIT,
+  MESSAGE_LIMIT_HINT,
+  messageLength,
+} from '../../shared/api/validation';
 import { readPending, savePending } from './pending-command';
+import { subscribeToRun } from './run-events';
 
 function useOnline() {
   const [online, setOnline] = useState(navigator.onLine);
@@ -41,6 +39,8 @@ export function useChat(chatId: string) {
   const refresh = () => client.invalidateQueries({ queryKey: key });
   const send = useMutation({
     mutationFn: async (content: string) => {
+      if (messageLength(content) > MESSAGE_LIMIT)
+        throw new InputValidationError(MESSAGE_LIMIT_HINT);
       if (pending.current?.content !== content)
         pending.current = { command_id: crypto.randomUUID(), content };
       savePending(chatId, pending.current);
@@ -51,6 +51,12 @@ export function useChat(chatId: string) {
       pending.current = null;
       savePending(chatId, null);
       return value;
+    },
+    onError: (error) => {
+      if (error instanceof InputValidationError) {
+        pending.current = null;
+        savePending(chatId, null);
+      }
     },
     onSettled: refresh,
   });
@@ -63,25 +69,14 @@ export function useChat(chatId: string) {
   });
   useEffect(() => {
     if (!runId || !online) return;
-    const events = new EventSource(`/api/runs/${runId}/events`);
-    events.onmessage = (event: MessageEvent<string>) => {
-      const raw: unknown = JSON.parse(event.data);
-      const parsed = envelopeSchema.safeParse(raw);
-      if (!parsed.success) {
-        setConnectionError(true);
-        return;
-      }
-      setConnectionError(false);
-      client.setQueryData<Snapshot>([...scopeKey, 'chat', chatId], (current) =>
-        mergeSnapshot(current, parsed.data.payload, chatId),
-      );
-      if (terminal(parsed.data.payload)) events.close();
-    };
-    events.onerror = () => {
-      setConnectionError(true);
-      void client.invalidateQueries({ queryKey: [...scopeKey, 'chat', chatId] });
-    };
-    return () => events.close();
+    return subscribeToRun(client, chatId, runId, setConnectionError);
   }, [chatId, runId, client, online]);
-  return { query, run, send, cancel, connectionError: connectionError || !online, pending };
+  return {
+    query,
+    run,
+    send,
+    cancel,
+    connectionError: Boolean(run) && (connectionError || !online),
+    pending,
+  };
 }

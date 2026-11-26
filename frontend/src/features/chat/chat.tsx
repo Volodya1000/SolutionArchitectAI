@@ -4,23 +4,17 @@ import {
   ThreadPrimitive,
   useExternalStoreRuntime,
   useAui,
+  useAuiState,
 } from '@assistant-ui/react';
 import { ArrowUp, Square, Sparkles } from 'lucide-react';
 import { useEffect } from 'react';
-import { terminal, type Message, type Run } from '../../shared/api/client';
+import { type Message } from '../../shared/api/client';
+import { MESSAGE_LIMIT, MESSAGE_LIMIT_HINT, messageLength } from '../../shared/api/validation';
 import { Button } from '../../shared/ui/button';
 import { AssistantMessage, UserMessage } from './messages';
 import { useChat } from './use-chat';
 
 type ChatState = ReturnType<typeof useChat>;
-const statuses = {
-  queued: 'В очереди',
-  running: 'Формируется ответ…',
-  cancelling: 'Останавливаем генерацию…',
-  cancelled: 'Генерация отменена. Частичный ответ сохранён.',
-  failed: 'Ответ не завершён. Можно отправить новый запрос.',
-  completed: 'Ответ завершён',
-};
 
 export function Chat({ chatId }: { chatId: string }) {
   const state = useChat(chatId);
@@ -31,6 +25,12 @@ export function Chat({ chatId }: { chatId: string }) {
       id: message.id,
       role: message.role,
       content: [{ type: 'text', text: message.content }],
+      metadata: {
+        custom: {
+          incomplete: message.incomplete,
+          run: state.query.data?.runs.find((run) => run.assistant_message_id === message.id),
+        },
+      },
     }),
     onNew: async (message) => {
       const text = message.content
@@ -38,7 +38,8 @@ export function Chat({ chatId }: { chatId: string }) {
         .map((part) => part.text)
         .join('\n');
       await state.send.mutateAsync(text);
-      sessionStorage.removeItem(`draft:${chatId}`);
+      if (sessionStorage.getItem(`draft:${chatId}`) === text)
+        sessionStorage.removeItem(`draft:${chatId}`);
     },
     onCancel: () => state.cancel.mutateAsync(),
   });
@@ -89,26 +90,24 @@ function Welcome() {
   );
 }
 
-function RunStatus({ run }: { run: Run | undefined }) {
-  if (!run) return null;
-  return (
-    <div className={`run-status ${run.status === 'failed' ? 'error-text' : ''}`} role="status">
-      {statuses[run.status]}
-      {!terminal(run) && <span className="activity-dot" />}
-    </div>
-  );
-}
-
 function SendErrors({ state }: { state: ChatState }) {
   const aui = useAui();
+  const chatId = state.query.data?.chat.id;
+  useEffect(() => {
+    if (!state.send.isError || !chatId || aui.composer.getState().text) return;
+    const draft = sessionStorage.getItem(`draft:${chatId}`);
+    if (draft) aui.composer.setText(draft);
+  }, [aui, chatId, state.send.isError]);
   if (!state.send.isError && !state.cancel.isError) return null;
   const retry = () => {
     if (!state.pending.current) return;
-    state.send.mutate(state.pending.current.content, {
+    const content = state.pending.current.content;
+    state.send.mutate(content, {
       onSuccess: () => {
-        aui.composer.setText('');
+        if (aui.composer.getState().text === content) aui.composer.setText('');
         const chatId = state.query.data?.chat.id;
-        if (chatId) sessionStorage.removeItem(`draft:${chatId}`);
+        if (chatId && sessionStorage.getItem(`draft:${chatId}`) === content)
+          sessionStorage.removeItem(`draft:${chatId}`);
       },
     });
   };
@@ -116,7 +115,7 @@ function SendErrors({ state }: { state: ChatState }) {
     <div className="notice error-text" role="alert">
       <p>{state.send.error?.message ?? state.cancel.error?.message}</p>
       {state.pending.current && (
-        <Button variant="ghost" onClick={retry}>
+        <Button variant="ghost" onClick={retry} disabled={state.send.isPending}>
           Повторить отправку
         </Button>
       )}
@@ -126,6 +125,8 @@ function SendErrors({ state }: { state: ChatState }) {
 
 function Composer({ state, chatId }: { state: ChatState; chatId: string }) {
   const aui = useAui();
+  const text = useAuiState((s) => s.composer.text);
+  const tooLong = messageLength(text) > MESSAGE_LIMIT;
   useEffect(() => {
     aui.composer.setText(sessionStorage.getItem(`draft:${chatId}`) ?? '');
   }, [aui, chatId]);
@@ -137,12 +138,20 @@ function Composer({ state, chatId }: { state: ChatState; chatId: string }) {
         </p>
       )}
       <SendErrors state={state} />
+      <p id="message-limit" className="composer-note" role={tooLong ? 'alert' : undefined}>
+        {MESSAGE_LIMIT_HINT}
+      </p>
       <ComposerPrimitive.Root className="composer">
         <ComposerPrimitive.Input
           aria-label="Сообщение"
+          aria-describedby="message-limit"
+          aria-invalid={tooLong}
           placeholder="Опишите задачу или задайте вопрос…"
           className="composer-input"
           onChange={(event) => sessionStorage.setItem(`draft:${chatId}`, event.target.value)}
+          onKeyDown={(event) => {
+            if (tooLong && event.key === 'Enter' && !event.shiftKey) event.preventDefault();
+          }}
         />
         <div className="composer-actions">
           <span>Enter — отправить · Shift + Enter — новая строка</span>
@@ -157,7 +166,7 @@ function Composer({ state, chatId }: { state: ChatState; chatId: string }) {
             </ComposerPrimitive.Cancel>
           ) : (
             <ComposerPrimitive.Send asChild>
-              <Button aria-label="Отправить сообщение" disabled={state.send.isPending}>
+              <Button aria-label="Отправить сообщение" disabled={state.send.isPending || tooLong}>
                 <ArrowUp size={19} />
               </Button>
             </ComposerPrimitive.Send>
@@ -176,7 +185,6 @@ function Conversation({ state, chatId }: { state: ChatState; chatId: string }) {
       <ThreadPrimitive.Viewport className="thread-viewport">
         {data?.messages.length === 0 && <Welcome />}
         <ThreadPrimitive.Messages components={{ UserMessage, AssistantMessage }} />
-        <RunStatus run={data?.runs.at(-1)} />
       </ThreadPrimitive.Viewport>
       <Composer state={state} chatId={chatId} />
     </ThreadPrimitive.Root>

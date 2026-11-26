@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { InputValidationError, MESSAGE_LIMIT_HINT } from './validation';
 
 export const scopeKey = [
   'workspace',
@@ -57,6 +58,7 @@ export async function request<T>(
 ): Promise<T> {
   const response = await sendRequest(path, init);
   if (!response.ok) {
+    if (response.status === 422) throw await validationError(response);
     const message =
       response.status === 409
         ? 'В этом чате уже выполняется запрос. Обновите состояние.'
@@ -65,6 +67,30 @@ export async function request<T>(
   }
   const data: unknown = await response.json();
   return schema.parse(data);
+}
+
+async function validationError(response: Response): Promise<InputValidationError> {
+  const body: unknown = await response.json().catch(() => null);
+  const result = z
+    .object({
+      detail: z.array(
+        z.object({
+          loc: z.array(z.union([z.string(), z.number()])),
+          type: z.string(),
+        }),
+      ),
+    })
+    .safeParse(body);
+  const tooLong =
+    result.success &&
+    result.data.detail.some(
+      (error) => error.loc.includes('content') && error.type === 'string_too_long',
+    );
+  return new InputValidationError(
+    tooLong
+      ? MESSAGE_LIMIT_HINT
+      : 'Проверьте введённые данные. Сообщение должно содержать текст. ' + MESSAGE_LIMIT_HINT,
+  );
 }
 
 async function sendRequest(path: string, init?: RequestInit): Promise<Response> {

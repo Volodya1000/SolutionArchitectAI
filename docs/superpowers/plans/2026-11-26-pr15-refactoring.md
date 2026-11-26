@@ -101,3 +101,8 @@ Files: backend launcher / Dockerfile, Compose, `.env.example`, runtime docs.
 
 - Baseline: 8 Vitest tests and 28 non-PostgreSQL pytest tests pass.
 - Docker Desktop started; existing PostgreSQL and fake-LLM services are healthy.
+
+- Task 1: 16 Vitest and 11 Playwright tests pass (installed Edge channel;
+  bundled Chromium was absent). ESLint, TypeScript, Prettier and Vite build pass.
+- Task 2: typed event regression RED (missing contract), then GREEN; existing
+  Unicode/newline SSE framing and heartbeat tests pass.
