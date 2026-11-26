@@ -1,0 +1,11 @@
+{
+  "globs": ["**/*.md"],
+  "ignores": ["**/node_modules/**", "**/.venv/**", ".build/**", "frontend/test-results/**", "frontend/playwright-report/**"],
+  "config": {
+    "MD013": false,
+    "MD012": { "maximum": 2 },
+    "MD024": { "siblings_only": true },
+    "MD025": false,
+    "MD060": false
+  }
+}

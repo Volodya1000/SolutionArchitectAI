@@ -1,0 +1,15 @@
+[files]
+extend-exclude = ["docs/pdf/**", "docs/latex/**", "*.svg", "*.puml", "frontend/pnpm-lock.yaml", "backend/uv.lock"]
+
+[default]
+locale = "en"
+
+[default.extend-words]
+Archi = "Archi"
+ArchiMate = "ArchiMate"
+HDA = "HDA"
+SAA = "SAA"
+
+[default.extend-identifiers]
+# Deliberate misspelling in the configuration validation negative test.
+SAA_LLM__MODLE = "SAA_LLM__MODLE"

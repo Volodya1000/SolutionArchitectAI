@@ -4,8 +4,17 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
-      - 'docs/**'
-      - 'scripts/**'
+      - 'docs/BRD.md'
+      - 'docs/brd-input-guidelines.md'
+      - 'docs/templates/**'
+      - 'docs/examples/**'
+      - 'docs/technical/technical-decisions-summary.md'
+      - 'docs/latex/**'
+      - 'scripts/build_documents.py'
+      - 'scripts/validate_example.py'
+      - 'scripts/test_build_documents.py'
+      - 'scripts/test_validate_example.py'
+      - 'scripts/requirements-docs.txt'
       - '.github/workflows/build-pdf.yml'
   workflow_dispatch:
 

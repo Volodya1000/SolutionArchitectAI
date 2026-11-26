@@ -1,0 +1,78 @@
+import assert from 'node:assert/strict';
+import { access, unlink, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import process from 'node:process';
+import { ESLint } from 'eslint';
+import ts from 'typescript';
+
+const root = process.cwd();
+const files = new Set();
+const eslint = new ESLint();
+async function create(relative, source) {
+  const file = path.join(root, relative);
+  await assert.rejects(access(file), `Probe would overwrite ${relative}`);
+  await writeFile(file, source);
+  files.add(file);
+  return file;
+}
+async function lint(relative, source, expected) {
+  const file = await create(relative, source);
+  const results = await eslint.lintFiles([file]);
+  const rules = results.flatMap((result) => result.messages.map((message) => message.ruleId));
+  if (expected)
+    assert.ok(rules.includes(expected), `${relative}: expected ${expected}; got ${rules}`);
+  else assert.ok(!rules.includes('boundaries/dependencies'), `${relative}: legal import rejected`);
+}
+try {
+  await lint('src/pages/allowed-probe.ts', "export { Button } from '../shared/ui/button';", null);
+  await lint(
+    'src/shared/ui/forbidden-probe.ts',
+    "export { Chat } from '@/features/chat';",
+    'boundaries/dependencies',
+  );
+  await lint(
+    'src/shared/ui/complex-probe.ts',
+    `export function probe(x: number) { ${Array.from({ length: 11 }, (_, i) => `if(x===${i}) return ${i};`).join('')} return 99; }`,
+    'complexity',
+  );
+  await lint(
+    'src/shared/ui/depth-probe.ts',
+    'export function probe(x: number) { if(x>0){if(x>1){if(x>2){if(x>3){return x;}}}}return 0;}',
+    'max-depth',
+  );
+  await create(
+    'src/shared/ui/cycle-b-probe.ts',
+    "import { a } from './cycle-a-probe'; export const b = () => a();",
+  );
+  await lint(
+    'src/shared/ui/cycle-a-probe.ts',
+    "import { b } from './cycle-b-probe'; export const a = () => b();",
+    'import-x/no-cycle',
+  );
+  const probes = [
+    ['unchecked', 'export const value: number = [1][99];'],
+    ['optional', 'export const value: { x?: number } = { x: undefined };'],
+    ['strict', 'export function probe(value) { return value; }'],
+    ['override', 'class Base { value() {} } export class Child extends Base { value() {} }'],
+    [
+      'fallthrough',
+      'export function probe(x: number) { switch(x) { case 0: x++; case 1: return x; } }',
+    ],
+  ];
+  for (const [name, source] of probes) await create(`src/shared/ui/${name}-type-probe.ts`, source);
+  const config = ts.readConfigFile(path.join(root, 'tsconfig.json'), ts.sys.readFile);
+  assert.ok(!config.error);
+  const parsed = ts.parseJsonConfigFileContent(config.config, ts.sys, root);
+  const program = ts.createProgram(parsed.fileNames, parsed.options);
+  const diagnostics = ts.getPreEmitDiagnostics(program);
+  for (const [name] of probes)
+    assert.ok(
+      diagnostics.some((item) => item.file?.fileName.endsWith(`${name}-type-probe.ts`)),
+      `TypeScript did not reject ${name}`,
+    );
+  process.stdout.write(
+    'Architecture, aliases, cycles, complexity/depth and strict TypeScript probes passed.\n',
+  );
+} finally {
+  for (const file of files) await unlink(file);
+}

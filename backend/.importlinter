@@ -1,0 +1,35 @@
+[importlinter]
+root_package = solution_architect_ai
+include_external_packages = True
+
+[importlinter:contract:layers]
+name = Application boundaries
+type = layers
+layers =
+    solution_architect_ai.di
+    solution_architect_ai.presentation | solution_architect_ai.infrastructure | solution_architect_ai.persistence | solution_architect_ai.config
+    solution_architect_ai.application
+    solution_architect_ai.domain
+
+[importlinter:contract:domain]
+name = Domain has no framework dependencies
+type = forbidden
+source_modules = solution_architect_ai.domain
+forbidden_modules =
+    sqlalchemy
+    fastapi
+    pydantic
+    dishka
+    langchain_core
+    langchain_openai
+
+[importlinter:contract:application]
+name = Application has no adapter SDK dependencies
+type = forbidden
+source_modules = solution_architect_ai.application
+forbidden_modules =
+    sqlalchemy
+    fastapi
+    dishka
+    langchain_core
+    langchain_openai

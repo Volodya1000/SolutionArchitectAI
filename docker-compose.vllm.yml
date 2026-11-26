@@ -1,0 +1,62 @@
+services:
+  backend:
+    environment:
+      SAA_LLM__BASE_URL: http://vllm:8000/v1
+      SAA_LLM__MODEL: local-vllm
+      SAA_LLM__CONTEXT_WINDOW: "1024"
+      SAA_LLM__OUTPUT_LIMIT: "128"
+    depends_on:
+      vllm:
+        condition: service_healthy
+  vllm:
+    image: vllm/vllm-openai:v0.21.0@sha256:a230095847e93bd4df9888b33dab956fa9504537b828a23657d2b26fed57b5c9
+    command:
+      - /models/${VLLM_GGUF_FILENAME:?Set VLLM_GGUF_FILENAME to an existing GGUF}
+      - --tokenizer
+      - /tokenizer
+      - --hf-config-path
+      - /tokenizer
+      - --load-format
+      - gguf
+      - --quantization
+      - gguf
+      - --dtype
+      - half
+      - --max-model-len
+      - "1024"
+      - --max-num-seqs
+      - "1"
+      - --gpu-memory-utilization
+      - "0.90"
+      - --enforce-eager
+      - --served-model-name
+      - local-vllm
+    volumes:
+      - type: bind
+        source: ${VLLM_MODEL_DIRECTORY:?Set VLLM_MODEL_DIRECTORY}
+        target: /models
+        read_only: true
+      - type: bind
+        source: ${VLLM_TOKENIZER_DIRECTORY:?Set VLLM_TOKENIZER_DIRECTORY}
+        target: /tokenizer
+        read_only: true
+      - vllm-cache:/root/.cache/huggingface
+    environment:
+      HF_HUB_OFFLINE: "1"
+    ports:
+      - "127.0.0.1:8002:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval: 10s
+      timeout: 4s
+      retries: 60
+    shm_size: 1g
+volumes:
+  vllm-cache:
