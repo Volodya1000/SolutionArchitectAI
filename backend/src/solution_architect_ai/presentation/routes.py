@@ -1,5 +1,4 @@
 import asyncio
-import json
 from collections.abc import AsyncIterator
 from uuid import UUID
 
@@ -14,6 +13,7 @@ from solution_architect_ai.application.contracts import (
     ChatView,
     ModelStatus,
     Preferences,
+    RunSnapshotEvent,
     RunView,
     StartRun,
 )
@@ -57,22 +57,25 @@ async def cancel(run_id: UUID, service: FromDishka[ChatService]) -> RunView:
     return await service.cancel(run_id)
 
 
+def _format_sse_data(event_id: int | str, data: str) -> str:
+    return f"id: {event_id}\ndata: {data}\n\n"
+
+
+def _format_sse_comment(comment: str) -> str:
+    return f": {comment}\n\n"
+
+
 async def events(run_id: UUID, service: ChatService, request: Request) -> AsyncIterator[str]:
     sequence = -1
     while not await request.is_disconnected():
         current = await service.run(run_id)
         if current.sequence > sequence:
             sequence = current.sequence
-            envelope = {
-                "run_id": str(run_id),
-                "sequence": sequence,
-                "kind": "snapshot",
-                "payload": current.model_dump(mode="json"),
-            }
-            yield f"id: {sequence}\ndata: {json.dumps(envelope, ensure_ascii=False)}\n\n"
+            event = RunSnapshotEvent(run_id=run_id, sequence=sequence, payload=current)
+            yield _format_sse_data(sequence, event.model_dump_json())
         if current.status.terminal:
             return
-        yield ": heartbeat\n\n"
+        yield _format_sse_comment("heartbeat")
         await asyncio.sleep(0.15)
 
 

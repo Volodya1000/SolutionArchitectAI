@@ -53,6 +53,13 @@ class RunView(DTO):
     created_at: datetime
 
 
+class RunSnapshotEvent(DTO):
+    run_id: UUID
+    sequence: int
+    kind: Literal["snapshot"] = "snapshot"
+    payload: RunView
+
+
 class ChatSnapshot(DTO):
     chat: ChatView
     messages: list[MessageView]
