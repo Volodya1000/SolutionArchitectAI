@@ -92,3 +92,26 @@ def test_malformed_env_traceback_does_not_expose_values(
     with pytest.raises(ValueError, match=r".+") as error:
         load_settings(tmp_path, "production")
     assert "secret-env-trace" not in "".join(traceback.format_exception(error.value))
+
+
+def test_server_listener_environment_overrides_yaml(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    (tmp_path / "config").mkdir()
+    (tmp_path / "config/app.yaml").write_text(
+        "server:\n  host: 127.0.0.1\n  port: 8100\n", encoding="utf-8"
+    )
+    monkeypatch.setenv("SAA_SERVER__HOST", "0.0.0.0")
+    monkeypatch.setenv("SAA_SERVER__PORT", "8200")
+    settings = load_settings(tmp_path, "test")
+    assert settings.server.host == "0.0.0.0"
+    assert settings.server.port == 8200
+
+
+@pytest.mark.parametrize("port", ["0", "65536", "invalid"])
+def test_invalid_server_port_is_rejected(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, port: str
+) -> None:
+    monkeypatch.setenv("SAA_SERVER__PORT", port)
+    with pytest.raises(ValueError, match=r".+"):
+        load_settings(tmp_path, "test")

@@ -1,5 +1,6 @@
 """Exercise persistence, process interruption, SSE disconnect and database failure."""
 import json
+import os
 import subprocess
 import time
 import urllib.error
@@ -8,7 +9,7 @@ from pathlib import Path
 from uuid import uuid4
 
 ROOT = Path(__file__).resolve().parents[1]
-BASE = "http://127.0.0.1:8080"
+BASE = os.environ.get("SAA_APP_URL", "http://127.0.0.1:8080").rstrip("/")
 HTTP = urllib.request.build_opener(urllib.request.ProxyHandler({}))
 
 

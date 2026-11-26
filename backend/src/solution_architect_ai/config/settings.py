@@ -14,6 +14,7 @@ from solution_architect_ai.config.models import (
     GitSettings,
     LLMSettings,
     Mode,
+    ServerSettings,
     StorageSettings,
 )
 from solution_architect_ai.config.sources import (
@@ -31,6 +32,7 @@ class Settings(BaseSettings):
     )
     config_root: Path = Field(exclude=True)
     mode: Mode = Field(default="production", exclude=True)
+    server: ServerSettings = Field(default_factory=ServerSettings)
     database: DatabaseSettings = Field(default_factory=DatabaseSettings)
     llm: LLMSettings = Field(default_factory=LLMSettings)
     git: GitSettings = Field(default_factory=GitSettings)

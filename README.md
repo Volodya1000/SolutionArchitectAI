@@ -46,6 +46,8 @@ docker compose up -d --build --wait
 
 Откройте [приложение](http://localhost:8080) или [OpenAPI](http://localhost:8000/docs). Чистый checkout использует fake LLM. PostgreSQL, Git и файлы имеют отдельные volumes; `docker compose down` сохраняет их. Alembic выполняется отдельным сервисом до старта backend. Порты публикуются только на loopback, PlantUML — только во внутренней сети.
 
+Адреса и порты можно изменить в `.env` по образцу `.env.example`: `COMPOSE_BIND_HOST` задаёт адрес публикации, `COMPOSE_BACKEND_PORT`, `COMPOSE_FRONTEND_PORT`, `COMPOSE_POSTGRES_PORT` и `COMPOSE_FAKE_LLM_PORT` — порты на компьютере. `SAA_SERVER__HOST` / `SAA_SERVER__PORT` задают listener backend внутри контейнера; для связи с nginx оставьте host `0.0.0.0`. Healthcheck и proxy автоматически используют выбранный порт backend. `COMPOSE_FRONTEND_LISTEN_PORT` меняет внутренний порт nginx. Без Compose backend запускается через `uv run --project backend python -m solution_architect_ai.di.server` и использует те же типизированные настройки `server` (YAML и env), с loopback по умолчанию.
+
 Для LM Studio загрузите существующую модель и задайте профиль:
 
 ```powershell
@@ -76,7 +78,7 @@ uv run --project backend python -m solution_architect_ai.di.migrate
 uv run --project backend pytest backend/tests --disable-socket --allow-hosts=127.0.0.1,localhost --allow-unix-socket
 ```
 
-`createdb` нужен только при первом создании тестовой БД. Playwright: `$env:PLAYWRIGHT_CHANNEL='chrome'; pnpm.cmd --dir frontend test:e2e` при работающем Compose с fake-профилем. `uv run --project backend python tools/runtime_smoke.py` дополнительно перезапускает backend/PostgreSQL и проверяет отказ БД; запускайте его отдельно от других integration/E2E-тестов.
+`createdb` нужен только при первом создании тестовой БД. Playwright: `$env:PLAYWRIGHT_CHANNEL='chrome'; pnpm.cmd --dir frontend test:e2e` при работающем Compose с fake-профилем. При изменении опубликованных портов задайте `SAA_APP_URL` для Playwright/runtime smoke и соответствующие `SAA_DATABASE__PORT` / `SAA_LLM__BASE_URL` для backend-тестов. `uv run --project backend python tools/runtime_smoke.py` дополнительно перезапускает backend/PostgreSQL и проверяет отказ БД; запускайте его отдельно от других integration/E2E-тестов.
 
 Run имеет неизменяемые терминальные статусы, `incomplete` отдельно от статуса, UUID команды для идемпотентного запуска и монотонный sequence. SSE передаёт полные сохранённые снимки; reconnect не запускает LLM повторно. После прерывания процесса run становится failed/incomplete и автоматически не повторяется. Закрытие вкладки не отменяет генерацию; кнопка остановки отправляет отдельную серверную команду. Backend подтверждает остановку локального потока, без гарантии прекращения вычислений внешнего сервера.
 

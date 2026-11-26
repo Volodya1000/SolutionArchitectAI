@@ -112,3 +112,13 @@ Files: backend launcher / Dockerfile, Compose, `.env.example`, runtime docs.
   fixes, the complete backend suite passed: 61 tests with network restrictions.
 - Task 3 ruling: retain strict `transition`; `resolve_transition` owns replay and
   cancellation precedence in the domain. The store contains no transition policy.
+
+- Task 4: all 65 backend tests and static gates pass. Compose built and became
+  healthy both with defaults and with backend listener 18010 / published 18000,
+  nginx listener 18081 / published 18080. On overridden ports, 11 Playwright
+  tests and complete restart/database-failure runtime smoke pass.
+- Extra regression: Enter during an in-flight retry issued a third command
+  despite the disabled button (RED). Guarding keyboard submission fixed it;
+  all 18 frontend tests pass, including 16,000 emoji at the length boundary.
+- Documentation validation needs the separately declared jsonschema dependency
+  and an LF Git export on Windows; full publisher tests additionally need Pandoc.

@@ -7,8 +7,9 @@ COPY frontend ./
 RUN pnpm typecheck && pnpm build
 
 FROM nginx:alpine@sha256:7fc0fb4af7bf006aeb31aea88069976060f8f0a0a86b667126742cc17f4e31ae
-COPY frontend/nginx.conf /etc/nginx/nginx.conf
+COPY frontend/nginx.conf /etc/nginx/templates/nginx.conf.template
 COPY --from=build /app/dist /usr/share/nginx/html
+ENV NGINX_ENVSUBST_OUTPUT_DIR=/tmp/nginx NGINX_ENVSUBST_FILTER="^(BACKEND_PORT|FRONTEND_PORT)$"
+RUN mkdir -p /tmp/nginx && chown 101:101 /tmp/nginx
 USER 101
-EXPOSE 8080
-CMD ["nginx", "-g", "daemon off;"]
+CMD ["nginx", "-c", "/tmp/nginx/nginx.conf", "-g", "daemon off;"]
