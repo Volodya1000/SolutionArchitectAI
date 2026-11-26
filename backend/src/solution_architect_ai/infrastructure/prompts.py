@@ -5,10 +5,12 @@ from solution_architect_ai.application.prompts import SYSTEM_PROMPT
 from solution_architect_ai.domain.messages import MessageRole
 
 
-def build_messages(messages: list[MessageView]) -> list[BaseMessage]:
-    inputs: list[BaseMessage] = [SystemMessage(content=SYSTEM_PROMPT)]
+def build_messages(messages: list[MessageView], *, chat_prompt: bool = True) -> list[BaseMessage]:
+    inputs: list[BaseMessage] = [SystemMessage(content=SYSTEM_PROMPT)] if chat_prompt else []
     inputs.extend(
-        HumanMessage(content=item.content)
+        SystemMessage(content=item.content)
+        if item.role == MessageRole.SYSTEM
+        else HumanMessage(content=item.content)
         if item.role == MessageRole.USER
         else AIMessage(content=item.content)
         for item in messages

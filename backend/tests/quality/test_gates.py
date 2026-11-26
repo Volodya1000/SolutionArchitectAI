@@ -100,7 +100,13 @@ def constructor_calls(tree: ast.AST, names: set[str]) -> Iterator[ast.Call]:
 
 def test_resource_construction_stays_in_composition_and_scoped_factories() -> None:
     source: Path = Path(__file__).parents[2] / "src/solution_architect_ai"
-    owners: set[str] = {"di/providers.py", "di/migrate.py", "persistence/factory.py"}
+    owners: set[str] = {
+        "di/providers.py",
+        "di/migrate.py",
+        "di/documents.py",
+        "di/extraction.py",
+        "persistence/factory.py",
+    }
     constructors: set[str] = {
         "AsyncSession",
         "create_async_engine",
