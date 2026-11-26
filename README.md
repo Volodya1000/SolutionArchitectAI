@@ -65,6 +65,15 @@ LM Studio должен обслуживать API на порту 1234. Этот
 
 Frontend использует Node 26.13.1 и pnpm 12.21.0, backend — Python 3.13.9 и uv 0.13.9. Установка: `pnpm.cmd --dir frontend install --frozen-lockfile`, `uv sync --locked --project backend`. Список обязательных gates и точные команды находятся в [workflow](.github/workflows/quality.yml); существующая PDF-сборка сохранена.
 
+Локальные hooks устанавливаются воспроизводимо из корня:
+
+```powershell
+uv sync --locked --project backend
+uv run --locked --project backend python -m tools.quality setup
+```
+
+После установки commit запускает `fast` (статический анализ, форматирование, архитектура и unit-тесты), push — `full` с аудитами, integration, E2E и отказами runtime. CI вызывает тот же `full`. Можно запускать эти режимы вручную через `uv run --locked --project backend python -m tools.quality fast` / `… full`. Полная проверка использует временный fake-стенд с собственными портами и данными; работающий чат с LM Studio/vLLM сохраняется. Подробнее — [quality-and-testing](docs/technical/quality-and-testing.md#локальные-hooks-и-ci).
+
 Backend integration-тесты требуют отдельную БД и fake endpoint:
 
 ```powershell

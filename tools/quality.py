@@ -9,7 +9,7 @@ import subprocess  # nosec B404
 import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
-from typing import Final, Literal
+from typing import Final
 
 from tools.quality_runtime import RuntimeEnvironment, isolated_runtime
 
@@ -17,7 +17,6 @@ ROOT: Final[Path] = Path(__file__).resolve().parents[1]
 PYTHON: Final[str] = sys.executable
 TARGETS: Final[tuple[str, ...]] = ("backend/src", "backend/tests", "tools")
 CONFIG: Final[str] = "backend/pyproject.toml"
-type Mode = Literal["setup", "fast", "full"]
 
 
 def run(title: str, arguments: Sequence[str], env: Mapping[str, str], *, cwd: Path = ROOT) -> None:
@@ -94,19 +93,7 @@ def backend_static(env: dict[str, str]) -> None:
         python_tool("mypy", "--config-file", CONFIG, *TARGETS),
         env,
     )
-    run("Pylint source", python_tool("pylint", "--rcfile", CONFIG, "backend/src"), env)
-    run(
-        "Pylint tests and commands",
-        python_tool(
-            "pylint",
-            "--rcfile",
-            CONFIG,
-            "--disable=redefined-outer-name,protected-access",
-            "backend/tests",
-            "tools",
-        ),
-        env,
-    )
+    run("Pylint source, tests and tools", python_tool("pylint", "--rcfile", CONFIG, *TARGETS), env)
     run("Bandit source", python_tool("bandit", "-c", CONFIG, "-r", "backend/src", "-q"), env)
     run(
         "Bandit tests and tools",
@@ -162,6 +149,8 @@ def fast(env: dict[str, str]) -> None:
             "backend/tests/unit",
             "backend/tests/quality/test_quality_runtime.py",
             "--disable-socket",
+            "--allow-hosts=127.0.0.1,localhost",
+            "--allow-unix-socket",
         ),
         env,
     )

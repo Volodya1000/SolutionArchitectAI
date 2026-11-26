@@ -4,8 +4,6 @@ from typing import Final
 
 import pytest
 from dishka import AsyncContainer, make_async_container
-from solution_architect_ai.application.dto import ChatView
-from solution_architect_ai.application.errors import StorageUnavailable
 from sqlalchemy import URL, AsyncAdaptedQueuePool, Pool
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
@@ -14,6 +12,8 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from solution_architect_ai.application.dto import ChatView
+from solution_architect_ai.application.errors import StorageUnavailable
 from solution_architect_ai.application.ports import ChatStore, StoreFactory
 from solution_architect_ai.config.settings import Settings
 from solution_architect_ai.di.main import bootstrap

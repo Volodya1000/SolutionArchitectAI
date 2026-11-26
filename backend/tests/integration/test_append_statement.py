@@ -27,8 +27,8 @@ class Running:
     engine: AsyncEngine
 
 
-@pytest.fixture
-async def running() -> AsyncIterator[Running]:
+@pytest.fixture(name="running")
+async def running_store() -> AsyncIterator[Running]:
     settings: Settings = bootstrap()
     assert settings.database.database.endswith("_test")
     container: AsyncContainer = make_async_container(AppProvider(), context={Settings: settings})

@@ -22,7 +22,6 @@ from solution_architect_ai.application.dto import (
     RunSnapshotEvent,
     RunView,
 )
-
 from solution_architect_ai.domain.runs import RunErrorCode, RunStatus
 
 ROOT: Final[Path] = Path(__file__).resolve().parents[1]

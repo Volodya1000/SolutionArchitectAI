@@ -6,6 +6,10 @@ from uuid import UUID, uuid4
 
 import pytest
 from dishka import AsyncContainer, make_async_container
+from sqlalchemy import Result, Select, event, select, text
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+
 from solution_architect_ai.application.dto import (
     ChatSnapshot,
     ChatView,
@@ -16,10 +20,6 @@ from solution_architect_ai.application.dto import (
     StartRun,
 )
 from solution_architect_ai.application.errors import Missing, StorageUnavailable
-from sqlalchemy import Result, Select, event, select, text
-from sqlalchemy.exc import IntegrityError
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
-
 from solution_architect_ai.application.ports import ChatStore, StoreFactory
 from solution_architect_ai.config.settings import Settings
 from solution_architect_ai.di.main import bootstrap

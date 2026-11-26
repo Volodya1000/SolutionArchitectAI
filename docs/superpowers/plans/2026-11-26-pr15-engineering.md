@@ -37,3 +37,21 @@ Execution:
 - Baseline: source branch is clean at a4e092d; LM Studio API runs on 1234 but
   had no loaded model; the app was configured for fake-chat.
 - Local ignored .env now selects existing Qwen2.5 Coder 14B, context 4096.
+
+- Real-model UI exchange completed through frontend -> backend -> LM Studio;
+  the live profile remains on Qwen and is available at port 8080.
+- Backend and baseline typing commits integrated; compatibility contracts module
+  removed. Domain conflict errors also live in domain/errors.py.
+- SQL append measured four statements before, one after, retaining per-delta
+  transactions. No batching delay or additional infrastructure was introduced.
+- Isolated Compose was exercised with automatic Docker-published ports; fake and
+  real-model apps answered simultaneously and only temporary volumes were removed.
+- GitHub main is unprotected with no required checks/rulesets; PDF paths can be
+  filtered without a pending required PDF check. Branch policy was not changed.
+
+- Shared fast runner passed all static/frontend checks, 22 Vitest and 42 fast
+  Python tests. Windows asyncio requires loopback socket pairs; socket policy
+  allows localhost/Unix sockets while external endpoints remain blocked.
+- Both Git hooks are installed. A staged F821 probe was rejected by actual
+  git commit and a push to a temporary local bare remote; HEAD and the remote
+  stayed unchanged. The probe was removed without bypassing either hook.

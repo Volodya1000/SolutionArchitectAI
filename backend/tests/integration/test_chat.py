@@ -7,8 +7,8 @@ from uuid import UUID, uuid4
 import httpx
 import pytest
 from fastapi import FastAPI
-from solution_architect_ai.application.dto import ChatSnapshot, ChatView, Preferences, RunView
 
+from solution_architect_ai.application.dto import ChatSnapshot, ChatView, Preferences, RunView
 from solution_architect_ai.di.main import create_app
 from solution_architect_ai.domain.runs import RunStatus
 

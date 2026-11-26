@@ -49,7 +49,8 @@ export const envelopeSchema = z.object({
 export type Run = z.infer<typeof runSchema>;
 export type Snapshot = z.infer<typeof snapshotSchema>;
 export type Message = z.infer<typeof messageSchema>;
-export const terminal = (run: Run) => ['completed', 'failed', 'cancelled'].includes(run.status);
+const terminalStatuses: ReadonlySet<Run['status']> = new Set(['completed', 'failed', 'cancelled']);
+export const terminal = (run: Run) => terminalStatuses.has(run.status);
 
 export async function request<T>(
   path: string,

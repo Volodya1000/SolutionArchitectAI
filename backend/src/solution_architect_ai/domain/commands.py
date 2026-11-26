@@ -1,8 +1,9 @@
 from collections.abc import Sequence
 from dataclasses import dataclass
 from hashlib import sha256
-from typing import Literal
 from uuid import UUID
+
+from solution_architect_ai.domain.errors import StartConflict
 
 
 @dataclass(frozen=True)
@@ -10,12 +11,6 @@ class StartCandidate:
     run_id: UUID
     command_id: UUID
     payload_digest: str
-
-
-class StartConflict(ValueError):
-    def __init__(self, reason: Literal["command_payload_conflict", "chat_has_active_run"]) -> None:
-        super().__init__(reason)
-        self.reason: Literal["command_payload_conflict", "chat_has_active_run"] = reason
 
 
 def content_digest(content: str) -> str:

@@ -13,11 +13,11 @@ from solution_architect_ai.application.dto import (
 from solution_architect_ai.application.errors import Conflict, Missing
 from solution_architect_ai.domain.commands import (
     StartCandidate,
-    StartConflict,
     content_digest,
     message_positions,
     replay_run,
 )
+from solution_architect_ai.domain.errors import StartConflict
 from solution_architect_ai.domain.runs import (
     ACTIVE_STATUSES,
     RunErrorCode,

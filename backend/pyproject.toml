@@ -36,6 +36,7 @@ python_version = "3.13"
 strict = true
 disallow_any_explicit = true
 explicit_package_bases = true
+mypy_path = ["$MYPY_CONFIG_FILE_DIR/src", "$MYPY_CONFIG_FILE_DIR/.."]
 plugins = ["pydantic.mypy"]
 
 [tool.ruff]
