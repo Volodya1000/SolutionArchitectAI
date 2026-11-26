@@ -4,9 +4,9 @@
 
 ## Минимальная поставка
 
-`docker-compose.yml` поставляет frontend, backend, PostgreSQL, внутренний PlantUML Server и fake LLM; `docker-compose.vllm.yml` добавляет vLLM. PostgreSQL, Git и файлы имеют отдельные volumes. Git CLI включён в backend-образ; предметные Git/file/S3-адаптеры относятся к следующим этапам.
+`docker-compose.yml` поставляет frontend, backend, PostgreSQL, внутренний PlantUML Server и fake LLM; `docker-compose.vllm.yml` добавляет vLLM. PostgreSQL, Git и файлы имеют отдельные volumes. LocalFileStorage хранит неизменяемые оригиналы, PostgreSQL — метаданные версий, разбор, A-01 и checkpoints LangGraph. Git CLI включён в backend-образ; предметные Git/S3-адаптеры относятся к следующим этапам.
 
-Основной локальный запуск после реализации:
+Основной локальный запуск:
 
 ```sh
 docker compose -f docker-compose.yml up -d --build --wait
@@ -26,10 +26,10 @@ docker compose -f docker-compose.yml -f docker-compose.vllm.yml up -d
 | Backend | FastAPI, управляемые runs и адаптеры; рендеринг через внутренний HTTP | Один worker в MVP; temp отдельно от durable data |
 | PostgreSQL | Операционное состояние, сообщения, runs, journal и checkpoints графа | Отдельный volume, Alembic migrations |
 | PlantUML Server | Локальная генерация SVG, доступ только backend | Без предметных данных, временный каталог и лимиты ресурсов |
-| Git volume | Один общий архитектурный repo на пространство | Все refs/objects и незавершённые staging операции |
-| File storage | Immutable документы и вложения | Local volume либо S3 с политикой удержания версий |
+| Git volume | Резерв для будущего общего архитектурного repo | Предметная запись в Git в PR 2 не выполняется |
+| File storage | Immutable документы и вложения до 20 MiB | Local volume с проверкой SHA-256/размера; S3 пока не реализован |
 
-Redis, task broker, Kubernetes, vector database и LangGraph не нужны для первого сценария чата. LangGraph и PostgreSQL checkpointer добавляются с первым агентным сценарием ожидания ответа человека. Kafka и 2FA из примера — свойства проектируемой системы, не сервисы помощника. PostgreSQL помощника при этом обязателен.
+LangGraph StateGraph в PR 2 выполняет подготовку контекста, извлечение по частям, объединение, проверку и сохранение через Application. AsyncPostgresSaver сохраняет промежуточное выполнение; ожидание ответа человека добавляется в PR 3. Обычный чат работает без графа. Redis, task broker, Kubernetes и vector database не требуются. Kafka и 2FA из примера — свойства проектируемой системы, не сервисы помощника.
 
 ## Сеть и локальная разработка
 
@@ -89,9 +89,9 @@ PlantUML воспроизводит публикуемую схему по ко�
 
 ### Проверенный профиль PR 1
 
-На RTX 3060 12 ГБ проверены существующие веса `Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf` (8,37 GiB). Основной режим — LM Studio 0.4.13+1, CUDA12 llama.cpp 2.83.0, model ID `qwen2.5-coder-14b-instruct`, контекст 4096, GPU offload max, parallel 1. API `http://host.docker.internal:1234/v1` доступен из backend-контейнера. Команды запуска — в [README](../../README.md#локальный-запуск-pr-1).
+На RTX 3060 12 ГБ проверены существующие веса `Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf` (8,37 GiB). Основной режим — LM Studio 0.4.13+1, CUDA12 llama.cpp 2.83.0, model ID `qwen2.5-coder-14b-instruct`, контекст 4096, GPU offload max, parallel 1. API `http://host.docker.internal:1234/v1` доступен из backend-контейнера. Команды запуска — в [README](../../README.md#локальный-запуск).
 
-Отдельно проверен vLLM **0.21.0**, закреплённый digest в Compose: те же GGUF, fp16, eager, контекст 1024, одна последовательность, GPU utilization 0.90. Реальный SSE-запрос завершился `stop`, 49 фрагментов за 8,31 с; сервер сообщил 8,61 GiB весов и 2,03 GiB KV cache, `nvidia-smi` — 11291 MiB суммарно. LM Studio перед запуском vLLM освобождает GPU. Профиль 0.92 не поместился в доступную VRAM. Это профиль smoke, а не оценка качества архитектурных ответов.
+В PR 1 отдельно проверен обычный чат через vLLM **0.21.0**, закреплённый digest в Compose: те же GGUF, fp16, eager, контекст 1024, одна последовательность, GPU utilization 0.90. Реальный SSE-запрос завершился `stop`, 49 фрагментов за 8,31 с; сервер сообщил 8,61 GiB весов и 2,03 GiB KV cache, `nvidia-smi` — 11291 MiB суммарно. LM Studio перед запуском vLLM освобождает GPU. Профиль 0.92 не поместился в доступную VRAM. Этот результат не подтверждает structured output и извлечение PR 2; окно 1024 проверяется отдельно с промптом, схемой и резервом ответа.
 
 Подготовьте пути к **уже существующим** весам; helper загружает только 11,5 MB tokenizer/config/license закреплённой ревизии с проверкой SHA256:
 
@@ -100,10 +100,51 @@ uv run --project backend python tools/prepare_vllm_tokenizer.py
 $env:VLLM_MODEL_DIRECTORY = 'D:/path/to/Qwen2.5-Coder-14B-Instruct-GGUF'
 $env:VLLM_GGUF_FILENAME = 'Qwen2.5-Coder-14B-Instruct-Q4_K_M.gguf'
 $env:VLLM_TOKENIZER_DIRECTORY = (Resolve-Path '.build/vllm-tokenizer').Path
+# PR 2: проверенный профиль для полной схемы требований:
+$env:VLLM_CONTEXT_WINDOW = '4096'
+$env:VLLM_OUTPUT_LIMIT = '1536'
+$env:SAA_LLM__STRUCTURED_MODE = 'native_json_schema'
 docker compose -f docker-compose.yml -f docker-compose.vllm.yml up -d --wait
 ```
 
 Образ vLLM требует примерно 9,2 GiB загрузки и дополнительное место после распаковки. Веса helper и Compose не скачивают. Перед возвращением к LM Studio остановите `vllm` и запустите основной Compose с профилем LM Studio. Fake остаётся профилем обычного CI; реальные GPU smoke выполняются отдельно.
+
+### Проверки извлечения PR 2
+
+В LM Studio на указанной Qwen проверены явные `native_json_schema` и `json_text` со строгой Pydantic-валидацией. Режим выбирается через `SAA_LLM__STRUCTURED_MODE`; отказ native не переключает формат автоматически. `config/app.yaml` задаёт контекст 4096, output limit 768, служебный резерв 256 и `approximate_chars_per_token=2.0`. Это приблизительная оценка: недостаточный бюджет возвращает `context_too_large`, а обрезанный ответ не становится успешным результатом. Профиль, включая лимиты повторов, сохраняется с извлечением без credentials.
+
+Для повторной проверки текущего локального endpoint из PowerShell:
+
+```powershell
+New-Item -ItemType Directory -Force .build | Out-Null
+uv run --locked --project backend python -m tools.structured_smoke --base-url http://127.0.0.1:1234/v1 --model qwen2.5-coder-14b-instruct --context-window 4096 --output-limit 768 --output .build/lmstudio-structured.json
+$operationId = [guid]::NewGuid()
+uv run --locked --project backend python -m tools.extraction_smoke --source docs/examples/reporting-system.md --operation-id $operationId --output .build/reporting.run.json --expected-model qwen2.5-coder-14b-instruct
+```
+
+Первый smoke проверяет оба формата, контекст, timeout и локальную отмену; он не меняет веса или настройки сервера. Второй обращается к работающему приложению на [localhost:8080](http://localhost:8080), загружает источник и сохраняет результат A-01. Для другого порта задайте `--base-url`. Сохраните переданный `--operation-id <UUID>`, чтобы повторить ту же операцию без нового документа и извлечения. Новый UUID создаёт отдельный запуск; для анализа новой редакции существующего документа используйте историю версий в UI.
+
+Смысловые Precision/Recall/F1 вычисляются по ручному сопоставлению UUID кандидатов с ID размеченного эталона, а техническая корректность ссылок и полнота фрагментов — отдельно:
+
+```powershell
+uv run --locked --project backend python -m tools.evaluate_extraction --run .build/reporting.run.json --gold backend/tests/fixtures/pr2/reporting-system.gold.json --mapping .build/reporting.mapping.json --output .build/reporting.evaluation.json
+```
+
+В `reporting.mapping.json` каждый UUID кандидата должен быть ключом, а значение — массивом подходящих ID эталона; пустой массив означает ложное извлечение. Разметка `provisional` требует проверки архитектором и не является утверждённым эталоном. В модель передаётся исходный `reporting-system.md`, а не `expected-result.md`. Успешная валидация JSON и полное текстовое покрытие не доказывают смысловую полноту; при нескольких частях сохраняется `cross_part_semantic_review_required` для ручной проверки межсекционных связей и противоречий.
+
+Измерения PR 2 от 26.11.2026, Qwen2.5 Coder 14B Q4_K_M, LM Studio, контекст 4096, резерв 256, приблизительный счётчик 2 символа/токен. Каждый кандидат сопоставлен Codex отдельно с предварительной разметкой; это не человеческое согласование и не установленный порог качества. Семантические P/R/F1 учитывают полные условия утверждения; ошибки категории отмечаются отдельно.
+
+| Источник / режим / ответ | Precision / Recall / F1 | Точные ссылки | Фрагменты / части | Запросы / секунды |
+| --- | --- | --- | --- | --- |
+| reporting-system / native / 1536 | 65,75% / 84,16% / 73,83% | 67/73 | 62/62 · 23/23 | 23 / 433,14 |
+| BRD-пример / JSON-текст / 768 | 86,96% / 100% / 93,02% | 24/24 | 40/40 · 13/13 | 15 / 131,38 |
+| adversarial / native / 1536 | 38,46% / 55,56% / 45,45% | 15/16 | 25/25 · 8/8 | 8 / 76,70 |
+
+Основной пример дал 73 кандидата и 85/101 покрытых смысловых единиц; 5 выдуманных пробелов, неполные составные формулировки, ошибки категорий (32/48 сопоставленных кандидатов) и английская нормализация требуют проверки человеком. Шесть изменённых цитат получили `unverified`; независимая проверка не обнаружила расхождений SHA-256, fragment ID, локаторов или статуса backend. В adversarial инструкции публикации credentials не исполнены, но появились ложные метазамечания и пропущено противоречие даже внутри одной части. Это ограничение смыслового качества модели, а не успешная проверка противоречий.
+
+В основном native-прогоне сохранены 23 валидные части на 23 запроса, без corrections/network failures. Для BRD — 13/15 как нижняя наблюдаемая доля по сохранённым частям; точное число полученных ответов старый снимок не содержит. Сравнение не является контролируемым бенчмарком: режимы, лимиты ответа и разбиение различаются.
+
+Оба сервера отдельно проверены на небольшой схеме и полной `RequirementsExtraction`: LM Studio 4096/768 и vLLM 4096/1536 дали по 4/4 валидированных ответов в двух явных режимах без повторов. На vLLM 1024/128 малая схема проходит, полная получает `context_too_large` до HTTP; это ограничение профиля, не отказ сервера поддерживать JSON Schema. vLLM 0.21.0 с прежними весами, fp16/eager/utilization 0.90 и окном 4096 занял 11320 MiB из 12288; LM Studio — 9284 MiB. Новые веса не скачивались. Timeout 1 ms и локальная отмена проверены; timeout завершался до отправки HTTP, отмена подтверждает освобождение клиентской задачи, не остановку GPU сервера. Корректирующая JSON-попытка на LM Studio дала валидный ответ за 2 запроса, 1 correction.
 
 ## Конфигурация и ограничения адаптеров
 
@@ -113,7 +154,9 @@ Backend непривилегирован, пишет в data/temp. Git CLI по�
 
 ## Recovery и резервирование
 
-Shutdown останавливает приём новых runs, завершает короткую CAS-публикацию или оставляет journal для recovery, отменяет LLM/рендер с cleanup и конечным grace period, закрывает SQL/HTTP ресурсы. Interrupted run не объявляется completed. Recovery сопоставляет journal, refs/operation_id и immutable file versions; неопределённость блокирует запись. Протокол не обещает распределённую транзакцию.
+В PR 2 оригинал сначала записывается во временный `.pending`, проверяется и публикуется атомарно без перезаписи; SQL-журнал связывает операцию с неизменяемой версией. `GET /api/document-uploads/{operation_id}` показывает состояние, `POST /api/document-uploads/recover` сверяет зарегистрированные незавершённые операции с файлами. При отсутствии опубликованного файла повторяется исходная загрузка с тем же operation_id и содержимым. Сбой до регистрации intent может оставить файл в `.pending`: такие остатки требуют отдельной диагностики и автоматически не удаляются. Полноценного garbage collector нет.
+
+При shutdown извлечение сохраняет уже обработанные части и общий расход запросов. После рестарта worker возобновляет незавершённый граф из PostgreSQL checkpoints, повтор узла не дублирует сохранённые требования. Истёкший deadline, изменённый профиль или потерянная версия дают явный отказ; старая версия не заменяется актуальной. Отмена сохраняет доступные частичные кандидаты с неполным покрытием. Обычный чат после прерывания остаётся failed/incomplete. SQL и файловая система не имеют общей транзакции; публикация архитектурной модели в Git и её CAS-протокол остаются последующими этапами.
 
 Backup охватывает PostgreSQL, весь Git repo и retained file versions с согласованным checkpoint/manifest. Один Git — не backup диска. Для минимального согласованного backup приостанавливаем записи/GC, выполняем DB dump и snapshot Git/files, записываем hashes и журнал, затем возобновляем. Restore на отдельном окружении проверяет ссылки на источники и незавершённые операции, а не только запуск контейнеров. Секреты резервируются отдельно, traces имеют доступ как исходники.
 

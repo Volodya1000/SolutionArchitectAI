@@ -3,7 +3,7 @@ from hashlib import sha256
 from io import BytesIO
 from typing import Final
 from uuid import UUID
-from zipfile import BadZipFile, ZipFile, ZipInfo
+from zipfile import ZIP_DEFLATED, ZIP_STORED, BadZipFile, ZipFile, ZipInfo
 
 from docx import Document
 from docx.document import Document as DocxDocument
@@ -67,6 +67,8 @@ def validate_zip(archive: ZipFile) -> None:
 
 
 def validate_entry(entry: ZipInfo) -> None:
+    if entry.compress_type not in (ZIP_STORED, ZIP_DEFLATED):
+        raise DocumentFailure(DocumentErrorCode.UNSUPPORTED_CONTENT)
     if entry.flag_bits & 1:
         raise DocumentFailure(DocumentErrorCode.UNSUPPORTED_CONTENT)
     if entry.file_size > max(entry.compress_size, 1) * 500:
