@@ -150,7 +150,8 @@ function Composer({ state, chatId }: { state: ChatState; chatId: string }) {
           className="composer-input"
           onChange={(event) => sessionStorage.setItem(`draft:${chatId}`, event.target.value)}
           onKeyDown={(event) => {
-            if (tooLong && event.key === 'Enter' && !event.shiftKey) event.preventDefault();
+            if ((tooLong || state.send.isPending) && event.key === 'Enter' && !event.shiftKey)
+              event.preventDefault();
           }}
         />
         <div className="composer-actions">

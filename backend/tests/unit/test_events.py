@@ -38,7 +38,7 @@ def test_snapshot_contract_serializes_nested_types_and_rejects_unknown_kind() ->
     assert payload["run_id"] == str(run.id)
     assert payload["payload"]["created_at"] == "2026-11-26T00:00:00Z"
     with pytest.raises(ValidationError):
-        contracts.RunSnapshotEvent.model_validate({**payload, "kind": "snapshop"})
+        contracts.RunSnapshotEvent.model_validate({**payload, "kind": "unknown"})
 
 
 @pytest.mark.anyio

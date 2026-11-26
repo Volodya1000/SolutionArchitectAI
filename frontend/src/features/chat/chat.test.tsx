@@ -106,6 +106,8 @@ it.each(['unchanged', 'before retry', 'during retry'])(
     if (edit === 'during retry') {
       await userEvent.clear(input);
       await userEvent.type(input, 'Новый вопрос');
+      await userEvent.keyboard('{Enter}');
+      expect(commands).toHaveLength(2);
       confirm();
     }
     await waitFor(() => expect(screen.getByText('Сохранённый ответ')).toBeVisible());
@@ -160,6 +162,14 @@ it('keeps cancellation attached to its answer after a later completed run', asyn
   const answers = screen.getAllByRole('article', { name: 'Ответ ассистента' });
   expect(within(answers[0]!).getByRole('status')).toHaveTextContent('Генерация отменена');
   expect(within(answers[1]!).getByRole('status')).toHaveTextContent('Ответ завершён');
+});
+
+it.each(['Я', '😀'])('accepts exactly 16000 Unicode characters (%s)', async (character) => {
+  show();
+  const input = await screen.findByRole('textbox', { name: 'Сообщение' });
+  fireEvent.change(input, { target: { value: character.repeat(16000) } });
+  expect(screen.getByRole('button', { name: 'Отправить сообщение' })).toBeEnabled();
+  expect(input).toHaveAttribute('aria-invalid', 'false');
 });
 
 it('keeps oversized input and explains the limit before sending', async () => {
