@@ -5,9 +5,18 @@ import pytest
 from pydantic import ValidationError
 
 from solution_architect_ai.application.dto import MessageView
-from solution_architect_ai.application.extraction_context import ContextBuilder, ContextPolicy
+from solution_architect_ai.application.extraction_context import (
+    ContextBuilder,
+    ContextPack,
+    ContextPart,
+    ContextPolicy,
+)
 from solution_architect_ai.application.extraction_errors import ContextTooLarge
-from solution_architect_ai.application.extraction_models import Evidence, ExtractedRequirement
+from solution_architect_ai.application.extraction_models import (
+    Evidence,
+    ExtractedRequirement,
+    SourceRef,
+)
 from solution_architect_ai.application.extraction_sources import verify_evidence
 from solution_architect_ai.domain.documents import (
     DocumentFragment,
@@ -40,7 +49,7 @@ def parsed(text: str) -> ParsedDocument:
 def test_context_covers_every_character_and_keeps_sources_in_user_message() -> None:
     document: ParsedDocument = parsed("# Sales\n" + "Sales must be retained.\n" * 500)
     builder: ContextBuilder = ContextBuilder(CharacterCounter(), ContextPolicy(6500, 512, 64))
-    pack = builder.build((document,), "reporting")
+    pack: ContextPack = builder.build((document,), "reporting")
     assert len(pack.parts) > 1
     assert "".join(piece.text for part in pack.parts for piece in part.fragments) == document.text
     assert pack.total_fragments == 1
@@ -57,20 +66,22 @@ def test_context_rejects_schema_and_prompt_that_leave_no_room() -> None:
 
 def test_source_requires_quote_in_the_exact_sent_slice_and_known_id() -> None:
     document: ParsedDocument = parsed("Allowed quotation.\n" + "Other evidence.\n" * 500)
-    pack = ContextBuilder(CharacterCounter(), ContextPolicy(6500, 512, 64)).build((document,), "")
-    first = pack.parts[0]
+    pack: ContextPack = ContextBuilder(CharacterCounter(), ContextPolicy(6500, 512, 64)).build(
+        (document,), ""
+    )
+    first: ContextPart = pack.parts[0]
     fragment_id: UUID = document.fragments[0].fragment_id
-    valid = verify_evidence(
+    valid: SourceRef = verify_evidence(
         Evidence(fragment_id=str(fragment_id), quote="Allowed quotation."), first
     )
     assert valid.status == "verified"
     assert valid.version_id == document.version_id
-    invented = verify_evidence(
+    invented: SourceRef = verify_evidence(
         Evidence(fragment_id=str(uuid4()), quote="Allowed quotation."), first
     )
     assert invented.status == "unverified"
     assert invented.reason == "fragment_not_in_context"
-    absent = verify_evidence(
+    absent: SourceRef = verify_evidence(
         Evidence(fragment_id=str(fragment_id), quote="Invented quotation"), first
     )
     assert absent.status == "unverified"
@@ -88,3 +99,12 @@ def test_requirement_schema_rejects_extra_fields_and_empty_evidence() -> None:
                 "approved": True,
             }
         )
+
+
+def test_context_partitions_for_response_budget_even_when_input_would_fit() -> None:
+    document: ParsedDocument = parsed("Система должна сохранять все отчёты.\n" * 20)
+    builder: ContextBuilder = ContextBuilder(CharacterCounter(), ContextPolicy(20000, 512, 64))
+    pack: ContextPack = builder.build((document,), "BRD")
+    assert len(pack.parts) > 1
+    assert "".join(piece.text for part in pack.parts for piece in part.fragments) == document.text
+    assert all(builder.response_estimate(part.fragments) + 64 <= 512 for part in pack.parts)

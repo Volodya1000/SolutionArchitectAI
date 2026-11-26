@@ -1,6 +1,7 @@
 from collections.abc import Iterator
 from hashlib import sha256
 from io import BytesIO
+from typing import Final
 from uuid import UUID
 from zipfile import BadZipFile, ZipFile, ZipInfo
 
@@ -22,6 +23,25 @@ from solution_architect_ai.infrastructure.document_fragments import (
     PARSER_VERSION,
     collect_fragments,
     fragment,
+)
+
+_UNSUPPORTED_TAGS: Final[tuple[str, ...]] = (
+    "w:ins",
+    "w:del",
+    "w:txbxContent",
+    "w:drawing",
+    "w:object",
+    "w:altChunk",
+    "w:sdt",
+    "w:customXml",
+    "w:smartTag",
+    "w:subDoc",
+    "w:moveFrom",
+    "w:moveTo",
+    "w:fldSimple",
+    "w:instrText",
+    "w:sym",
+    "w:pict",
 )
 
 
@@ -47,6 +67,8 @@ def validate_zip(archive: ZipFile) -> None:
 
 
 def validate_entry(entry: ZipInfo) -> None:
+    if entry.flag_bits & 1:
+        raise DocumentFailure(DocumentErrorCode.UNSUPPORTED_CONTENT)
     if entry.file_size > max(entry.compress_size, 1) * 500:
         raise DocumentFailure(DocumentErrorCode.TOO_LARGE)
     unsupported: tuple[str, ...] = (
@@ -83,26 +105,8 @@ def parse_docx(file_id: UUID, version_id: UUID, content: bytes) -> ParsedDocumen
 
 
 def reject_unsupported(document: DocxDocument) -> None:
-    tags: tuple[str, ...] = (
-        "w:ins",
-        "w:del",
-        "w:txbxContent",
-        "w:drawing",
-        "w:object",
-        "w:altChunk",
-        "w:sdt",
-        "w:customXml",
-        "w:smartTag",
-        "w:subDoc",
-        "w:moveFrom",
-        "w:moveTo",
-        "w:fldSimple",
-        "w:instrText",
-        "w:sym",
-        "w:pict",
-    )
     tag: str
-    for tag in tags:
+    for tag in _UNSUPPORTED_TAGS:
         if next(document.element.iter(qn(tag)), None) is not None:
             raise DocumentFailure(DocumentErrorCode.UNSUPPORTED_CONTENT)
     if any(header_has_content(header) for header in headers(document)):
@@ -110,6 +114,8 @@ def reject_unsupported(document: DocxDocument) -> None:
 
 
 def header_has_content(header: _Header | _Footer) -> bool:
+    if any(next(header.part.element.iter(qn(tag)), None) is not None for tag in _UNSUPPORTED_TAGS):
+        return True
     return any(
         isinstance(block, Table) or block.text.strip() for block in header.iter_inner_content()
     )

@@ -3,9 +3,11 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from uuid import UUID
 
+from pydantic import ValidationError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from solution_architect_ai.application.document_errors import DocumentErrorCode, DocumentFailure
 from solution_architect_ai.application.document_ports import DocumentStore
 from solution_architect_ai.application.errors import StorageUnavailable
 from solution_architect_ai.persistence.document_store import SqlAlchemyDocumentStore
@@ -25,5 +27,7 @@ class SqlAlchemyDocumentStoreFactory:
             session: AsyncSession
             async with asyncio.timeout(5), self.sessions() as session, session.begin():
                 yield SqlAlchemyDocumentStore(session, task_id=self.task_id)
+        except ValidationError:
+            raise DocumentFailure(DocumentErrorCode.CORRUPT_METADATA) from None
         except (SQLAlchemyError, TimeoutError):
             raise StorageUnavailable("database_unavailable") from None

@@ -84,14 +84,24 @@ class ExtractionProvider(Provider):
                 profile.retry.backoff_max,
                 profile.retry.jitter,
             )
-            yield StructuredOutputGenerator(LangChainStructuredModel(model), policy)
+            yield StructuredOutputGenerator(
+                LangChainStructuredModel(model),
+                policy,
+                LangChainTokenCounter(profile.approximate_chars_per_token, chat_prompt=False),
+            )
 
     @provide(scope=Scope.APP)
     def context_builder(self, settings: Settings) -> ContextBuilder:
         profile: LLMSettings = settings.llm
         return ContextBuilder(
             LangChainTokenCounter(profile.approximate_chars_per_token, chat_prompt=False),
-            ContextPolicy(profile.context_window, profile.output_limit, profile.service_tokens),
+            ContextPolicy(
+                profile.context_window,
+                profile.output_limit,
+                profile.service_tokens,
+                StructuredMode(profile.structured_mode),
+                profile.retry.validation_retries,
+            ),
         )
 
     @provide(scope=Scope.APP)
@@ -107,6 +117,7 @@ class ExtractionProvider(Provider):
                 StructuredMode(profile.structured_mode),
                 profile.context_window,
                 profile.output_limit,
+                profile.service_tokens,
             ),
             profile_digest(settings),
             DEFAULT_TASK_ID,

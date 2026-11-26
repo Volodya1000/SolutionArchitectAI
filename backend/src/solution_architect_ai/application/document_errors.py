@@ -17,6 +17,7 @@ class DocumentErrorCode(StrEnum):
     NO_TEXT = "document_has_no_text_layer"
     UNSUPPORTED_CONTENT = "unsupported_document_content"
     CORRUPT_PARSE = "parsed_document_corrupt"
+    CORRUPT_METADATA = "document_metadata_corrupt"
 
 
 class DocumentFailure(Exception):

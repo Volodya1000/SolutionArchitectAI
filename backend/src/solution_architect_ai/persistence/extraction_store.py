@@ -1,13 +1,18 @@
 import json
+import logging
 from datetime import UTC, datetime
 from hashlib import sha256
+from typing import Final
 from uuid import UUID, uuid4
 
+from pydantic import ValidationError
 from sqlalchemy import ScalarResult, Select, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from solution_architect_ai.application.document_errors import DocumentErrorCode
 from solution_architect_ai.application.errors import Conflict, Missing
 from solution_architect_ai.application.extraction_agent import merge_parts
+from solution_architect_ai.application.extraction_errors import StoredExtractionCorrupt
 from solution_architect_ai.application.extraction_models import (
     CoverageView,
     ExtractionProgress,
@@ -19,7 +24,7 @@ from solution_architect_ai.application.extraction_models import (
 )
 from solution_architect_ai.application.extraction_prompt import CONTRACT_VERSION, PROMPT_VERSION
 from solution_architect_ai.application.structured_models import BudgetUsage
-from solution_architect_ai.domain.requirements import CoverageWarning
+from solution_architect_ai.domain.requirements import CoverageWarning, EvidenceStatus
 from solution_architect_ai.domain.runs import ACTIVE_STATUSES, RunStatus, resolve_transition
 from solution_architect_ai.persistence.extraction_models import (
     ExtractionPartRow,
@@ -28,6 +33,9 @@ from solution_architect_ai.persistence.extraction_models import (
     RequirementRow,
 )
 from solution_architect_ai.persistence.queries import DEFAULT_TASK_ID
+
+logger: logging.Logger = logging.getLogger(__name__)
+_DOCUMENT_ERRORS: Final[frozenset[str]] = frozenset(code.value for code in DocumentErrorCode)
 
 
 def extraction_view(row: ExtractionRow) -> ExtractionView:
@@ -117,6 +125,9 @@ class SqlAlchemyExtractionStore:
     async def config_digest(self, run_id: UUID) -> str:
         return (await self.row(run_id)).config_digest
 
+    async def context_digest(self, run_id: UUID) -> str | None:
+        return (await self.row(run_id)).context_digest
+
     async def list_runs(self) -> list[ExtractionView]:
         rows: ScalarResult[ExtractionRow] = await self.session.scalars(
             select(ExtractionRow)
@@ -131,7 +142,13 @@ class SqlAlchemyExtractionStore:
             .where(ExtractionRow.task_id == self.task_id, ExtractionRow.status.in_(ACTIVE_STATUSES))
             .order_by(ExtractionRow.created_at)
         )
-        return [extraction_view(row) for row in rows]
+        pending: list[ExtractionView] = []
+        for row in rows:
+            try:
+                pending.append(extraction_view(row))
+            except ValidationError:
+                logger.error("extraction_snapshot_corrupt run_id=%s", row.id)
+        return pending
 
     async def set_status(
         self, run_id: UUID, status: RunStatus, error: str | None = None
@@ -145,10 +162,30 @@ class SqlAlchemyExtractionStore:
             view.status = target
             view.error_code = error
             if target.terminal:
-                view.requirements = merge_parts(await self.parts(run_id))
+                view = await self.terminal_result(row, view)
                 view.elapsed_seconds = max(0, (datetime.now(UTC) - row.created_at).total_seconds())
             row.status = target.value
             row.snapshot_json = view.model_dump_json()
+        return view
+
+    async def terminal_result(self, row: ExtractionRow, view: ExtractionView) -> ExtractionView:
+        try:
+            view.requirements = merge_parts(await self.parts(row.id))
+        except StoredExtractionCorrupt:
+            parts: list[PartResult] = await self.read_parts(row.id, strict=False)
+            view.requirements = merge_parts(parts)
+            view.progress.completed_parts = len(parts)
+            view.coverage.processed_fragments = len(
+                {identifier for part in parts for identifier in part.fragment_ids}
+            )
+            view.coverage.warnings = [*view.coverage.warnings, "stored_result_corrupt"]
+            view.coverage.complete = False
+            view.error_code = "stored_result_corrupt"
+        if view.error_code in _DOCUMENT_ERRORS:
+            for requirement in view.requirements:
+                for source in requirement.sources:
+                    source.status = EvidenceStatus.UNVERIFIED
+                    source.reason = view.error_code
         return view
 
     async def prepare(
@@ -197,13 +234,24 @@ class SqlAlchemyExtractionStore:
         row.snapshot_json = view.model_dump_json()
 
     async def parts(self, run_id: UUID) -> list[PartResult]:
+        return await self.read_parts(run_id, strict=True)
+
+    async def read_parts(self, run_id: UUID, *, strict: bool) -> list[PartResult]:
         await self.row(run_id)
         rows: ScalarResult[ExtractionPartRow] = await self.session.scalars(
             select(ExtractionPartRow)
             .where(ExtractionPartRow.run_id == run_id)
             .order_by(ExtractionPartRow.id)
         )
-        return [PartResult.model_validate_json(row.result_json) for row in rows]
+        parts: list[PartResult] = []
+        for row in rows:
+            try:
+                parts.append(PartResult.model_validate_json(row.result_json))
+            except ValidationError:
+                if strict:
+                    raise StoredExtractionCorrupt("stored_result_corrupt") from None
+                logger.error("extraction_part_corrupt run_id=%s part_id=%s", run_id, row.part_id)
+        return parts
 
     async def reverify_part(self, run_id: UUID, part: PartResult) -> None:
         row: ExtractionRow = await self.row(run_id, lock=True)

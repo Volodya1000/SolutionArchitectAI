@@ -27,6 +27,7 @@ _ERROR_STATUSES: Final[dict[DocumentErrorCode, HTTPStatus]] = {
     DocumentErrorCode.MISSING_FILE: HTTPStatus.NOT_FOUND,
     DocumentErrorCode.CORRUPT_FILE: HTTPStatus.CONFLICT,
     DocumentErrorCode.CORRUPT_PARSE: HTTPStatus.CONFLICT,
+    DocumentErrorCode.CORRUPT_METADATA: HTTPStatus.INTERNAL_SERVER_ERROR,
     DocumentErrorCode.FILE_CONFLICT: HTTPStatus.CONFLICT,
     DocumentErrorCode.STORAGE_UNAVAILABLE: HTTPStatus.SERVICE_UNAVAILABLE,
 }

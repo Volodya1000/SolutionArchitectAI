@@ -6,7 +6,11 @@ from uuid import UUID
 from solution_architect_ai.application.capacity import GenerationCapacity
 from solution_architect_ai.application.document_errors import DocumentFailure
 from solution_architect_ai.application.errors import Conflict, StorageUnavailable
-from solution_architect_ai.application.extraction_errors import ContextTooLarge
+from solution_architect_ai.application.extraction_errors import (
+    ContextTooLarge,
+    ExtractionError,
+    StoredExtractionCorrupt,
+)
 from solution_architect_ai.application.extraction_models import ExtractionView
 from solution_architect_ai.application.extraction_ports import (
     ExtractionGraph,
@@ -21,7 +25,7 @@ logger: logging.Logger = logging.getLogger(__name__)
 
 def failure_code(
     error: StructuredGenerationFailure
-    | ContextTooLarge
+    | ExtractionError
     | TimeoutError
     | DocumentFailure
     | Conflict,
@@ -59,7 +63,7 @@ class ExtractionWorker:
                 if status == RunStatus.CANCELLED:
                     await store.set_status(run_id, RunStatus.CANCELLING)
                 return (await store.set_status(run_id, status, error)).status
-        except StorageUnavailable:
+        except (StorageUnavailable, StoredExtractionCorrupt):
             logger.warning("extraction_status_pending run_id=%s", run_id)
             return None
 
@@ -74,7 +78,7 @@ class ExtractionWorker:
             raise
         except (
             StructuredGenerationFailure,
-            ContextTooLarge,
+            ExtractionError,
             TimeoutError,
             DocumentFailure,
             Conflict,

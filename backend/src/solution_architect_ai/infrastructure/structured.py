@@ -1,4 +1,3 @@
-import json
 import warnings
 from typing import ClassVar
 
@@ -25,6 +24,7 @@ from solution_architect_ai.application.structured_models import (
     StructuredRequest,
     StructuredResponse,
 )
+from solution_architect_ai.application.structured_prompt import render_messages
 from solution_architect_ai.domain.messages import MessageRole
 from solution_architect_ai.infrastructure.llm import retry_after_seconds
 
@@ -60,15 +60,7 @@ def status_failure(error: APIStatusError) -> StructuredGenerationFailure:
 
 def messages_for(request: StructuredRequest, schema: type[BaseModel]) -> list[BaseMessage]:
     messages: list[BaseMessage] = []
-    if request.profile.mode == StructuredMode.JSON_TEXT:
-        messages.append(
-            SystemMessage(
-                "Return exactly one JSON object matching this JSON Schema. "
-                "Do not use Markdown fences or add prose. Schema: "
-                + json.dumps(schema.model_json_schema(), ensure_ascii=False, separators=(",", ":"))
-            )
-        )
-    for message in request.messages:
+    for message in render_messages(request, schema):
         if message.role == MessageRole.SYSTEM:
             messages.append(SystemMessage(message.content))
         elif message.role == MessageRole.USER:

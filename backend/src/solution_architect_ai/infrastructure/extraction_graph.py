@@ -3,6 +3,7 @@ from uuid import UUID
 
 from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from langgraph.errors import GraphRecursionError, InvalidUpdateError
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import StateSnapshot
@@ -10,6 +11,7 @@ from psycopg import Error
 from psycopg_pool import PoolTimeout
 
 from solution_architect_ai.application.errors import StorageUnavailable
+from solution_architect_ai.application.extraction_errors import StoredExtractionCorrupt
 from solution_architect_ai.application.extraction_steps import ExtractionSteps
 
 
@@ -44,6 +46,8 @@ class LangGraphExtraction:
             await self.invoke(run_id)
         except (Error, PoolTimeout):
             raise StorageUnavailable("checkpoint_unavailable") from None
+        except (ValueError, TypeError, InvalidUpdateError, GraphRecursionError):
+            raise StoredExtractionCorrupt("checkpoint_corrupt") from None
 
     async def invoke(self, run_id: UUID) -> None:
         config: RunnableConfig = {

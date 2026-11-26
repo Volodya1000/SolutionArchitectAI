@@ -31,6 +31,7 @@ class ModelProfile:
     mode: StructuredMode
     context_window: int
     output_limit: int
+    service_tokens: int = 0
 
 
 @dataclass(frozen=True)

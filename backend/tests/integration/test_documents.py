@@ -31,7 +31,7 @@ from solution_architect_ai.domain.documents import ParsedDocument
 from solution_architect_ai.infrastructure.document_parser import DocumentParser
 from solution_architect_ai.infrastructure.files import LocalFileStorage
 from solution_architect_ai.persistence.document_factory import SqlAlchemyDocumentStoreFactory
-from solution_architect_ai.persistence.document_models import ParsedDocumentRow
+from solution_architect_ai.persistence.document_models import DocumentUploadRow, ParsedDocumentRow
 from solution_architect_ai.persistence.document_store import SqlAlchemyDocumentStore
 
 pytestmark: Final[list[pytest.MarkDecorator]] = [pytest.mark.anyio, pytest.mark.integration]
@@ -196,6 +196,46 @@ async def test_saved_parse_corruption_is_explicit(
     with pytest.raises(DocumentFailure) as error:
         await service.parsed(version.version_id)
     assert error.value.code == DocumentErrorCode.CORRUPT_PARSE
+
+
+async def test_malformed_saved_parse_json_has_a_typed_error(
+    resources: tuple[DocumentService, AsyncEngine, Path],
+) -> None:
+    service: DocumentService = resources[0]
+    version: DocumentVersionView = await upload(service)
+    await service.parsed(version.version_id)
+    sessions: async_sessionmaker[AsyncSession] = async_sessionmaker[AsyncSession](resources[1])
+    session: AsyncSession
+    async with sessions() as session, session.begin():
+        await session.execute(
+            update(ParsedDocumentRow)
+            .where(ParsedDocumentRow.version_id == version.version_id)
+            .values(body="{")
+        )
+    with pytest.raises(DocumentFailure) as error:
+        await service.parsed(version.version_id)
+    assert error.value.code == DocumentErrorCode.CORRUPT_PARSE
+
+
+async def test_malformed_upload_journal_metadata_has_a_typed_error(
+    resources: tuple[DocumentService, AsyncEngine, Path],
+) -> None:
+    service: DocumentService = resources[0]
+    command: UploadDocument = UploadDocument(
+        operation_id=uuid4(), filename="brd.txt", mime_type="text/plain"
+    )
+    await service.upload(command, chunks(b"Source requirement"))
+    sessions: async_sessionmaker[AsyncSession] = async_sessionmaker[AsyncSession](resources[1])
+    session: AsyncSession
+    async with sessions() as session, session.begin():
+        await session.execute(
+            update(DocumentUploadRow)
+            .where(DocumentUploadRow.operation_id == command.operation_id)
+            .values(version_json="{")
+        )
+    with pytest.raises(DocumentFailure) as error:
+        await service.operation(command.operation_id)
+    assert error.value.code == DocumentErrorCode.CORRUPT_METADATA
 
 
 async def test_concurrent_parse_has_one_stable_fragment_set(

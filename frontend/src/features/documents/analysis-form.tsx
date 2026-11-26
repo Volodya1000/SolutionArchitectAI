@@ -58,12 +58,13 @@ export function AnalysisForm({ selected }: { selected: ReadonlySet<string> }) {
       <textarea
         id="analysis-scope"
         value={scope}
-        maxLength={2000}
+        maxLength={1000}
         placeholder="Например, требования к сервису отчётности"
         onChange={(event) => setScope(event.target.value)}
         disabled={start.isPending}
       />
-      <Button type="submit" disabled={selected.size === 0 || start.isPending}>
+      {selected.size > 20 && <p role="alert">Выберите не более 20 версий для одного анализа.</p>}
+      <Button type="submit" disabled={selected.size === 0 || selected.size > 20 || start.isPending}>
         {start.isPending ? 'Запускаем…' : start.isError ? 'Повторить запуск' : 'Извлечь требования'}
       </Button>
       {start.isError && (

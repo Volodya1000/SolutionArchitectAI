@@ -28,6 +28,10 @@ from solution_architect_ai.application.extraction_ports import (
     ExtractionStoreFactory,
 )
 from solution_architect_ai.application.extraction_sources import reverify_part
+from solution_architect_ai.application.structured_errors import (
+    StructuredErrorCode,
+    StructuredGenerationFailure,
+)
 from solution_architect_ai.application.structured_models import (
     BudgetUsage,
     ExecutionBudget,
@@ -67,12 +71,18 @@ class ExtractionSteps:
         store: ExtractionStore
         async with self.stores.open() as store:
             command: ExtractionStart = await store.command(run_id)
+            expected_context: str | None = await store.context_digest(run_id)
             if await store.config_digest(run_id) != self.policy.config_digest:
                 raise Conflict("model_profile_changed")
         documents: tuple[ParsedDocument, ...] = tuple(
             [await self.documents.parsed(version) for version in command.version_ids]
         )
-        return await asyncio.to_thread(self.builder.build, documents, command.analysis_scope)
+        pack: ContextPack = await asyncio.to_thread(
+            self.builder.build, documents, command.analysis_scope
+        )
+        if expected_context is not None and expected_context != pack.digest:
+            raise Conflict("context_changed")
+        return pack
 
     async def prepare(self, run_id: UUID) -> None:
         pack: ContextPack = await self.context(run_id)
@@ -81,6 +91,8 @@ class ExtractionSteps:
             await store.prepare(
                 run_id, pack.digest, len(pack.parts), pack.total_fragments, pack.warnings
             )
+        if len(pack.parts) > self.policy.requests:
+            raise StructuredGenerationFailure(StructuredErrorCode.BUDGET_EXHAUSTED)
 
     async def reserve(self, run_id: UUID, previous: int, usage: BudgetUsage) -> None:
         store: ExtractionStore
@@ -166,6 +178,10 @@ class ExtractionSteps:
 
     async def save(self, run_id: UUID) -> None:
         store: ExtractionStore
+        async with self.stores.open() as store:
+            if (await store.get(run_id)).status.terminal:
+                return
+        await self.verify(run_id)
         async with self.stores.open() as store:
             view: ExtractionView = await store.get(run_id)
             parts: list[PartResult] = await store.parts(run_id)

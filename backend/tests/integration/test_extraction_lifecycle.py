@@ -10,7 +10,7 @@ import pytest
 from dishka import AsyncContainer, make_async_container
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import StateSnapshot
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from solution_architect_ai.application.document_dto import DocumentVersionView, UploadDocument
@@ -54,7 +54,7 @@ from solution_architect_ai.domain.requirements import EvidenceStatus
 from solution_architect_ai.domain.runs import RunStatus
 from solution_architect_ai.infrastructure.extraction_graph import LangGraphExtraction
 from solution_architect_ai.persistence.extraction_factory import SqlAlchemyExtractionStoreFactory
-from solution_architect_ai.persistence.extraction_models import RequirementRow
+from solution_architect_ai.persistence.extraction_models import ExtractionPartRow, RequirementRow
 
 pytestmark: Final[list[pytest.MarkDecorator]] = [pytest.mark.anyio, pytest.mark.integration]
 ORIGINAL: Final[str] = "\n".join(
@@ -292,7 +292,7 @@ async def test_shared_budget_across_parts_preserves_completed_candidates_on_fail
     )
     pack: ContextPack = await limited.context(run.id)
     assert len(pack.parts) > 1
-    await limited.prepare(run.id)
+    await original.prepare(run.id)
     await limited.extract(run.id, 0)
     first: list[PartResult] = await part_records(resources, run.id)
     assert first[0].requirements
@@ -419,3 +419,90 @@ async def test_other_task_cannot_read_extraction_or_candidates(
         with pytest.raises(Missing):
             await store.get(run.id)
         assert all(item.id != run.id for item in await store.list_runs())
+
+
+async def test_checkpoint_resume_at_save_revalidates_the_original(
+    resources: ExtractionResources, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    version: DocumentVersionView = await upload(resources)
+    run: ExtractionView = await resources.start([version.version_id])
+    await resources.running(run.id)
+    steps: ExtractionSteps = await resources.container.get(ExtractionSteps)
+    original: Callable[[UUID], Awaitable[None]] = steps.save
+
+    async def interrupted(_run_id: UUID) -> None:
+        raise RuntimeError("process stopped after source verification checkpoint")
+
+    monkeypatch.setattr(steps, "save", interrupted)
+    graph: ExtractionGraph = await resources.container.get(ExtractionGraph)
+    with pytest.raises(RuntimeError, match="process stopped"):
+        await graph.run(run.id)
+    requests_before: int = (await resources.view(run.id)).requests
+    await asyncio.to_thread((resources.settings.storage.root / version.storage_key).unlink)
+    monkeypatch.setattr(steps, "save", original)
+    worker: ExtractionWorker = await resources.container.get(ExtractionWorker)
+    await worker.execute(run.id)
+    failed: ExtractionView = await resources.view(run.id)
+    assert failed.status == RunStatus.FAILED
+    assert failed.error_code == "document_file_missing"
+    assert failed.requests == requests_before
+    assert all(
+        source.status == EvidenceStatus.UNVERIFIED
+        for item in failed.requirements
+        for source in item.sources
+    )
+
+
+async def test_resume_rejects_changed_context_manifest_without_a_new_request(
+    resources: ExtractionResources, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    version: DocumentVersionView = await upload(resources)
+    run: ExtractionView = await resources.start([version.version_id])
+    await resources.running(run.id)
+    steps: ExtractionSteps = await resources.container.get(ExtractionSteps)
+    await steps.prepare(run.id)
+    await steps.extract(run.id, 0)
+    previous: int = (await resources.view(run.id)).requests
+    monkeypatch.setattr(steps.builder, "schema", steps.builder.schema + " ")
+    worker: ExtractionWorker = await resources.container.get(ExtractionWorker)
+    await worker.execute(run.id)
+    failed: ExtractionView = await resources.view(run.id)
+    assert failed.status == RunStatus.FAILED
+    assert failed.error_code == "context_changed"
+    assert failed.requests == previous
+
+
+async def test_corrupt_saved_part_is_quarantined_without_cancelling_siblings(
+    resources: ExtractionResources,
+) -> None:
+    version: DocumentVersionView = await upload(resources)
+    run: ExtractionView = await resources.start([version.version_id])
+    await resources.running(run.id)
+    steps: ExtractionSteps = await resources.container.get(ExtractionSteps)
+    await steps.prepare(run.id)
+    await steps.extract(run.id, 0)
+    engine: AsyncEngine = await resources.container.get(AsyncEngine)
+    connection: AsyncConnection
+    async with engine.begin() as connection:
+        await connection.execute(
+            update(ExtractionPartRow)
+            .where(ExtractionPartRow.run_id == run.id)
+            .values(result_json="{")
+        )
+    sibling_finished: asyncio.Event = asyncio.Event()
+
+    async def sibling() -> None:
+        await asyncio.sleep(0.1)
+        sibling_finished.set()
+
+    worker: ExtractionWorker = await resources.container.get(ExtractionWorker)
+    group: asyncio.TaskGroup
+    async with asyncio.TaskGroup() as group:
+        group.create_task(worker.execute(run.id))
+        group.create_task(sibling())
+    failed: ExtractionView = await resources.view(run.id)
+    assert sibling_finished.is_set()
+    assert failed.status == RunStatus.FAILED
+    assert failed.error_code == "stored_result_corrupt"
+    assert failed.coverage.complete is False
+    assert "stored_result_corrupt" in failed.coverage.warnings

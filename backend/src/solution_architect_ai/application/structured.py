@@ -8,6 +8,7 @@ from typing import Final, Never
 from pydantic import BaseModel, ValidationError
 from tenacity import AsyncRetrying
 
+from solution_architect_ai.application.ports import TokenCounter
 from solution_architect_ai.application.retry import GenerationPolicy
 from solution_architect_ai.application.structured_errors import (
     StructuredErrorCode,
@@ -19,6 +20,11 @@ from solution_architect_ai.application.structured_models import (
     StructuredModel,
     StructuredRequest,
     StructuredResponse,
+)
+from solution_architect_ai.application.structured_prompt import (
+    CORRECTION_PROMPT,
+    render_messages,
+    token_messages,
 )
 from solution_architect_ai.domain.messages import MessageRole
 
@@ -82,9 +88,25 @@ async def cancellable[T](operation: Awaitable[T], cancellation: asyncio.Event | 
 
 
 class StructuredOutputGenerator:
-    def __init__(self, adapter: StructuredModel, policy: GenerationPolicy) -> None:
+    def __init__(
+        self, adapter: StructuredModel, policy: GenerationPolicy, tokens: TokenCounter
+    ) -> None:
         self.adapter: StructuredModel = adapter
         self.policy: GenerationPolicy = policy
+        self.tokens: TokenCounter = tokens
+
+    async def check_context(self, request: StructuredRequest, schema: type[BaseModel]) -> None:
+        rendered: tuple[StructuredMessage, ...] = render_messages(
+            request, schema, include_native_schema=True
+        )
+        estimate: int = await asyncio.to_thread(self.tokens.count, token_messages(rendered))
+        available: int = (
+            request.profile.context_window
+            - request.profile.output_limit
+            - request.profile.service_tokens
+        )
+        if estimate > available:
+            raise StructuredGenerationFailure(StructuredErrorCode.CONTEXT_TOO_LARGE)
 
     async def generate[T: BaseModel](
         self, request: StructuredRequest, schema: type[T], budget: ExecutionBudget
@@ -99,14 +121,14 @@ class StructuredOutputGenerator:
         retries: AsyncRetrying = policy.retrying(partial(self.can_retry, budget, messages))
 
         async def attempt() -> T:
+            current: StructuredRequest = replace(request, messages=tuple(messages))
+            await self.check_context(current, schema)
             await budget.reserve()
             budget.check()
             response: StructuredResponse[T]
             try:
                 async with asyncio.timeout(budget.request_timeout):
-                    response = await self.adapter.invoke(
-                        replace(request, messages=tuple(messages)), schema
-                    )
+                    response = await self.adapter.invoke(current, schema)
             except TimeoutError:
                 raise StructuredGenerationFailure(
                     StructuredErrorCode.TIMEOUT, retryable=True
@@ -138,13 +160,7 @@ class StructuredOutputGenerator:
             raise StructuredGenerationFailure(StructuredErrorCode.BUDGET_EXHAUSTED) from None
         if correctable:
             budget.corrections += 1
-            messages.append(
-                StructuredMessage(
-                    MessageRole.USER,
-                    f"Previous response failed {error.reason}. Return only a complete JSON object "
-                    "matching the exact schema; do not invent additional source evidence.",
-                )
-            )
+            messages.append(StructuredMessage(MessageRole.USER, CORRECTION_PROMPT))
         else:
             budget.network_failures += 1
         await budget.observe()

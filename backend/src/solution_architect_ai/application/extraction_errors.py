@@ -8,3 +8,7 @@ class ContextTooLarge(ExtractionError):
 
 class ExtractionInterrupted(ExtractionError):
     pass
+
+
+class StoredExtractionCorrupt(ExtractionError):
+    pass

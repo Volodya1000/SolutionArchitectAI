@@ -16,6 +16,7 @@ from solution_architect_ai.application.document_errors import DocumentFailure
 from solution_architect_ai.application.documents import DocumentService
 from solution_architect_ai.application.dto import APIError
 from solution_architect_ai.application.errors import ChatError, Conflict, Missing
+from solution_architect_ai.application.extraction_errors import StoredExtractionCorrupt
 from solution_architect_ai.application.extraction_worker import ExtractionWorker
 from solution_architect_ai.application.generation import RunWorker
 from solution_architect_ai.config.models import Mode
@@ -25,6 +26,7 @@ from solution_architect_ai.di.extraction import ExtractionProvider
 from solution_architect_ai.di.providers import AppProvider
 from solution_architect_ai.presentation.document_routes import document_error
 from solution_architect_ai.presentation.document_routes import router as document_router
+from solution_architect_ai.presentation.extraction_routes import extraction_error
 from solution_architect_ai.presentation.extraction_routes import router as extraction_router
 from solution_architect_ai.presentation.routes import router
 
@@ -74,6 +76,7 @@ def create_app() -> FastAPI:
     app.include_router(extraction_router)
     app.add_exception_handler(ChatError, chat_error)
     app.add_exception_handler(DocumentFailure, document_error)
+    app.add_exception_handler(StoredExtractionCorrupt, extraction_error)
     setup_dishka(container, app)
     return app
 
@@ -84,7 +87,10 @@ async def workers(container: AsyncContainer) -> AsyncIterator[None]:
     extraction: ExtractionWorker = await container.get(ExtractionWorker)
     documents: DocumentService = await container.get(DocumentService)
     await worker.recover()
-    await documents.recover()
+    try:
+        await documents.recover()
+    except DocumentFailure as error:
+        logging.getLogger(__name__).error("document_recovery_pending code=%s", error.code.value)
     group: asyncio.TaskGroup
     async with asyncio.TaskGroup() as group:
         group.create_task(worker.serve())

@@ -9,6 +9,7 @@ Archi = "Archi"
 ArchiMate = "ArchiMate"
 HDA = "HDA"
 SAA = "SAA"
+RTO = "RTO"
 
 [default.extend-identifiers]
 # Deliberate misspelling in the configuration validation negative test.

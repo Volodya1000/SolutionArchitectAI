@@ -42,6 +42,7 @@ from solution_architect_ai.application.structured_models import (
 from solution_architect_ai.domain.documents import LocatorKind, SourceLocator
 from solution_architect_ai.domain.messages import MessageRole
 from solution_architect_ai.domain.requirements import EvidenceStatus, RequirementCategory
+from solution_architect_ai.infrastructure.context import LangChainTokenCounter
 
 pytestmark: pytest.MarkDecorator = pytest.mark.anyio
 PROFILE: Final[ModelProfile] = ModelProfile(
@@ -109,7 +110,7 @@ async def test_agent_uses_exact_envelope_profile_schema_and_shared_budget(
     payload: RequirementsExtraction = result_payload(part)
     adapter: ScriptedStructuredModel = ScriptedStructuredModel([payload.model_dump_json()])
     agent: RequirementsExtractionAgent = RequirementsExtractionAgent(
-        StructuredOutputGenerator(adapter, POLICY)
+        StructuredOutputGenerator(adapter, POLICY, LangChainTokenCounter(1, chat_prompt=False))
     )
     budget: ExecutionBudget = ExecutionBudget(3, monotonic() + 10, 3)
     command: AgentRequest = agent_request(part)
@@ -127,7 +128,7 @@ async def test_agent_cannot_reset_request_budget_between_document_parts(part: Co
         [result_payload(part).model_dump_json()]
     )
     agent: RequirementsExtractionAgent = RequirementsExtractionAgent(
-        StructuredOutputGenerator(adapter, POLICY)
+        StructuredOutputGenerator(adapter, POLICY, LangChainTokenCounter(1, chat_prompt=False))
     )
     budget: ExecutionBudget = ExecutionBudget(1, monotonic() + 10, 3)
     await agent.extract(agent_request(part), budget)
@@ -144,7 +145,7 @@ async def test_invalid_json_correction_uses_generator_budget_without_agent_retry
         ["{", result_payload(part).model_dump_json()]
     )
     agent: RequirementsExtractionAgent = RequirementsExtractionAgent(
-        StructuredOutputGenerator(adapter, POLICY)
+        StructuredOutputGenerator(adapter, POLICY, LangChainTokenCounter(1, chat_prompt=False))
     )
     budget: ExecutionBudget = ExecutionBudget(2, monotonic() + 10, 3, correction_retries=1)
     result: AgentResult = await agent.extract(agent_request(part), budget)

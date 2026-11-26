@@ -1,12 +1,17 @@
 from uuid import UUID
 
 from dishka.integrations.fastapi import DishkaRoute, FromDishka
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
+from fastapi.responses import JSONResponse
 
 from solution_architect_ai.application.extraction import ExtractionService
 from solution_architect_ai.application.extraction_models import ExtractionStart, ExtractionView
 
 router: APIRouter = APIRouter(prefix="/api/extractions", route_class=DishkaRoute)
+
+
+async def extraction_error(_request: Request, _error: Exception) -> JSONResponse:
+    return JSONResponse(status_code=500, content={"code": "stored_extraction_corrupt"})
 
 
 @router.post("", status_code=202)

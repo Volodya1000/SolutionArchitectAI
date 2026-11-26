@@ -6,6 +6,7 @@ from typing import ClassVar
 import pytest
 from pydantic import BaseModel, ConfigDict
 
+from solution_architect_ai.application.dto import MessageView
 from solution_architect_ai.application.retry import GenerationPolicy
 from solution_architect_ai.application.structured import (
     StructuredOutputGenerator,
@@ -30,6 +31,11 @@ from solution_architect_ai.domain.messages import MessageRole
 class Answer(BaseModel):
     model_config: ClassVar[ConfigDict] = ConfigDict(extra="forbid")
     count: int
+
+
+class ContentLengthCounter:
+    def count(self, messages: list[MessageView]) -> int:
+        return sum(len(message.content) for message in messages)
 
 
 class ScriptedModel:
@@ -82,7 +88,9 @@ def budget(*, requests: int = 4, network: int = 1, corrections: int = 1) -> Exec
 @pytest.mark.anyio
 async def test_strict_schema_repair_keeps_model_and_mode_and_reports_no_source_content() -> None:
     model: ScriptedModel = ScriptedModel(['{"count":"sensitive source value"}', '{"count":2}'])
-    generator: StructuredOutputGenerator = StructuredOutputGenerator(model, policy())
+    generator: StructuredOutputGenerator = StructuredOutputGenerator(
+        model, policy(), ContentLengthCounter()
+    )
     execution: ExecutionBudget = budget()
     result: Answer = await generator.generate(structured_request(), Answer, execution)
     assert result.count == 2
@@ -103,7 +111,9 @@ async def test_mixed_network_and_json_retries_share_one_budget_across_generate_c
             '{"count":2}',
         ]
     )
-    generator: StructuredOutputGenerator = StructuredOutputGenerator(model, policy())
+    generator: StructuredOutputGenerator = StructuredOutputGenerator(
+        model, policy(), ContentLengthCounter()
+    )
     execution: ExecutionBudget = budget(requests=3)
     result: Answer = await generator.generate(structured_request(), Answer, execution)
     assert result.count == 2
@@ -117,7 +127,9 @@ async def test_mixed_network_and_json_retries_share_one_budget_across_generate_c
 @pytest.mark.anyio
 async def test_zero_correction_retries_never_accepts_invalid_json_or_coerces_types() -> None:
     model: ScriptedModel = ScriptedModel(['{"count":"2"}'])
-    generator: StructuredOutputGenerator = StructuredOutputGenerator(model, policy())
+    generator: StructuredOutputGenerator = StructuredOutputGenerator(
+        model, policy(), ContentLengthCounter()
+    )
     with pytest.raises(StructuredGenerationFailure) as error:
         await generator.generate(structured_request(), Answer, budget(corrections=0))
     assert error.value.reason == StructuredErrorCode.SCHEMA_INVALID
@@ -131,7 +143,7 @@ async def test_cancelled_budget_never_starts_a_request() -> None:
     execution.cancellation = asyncio.Event()
     execution.cancellation.set()
     with pytest.raises(StructuredGenerationFailure) as error:
-        await StructuredOutputGenerator(model, policy()).generate(
+        await StructuredOutputGenerator(model, policy(), ContentLengthCounter()).generate(
             structured_request(), Answer, execution
         )
     assert error.value.reason == StructuredErrorCode.CANCELLED
@@ -151,7 +163,9 @@ async def test_cancellation_event_closes_in_flight_request_without_retry() -> No
     execution: ExecutionBudget = budget()
     execution.cancellation = asyncio.Event()
     task: asyncio.Task[Answer] = asyncio.create_task(
-        StructuredOutputGenerator(model, policy()).generate(structured_request(), Answer, execution)
+        StructuredOutputGenerator(model, policy(), ContentLengthCounter()).generate(
+            structured_request(), Answer, execution
+        )
     )
     await model.started.wait()
     execution.cancellation.set()
@@ -174,7 +188,7 @@ async def test_overall_deadline_includes_rate_limit_backoff() -> None:
     execution: ExecutionBudget = budget()
     execution.deadline = monotonic() + 0.02
     with pytest.raises(StructuredGenerationFailure) as error:
-        await StructuredOutputGenerator(model, policy()).generate(
+        await StructuredOutputGenerator(model, policy(), ContentLengthCounter()).generate(
             structured_request(), Answer, execution
         )
     assert error.value.reason == StructuredErrorCode.DEADLINE_EXCEEDED
@@ -187,7 +201,7 @@ async def test_per_request_timeout_is_typed_and_closes_upstream() -> None:
     execution: ExecutionBudget = budget(requests=1, network=0)
     execution.request_timeout = 0.01
     with pytest.raises(StructuredGenerationFailure) as error:
-        await StructuredOutputGenerator(model, policy()).generate(
+        await StructuredOutputGenerator(model, policy(), ContentLengthCounter()).generate(
             structured_request(), Answer, execution
         )
     assert error.value.reason == StructuredErrorCode.TIMEOUT
@@ -206,12 +220,12 @@ async def test_budget_is_persisted_before_adapter_and_restorable_without_reset()
     execution: ExecutionBudget = budget(requests=3)
     execution.requests = 2
     execution.on_usage = persist
-    await StructuredOutputGenerator(model, policy()).generate(
+    await StructuredOutputGenerator(model, policy(), ContentLengthCounter()).generate(
         structured_request(), Answer, execution
     )
     assert observed == [BudgetUsage(3, 0, 0)]
     with pytest.raises(StructuredGenerationFailure) as error:
-        await StructuredOutputGenerator(model, policy()).generate(
+        await StructuredOutputGenerator(model, policy(), ContentLengthCounter()).generate(
             structured_request(), Answer, execution
         )
     assert error.value.reason == StructuredErrorCode.BUDGET_EXHAUSTED
@@ -243,7 +257,9 @@ def test_partial_empty_or_refused_responses_never_become_results(
 async def test_direct_task_cancellation_propagates_and_closes_upstream() -> None:
     model: ScriptedModel = ScriptedModel(['{"count":2}'], pause=5)
     task: asyncio.Task[Answer] = asyncio.create_task(
-        StructuredOutputGenerator(model, policy()).generate(structured_request(), Answer, budget())
+        StructuredOutputGenerator(model, policy(), ContentLengthCounter()).generate(
+            structured_request(), Answer, budget()
+        )
     )
     await model.started.wait()
     task.cancel()
@@ -261,9 +277,36 @@ async def test_exhausted_class_retry_counter_is_restored() -> None:
     execution.requests = 1
     execution.network_failures = 1
     with pytest.raises(StructuredGenerationFailure) as error:
-        await StructuredOutputGenerator(model, policy()).generate(
+        await StructuredOutputGenerator(model, policy(), ContentLengthCounter()).generate(
             structured_request(), Answer, execution
         )
     assert error.value.reason == StructuredErrorCode.CONNECTION
     assert execution.requests == 2
     assert len(model.requests) == 1
+
+
+@pytest.mark.anyio
+async def test_error_class_change_cannot_reset_global_request_cap() -> None:
+    model: ScriptedModel = ScriptedModel(
+        [StructuredGenerationFailure(StructuredErrorCode.CONNECTION, retryable=True), "invalid"]
+    )
+    execution: ExecutionBudget = budget(requests=2)
+    with pytest.raises(StructuredGenerationFailure) as error:
+        await StructuredOutputGenerator(model, policy(), ContentLengthCounter()).generate(
+            structured_request(), Answer, execution
+        )
+    assert error.value.reason == StructuredErrorCode.BUDGET_EXHAUSTED
+    assert len(model.requests) == 2
+
+
+@pytest.mark.anyio
+async def test_expired_deadline_never_starts_generation() -> None:
+    model: ScriptedModel = ScriptedModel(['{"count":2}'])
+    execution: ExecutionBudget = budget()
+    execution.deadline = monotonic() - 1
+    with pytest.raises(StructuredGenerationFailure) as error:
+        await StructuredOutputGenerator(model, policy(), ContentLengthCounter()).generate(
+            structured_request(), Answer, execution
+        )
+    assert error.value.reason == StructuredErrorCode.DEADLINE_EXCEEDED
+    assert not model.requests
