@@ -25,6 +25,7 @@ const active: Snapshot = {
   ],
 };
 let snapshot = active;
+let autoFailStreams = false;
 const sources: TestEventSource[] = [];
 class TestEventSource {
   onmessage: ((event: MessageEvent<string>) => void) | null = null;
@@ -32,6 +33,7 @@ class TestEventSource {
   closed = false;
   constructor() {
     sources.push(this);
+    if (autoFailStreams) queueMicrotask(() => this.onerror?.());
   }
   close() {
     this.closed = true;
@@ -44,6 +46,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
   sources.length = 0;
   snapshot = active;
+  autoFailStreams = false;
 });
 afterAll(() => server.close());
 
@@ -108,4 +111,45 @@ it('recovers malformed stream JSON and closes connections when unmounted', async
   await waitFor(() => expect(sources).toHaveLength(2), { timeout: 3000 });
   unmount();
   expect(sources.every((source) => source.closed)).toBe(true);
+});
+
+it('lets slow history recovery finish while repeated stream connections fail', async () => {
+  let reads = 0;
+  server.use(
+    http.get('/api/chats/a', async () => {
+      if (++reads === 1) return HttpResponse.json(active);
+      await new Promise((resolve) => setTimeout(resolve, 1400));
+      return HttpResponse.json({
+        ...active,
+        messages: [{ ...active.messages[0], content: 'Конец', incomplete: false }],
+        runs: [
+          {
+            ...active.runs[0],
+            status: 'completed',
+            sequence: 2,
+            content: 'Конец',
+            incomplete: false,
+          },
+        ],
+      });
+    }),
+  );
+  autoFailStreams = true;
+  const { result } = show();
+  await waitFor(() => expect(result.current.query.data?.messages[0]?.content).toBe('Конец'), {
+    timeout: 4000,
+  });
+  expect(result.current.connectionError).toBe(false);
+});
+
+it('does not carry a failed connection warning into the next run', async () => {
+  const view = show();
+  await waitFor(() => expect(view.result.current.run?.id).toBe('run'));
+  snapshot = { ...active, runs: [{ ...active.runs[0]!, status: 'completed' }] };
+  act(() => sources[0]!.onerror?.());
+  await waitFor(() => expect(view.result.current.run).toBeUndefined());
+  snapshot = { ...active, runs: [{ ...active.runs[0]!, id: 'next-run' }] };
+  await act(() => view.result.current.query.refetch());
+  await waitFor(() => expect(view.result.current.run?.id).toBe('next-run'));
+  expect(view.result.current.connectionError).toBe(false);
 });

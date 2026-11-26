@@ -42,59 +42,59 @@ quality contracts in `docs/technical/frontend.md` and `quality-and-testing.md`.
 Files: `frontend/src/features/chat/{chat,messages,use-chat}.tsx/ts`,
 `frontend/src/shared/api/client.ts`, chat tests and `frontend/e2e/` helpers.
 
-- [ ] Add and run failing regression tests for per-message incomplete status,
+- [x] Add and run failing regression tests for per-message incomplete status,
   edited retry drafts, closed SSE after 503, terminal history recovery, and
   oversized input / HTTP 422 preserving the draft.
-- [ ] Carry run status through message metadata; render it at its answer.
-- [ ] Clear composer/storage only if they still represent the acknowledged text.
-- [ ] Reopen a failed stream after a delay; refresh history during recovery,
+- [x] Carry run status through message metadata; render it at its answer.
+- [x] Clear composer/storage only if they still represent the acknowledged text.
+- [x] Reopen a failed stream after a delay; refresh history during recovery,
   stop on terminal state, and clean up timers/connections when leaving the chat.
-- [ ] Show the 16,000-character limit and a useful validation error, including
+- [x] Show the 16,000-character limit and a useful validation error, including
   server-side validation. Count Unicode code points consistently with Python.
-- [ ] Extract semantic locators, labels, polling and validated API helpers.
+- [x] Extract semantic locators, labels, polling and validated API helpers.
   Verify message order, run counts and actual progress after reconnect.
-- [ ] Run Vitest, frontend gates and real-browser regressions; commit.
+- [x] Run Vitest, frontend gates and real-browser regressions; commit.
 
 ## Task 2: Typed SSE protocol
 
 Files: application contracts, presentation routes, SSE unit tests.
 
-- [ ] Test the actual emitted envelope and SSE data/comment framing.
-- [ ] Add `RunSnapshotEvent` with literal kind and `RunView` payload.
-- [ ] Serialize through Pydantic and extract frame formatting helpers.
-- [ ] Run backend unit/static gates; commit.
+- [x] Test the actual emitted envelope and SSE data/comment framing.
+- [x] Add `RunSnapshotEvent` with literal kind and `RunView` payload.
+- [x] Serialize through Pydantic and extract frame formatting helpers.
+- [x] Run backend unit/static gates; commit.
 
 ## Task 3: SQL repository contracts and consistency
 
 Files: persistence queries/store/factory/models/migrations, domain runs,
 application ports/service, DI and backend tests.
 
-- [ ] Add failing tests for bounded pending-query count, task scope, unlocked
+- [x] Add failing tests for bounded pending-query count, task scope, unlocked
   preference reads, one-run-per-answer, readiness and transition race handling.
-- [ ] Rename implementation to `SqlAlchemyStore`; scope create/list/chat
+- [x] Rename implementation to `SqlAlchemyStore`; scope create/list/chat
   consistently through a constructor task ID with the local default.
-- [ ] Fetch pending runs with one JOIN and build views from already loaded rows
+- [x] Fetch pending runs with one JOIN and build views from already loaded rows
   after writes; retain fresh reads where concurrency requires them.
-- [ ] Separate preference reads and writes; lock only writes.
-- [ ] Centralize idempotent/cancellation precedence policy in the domain while
+- [x] Separate preference reads and writes; lock only writes.
+- [x] Centralize idempotent/cancellation precedence policy in the domain while
   retaining strict invalid-transition validation.
-- [ ] Add an Alembic unique constraint on `runs.assistant_message_id`.
+- [x] Add an Alembic unique constraint on `runs.assistant_message_id`.
   Existing `(chat_id, position)` uniqueness stays in place.
-- [ ] Compare schema revisions against migration heads, report storage/schema
+- [x] Compare schema revisions against migration heads, report storage/schema
   unavailability explicitly, and preserve coherent JOIN snapshots.
-- [ ] Run PostgreSQL integration, unit/static gates; commit.
+- [x] Run PostgreSQL integration, unit/static gates; commit.
 
 ## Task 4: Runtime configuration and final checks
 
 Files: backend launcher / Dockerfile, Compose, `.env.example`, runtime docs.
 
-- [ ] Read backend listener host/port from environment in a Python launcher.
+- [x] Read backend listener host/port from environment in a Python launcher.
   Parameterize Compose published bindings and propagate the listener port to
   health checks and the frontend proxy.
-- [ ] Build and test defaults plus overridden ports; update runtime instructions.
-- [ ] Run workflow-equivalent backend/frontend/repository checks, Playwright
+- [x] Build and test defaults plus overridden ports; update runtime instructions.
+- [x] Run workflow-equivalent backend/frontend/repository checks, Playwright
   and restart/failure smoke with fake LLM; preserve the PDF workflow.
-- [ ] Request an independent whole-change review, address material findings,
+- [x] Request an independent whole-change review, address material findings,
   and report a completed/deferred/disagreed checklist and exact test results.
 
 ## Execution record
@@ -122,3 +122,31 @@ Files: backend launcher / Dockerfile, Compose, `.env.example`, runtime docs.
   all 18 frontend tests pass, including 16,000 emoji at the length boundary.
 - Documentation validation needs the separately declared jsonschema dependency
   and an LF Git export on Windows; full publisher tests additionally need Pandoc.
+
+- Final independent review: three important issues and two minor issues found
+  at `5ce7aa8`; no critical issue. Fixed in the follow-up pass:
+  - Persisted draft cleanup now belongs to the acknowledged mutation and survives
+    unmount; original and edited drafts are tested across leaving/reopening.
+  - Repeated SSE errors do not cancel an outstanding history refetch; a 1.4-second
+    history read now completes during one-second stream retries.
+  - Standalone image defaults are supplied by entrypoints outside Dockerfiles;
+    nginx and backend defaults and explicit listener overrides were exercised.
+  - Connection failures are scoped to their run; the next run has no old warning.
+  - The 503 browser regression asserts that the injected failure actually ran.
+- Follow-up RED→GREEN: 22 frontend tests and 67 backend tests pass. No reviewer
+  finding was deferred. The review predates these fixes; the follow-up is verified
+  by regression tests and the full suites, not a second independent review.
+- Repository YAML, Markdown, spelling, workflow and local-link gates pass.
+  Frontend and backend dependency audits report no known vulnerabilities.
+- LF Git export (`git -c core.autocrlf=false archive`) passes the documentary
+  validator and all 24 reference regression tests. Full PDF publication remains
+  a Linux CI check (local Windows lacks Pandoc).
+- Accepted decisions: keep independent pinned Python/uv images; keep the
+  accepted-command `route.fetch()` test plus a separate pre-delivery failure;
+  reuse complete production Zod contracts rather than an array-only type guard;
+  keep existing message-position uniqueness and add only answer-run uniqueness.
+
+- Browser 503 fixture uses a longer ordinary fake-model prompt so the stream
+  failure is exercised before completion. Its first run hit the previous
+  five-second assertion deadline while generation was still running; the
+  completion helper now waits for the condition for up to 15 seconds.

@@ -32,7 +32,7 @@ export function useChat(chatId: string) {
     queryKey: key,
     queryFn: () => request(`/chats/${chatId}`, snapshotSchema),
   });
-  const [connectionError, setConnectionError] = useState(false);
+  const [failedRunId, setFailedRunId] = useState<string>();
   const pending = useRef(readPending(chatId));
   const run = query.data?.runs.find((item) => !terminal(item));
   const runId = run?.id;
@@ -50,6 +50,8 @@ export function useChat(chatId: string) {
       });
       pending.current = null;
       savePending(chatId, null);
+      if (sessionStorage.getItem(`draft:${chatId}`) === content)
+        sessionStorage.removeItem(`draft:${chatId}`);
       return value;
     },
     onError: (error) => {
@@ -69,14 +71,16 @@ export function useChat(chatId: string) {
   });
   useEffect(() => {
     if (!runId || !online) return;
-    return subscribeToRun(client, chatId, runId, setConnectionError);
+    return subscribeToRun(client, chatId, runId, (failed) =>
+      setFailedRunId(failed ? runId : undefined),
+    );
   }, [chatId, runId, client, online]);
   return {
     query,
     run,
     send,
     cancel,
-    connectionError: Boolean(run) && (connectionError || !online),
+    connectionError: Boolean(run) && (failedRunId === runId || !online),
     pending,
   };
 }

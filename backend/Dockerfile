@@ -9,7 +9,7 @@ COPY backend/alembic.ini ./
 RUN uv sync --locked --no-dev && mkdir -p /data/git /data/files && chmod -R g=u /data /app
 ENV PATH="/app/backend/.venv/bin:$PATH" SAA_CONFIG_ROOT=/app
 USER 10001:0
-CMD ["python", "-m", "solution_architect_ai.di.server"]
+CMD ["python", "-m", "solution_architect_ai.di.container"]
 
 FROM base AS test
 USER 0

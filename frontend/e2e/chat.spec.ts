@@ -210,8 +210,12 @@ test('a temporary stream 503 recovers to a completed answer without reload', asy
       await route.continue();
     }
   });
-  await send(page, 'Проверка восстановления после временного отказа потока');
+  await send(
+    page,
+    'Проверка восстановления после временного отказа потока. ' + 'Важное требование. '.repeat(80),
+  );
   await waitForCompletedResponse(page);
+  expect(failures, 'The browser must exercise the injected stream failure').toBeGreaterThan(0);
   await expect(page.getByText(STATUS_TEXT.networkOrHistoryError)).toHaveCount(0);
   const state = await fetchChatState(page, chatUrl);
   expect(state.runs).toHaveLength(1);

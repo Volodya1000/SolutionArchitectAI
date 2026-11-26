@@ -35,9 +35,9 @@ export async function send(page: Page, text: string): Promise<void> {
 }
 
 export async function waitForCompletedResponse(page: Page): Promise<void> {
-  await expect(
-    answers(page).last().getByText(STATUS_TEXT.completed, { exact: true }),
-  ).toBeVisible();
+  await expect(answers(page).last().getByText(STATUS_TEXT.completed, { exact: true })).toBeVisible({
+    timeout: 15000,
+  });
   await expect(page.getByRole('button', { name: LABELS.stopButton })).toHaveCount(0);
 }
 

@@ -38,8 +38,6 @@ export function Chat({ chatId }: { chatId: string }) {
         .map((part) => part.text)
         .join('\n');
       await state.send.mutateAsync(text);
-      if (sessionStorage.getItem(`draft:${chatId}`) === text)
-        sessionStorage.removeItem(`draft:${chatId}`);
     },
     onCancel: () => state.cancel.mutateAsync(),
   });
@@ -105,9 +103,6 @@ function SendErrors({ state }: { state: ChatState }) {
     state.send.mutate(content, {
       onSuccess: () => {
         if (aui.composer.getState().text === content) aui.composer.setText('');
-        const chatId = state.query.data?.chat.id;
-        if (chatId && sessionStorage.getItem(`draft:${chatId}`) === content)
-          sessionStorage.removeItem(`draft:${chatId}`);
       },
     });
   };

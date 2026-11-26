@@ -13,6 +13,35 @@ const empty: Snapshot = {
   runs: [],
 };
 let snapshot = empty;
+function acceptQuestion() {
+  const run = {
+    id: 'run',
+    chat_id: 'a',
+    assistant_message_id: 'answer',
+    status: 'completed' as const,
+    sequence: 2,
+    content: 'Сохранённый ответ',
+    incomplete: false,
+    error_code: null,
+    model: 'fake-chat',
+  };
+  snapshot = {
+    ...empty,
+    messages: [
+      { id: 'question', role: 'user', content: 'Вопрос', position: 1, incomplete: false },
+      {
+        id: 'answer',
+        role: 'assistant',
+        content: 'Сохранённый ответ',
+        position: 2,
+        incomplete: false,
+      },
+    ],
+    runs: [run],
+  };
+  return run;
+}
+
 const server = setupServer(http.get('/api/chats/a', () => HttpResponse.json(snapshot)));
 beforeAll(() => server.listen({ onUnhandledFrame: 'error' }));
 afterEach(() => {
@@ -25,16 +54,16 @@ function show() {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  render(
+  const view = render(
     <QueryClientProvider client={client}>
       <Chat chatId="a" />
     </QueryClientProvider>,
   );
-  return client;
+  return { client, ...view };
 }
 
 it('preserves unsent input when server history is refreshed', async () => {
-  const client = show();
+  const { client } = show();
   const input = await screen.findByRole('textbox', { name: 'Сообщение' });
   await userEvent.type(input, 'Несохранённый вопрос');
   await client.invalidateQueries({ queryKey: [...scopeKey, 'chat', 'a'] });
@@ -65,32 +94,7 @@ it.each(['unchanged', 'before retry', 'during retry'])(
         commands.push(command);
         if (commands.length === 1) return HttpResponse.error();
         if (edit === 'during retry') await confirmation;
-        const run = {
-          id: 'run',
-          chat_id: 'a',
-          assistant_message_id: 'answer',
-          status: 'completed' as const,
-          sequence: 2,
-          content: 'Сохранённый ответ',
-          incomplete: false,
-          error_code: null,
-          model: 'fake-chat',
-        };
-        snapshot = {
-          ...empty,
-          messages: [
-            { id: 'question', role: 'user', content: 'Вопрос', position: 1, incomplete: false },
-            {
-              id: 'answer',
-              role: 'assistant',
-              content: 'Сохранённый ответ',
-              position: 2,
-              incomplete: false,
-            },
-          ],
-          runs: [run],
-        };
-        return HttpResponse.json(run);
+        return HttpResponse.json(acceptQuestion());
       }),
     );
     show();
@@ -213,3 +217,40 @@ it('explains server validation without losing the question', async () => {
   expect(input).toHaveValue('Сохранить мой вопрос');
   expect(sessionStorage.getItem('draft:a')).toBe('Сохранить мой вопрос');
 });
+
+it.each(['unchanged', 'edited'])(
+  'acknowledges a retry after leaving the chat, preserving only an %s draft',
+  async (edit) => {
+    let count = 0;
+    let confirm = () => {};
+    const confirmation = new Promise<void>((resolve) => {
+      confirm = resolve;
+    });
+    server.use(
+      http.post('/api/chats/a/runs', async () => {
+        if (++count === 1) return HttpResponse.error();
+        await confirmation;
+        return HttpResponse.json(acceptQuestion());
+      }),
+    );
+    const view = show();
+    const input = await screen.findByRole('textbox', { name: 'Сообщение' });
+    await userEvent.type(input, 'Вопрос');
+    await userEvent.click(screen.getByRole('button', { name: 'Отправить сообщение' }));
+    await screen.findByRole('alert');
+    if (edit === 'edited') {
+      await userEvent.clear(input);
+      await userEvent.type(input, 'Новый черновик');
+    }
+    await userEvent.click(screen.getByRole('button', { name: 'Повторить отправку' }));
+    await waitFor(() => expect(count).toBe(2));
+    view.unmount();
+    confirm();
+    await waitFor(() => expect(sessionStorage.getItem('pending:a')).toBeNull());
+    show();
+    expect(await screen.findByRole('textbox', { name: 'Сообщение' })).toHaveValue(
+      edit === 'edited' ? 'Новый черновик' : '',
+    );
+    expect(snapshot.runs).toHaveLength(1);
+  },
+);

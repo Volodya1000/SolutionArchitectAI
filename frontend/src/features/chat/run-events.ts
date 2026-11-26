@@ -17,7 +17,7 @@ export function subscribeToRun(
     if (disposed) return;
     events.close();
     connectionError(true);
-    void client.invalidateQueries({ queryKey: key });
+    void client.invalidateQueries({ queryKey: key }, { cancelRefetch: false });
     clearTimeout(retry);
     retry = setTimeout(connect, 1000);
   }
