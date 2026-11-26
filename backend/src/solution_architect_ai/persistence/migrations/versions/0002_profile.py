@@ -1,10 +1,12 @@
+from typing import Final
+
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0002_profile"
-down_revision = "0001_chat"
-branch_labels = None
-depends_on = None
+revision: Final[str] = "0002_profile"
+down_revision: Final[str | None] = "0001_chat"
+branch_labels: Final[None] = None
+depends_on: Final[None] = None
 
 
 def upgrade() -> None:

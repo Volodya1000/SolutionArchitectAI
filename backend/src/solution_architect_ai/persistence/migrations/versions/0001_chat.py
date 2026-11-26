@@ -1,10 +1,12 @@
+from typing import Final
+
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0001_chat"
-down_revision = None
-branch_labels = None
-depends_on = None
+revision: Final[str] = "0001_chat"
+down_revision: Final[str | None] = None
+branch_labels: Final[None] = None
+depends_on: Final[None] = None
 
 
 def upgrade() -> None:
@@ -66,5 +68,6 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    table: str
     for table in ("preferences", "runs", "messages", "chats", "tasks", "projects"):
         op.drop_table(table)

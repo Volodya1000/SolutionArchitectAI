@@ -1,4 +1,20 @@
 from enum import StrEnum
+from typing import Final
+
+
+class RunErrorCode(StrEnum):
+    PROCESS_INTERRUPTED = "process_interrupted"
+    PROCESSING_INTERRUPTED = "processing_interrupted"
+    DEADLINE_EXCEEDED = "deadline_exceeded"
+    CONTEXT_TOO_LARGE = "context_too_large"
+    EMPTY_RESPONSE = "empty_response"
+    INCOMPLETE_RESPONSE = "incomplete_response"
+    LLM_TIMEOUT = "llm_timeout"
+    LLM_CONNECTION = "llm_connection"
+    LLM_UNAVAILABLE = "llm_unavailable"
+    LLM_REJECTED = "llm_rejected"
+    LLM_INVALID_RESPONSE = "llm_invalid_response"
+    UNSUPPORTED_STREAM_LIFECYCLE = "unsupported_stream_lifecycle"
 
 
 class RunStatus(StrEnum):
@@ -14,7 +30,13 @@ class RunStatus(StrEnum):
         return self in {self.COMPLETED, self.FAILED, self.CANCELLED}
 
 
-_TRANSITIONS = {
+ACTIVE_STATUSES: Final[tuple[RunStatus, ...]] = (
+    RunStatus.QUEUED,
+    RunStatus.RUNNING,
+    RunStatus.CANCELLING,
+)
+
+_TRANSITIONS: Final[dict[RunStatus, set[RunStatus]]] = {
     RunStatus.QUEUED: {RunStatus.RUNNING, RunStatus.CANCELLING, RunStatus.FAILED},
     RunStatus.RUNNING: {RunStatus.COMPLETED, RunStatus.CANCELLING, RunStatus.FAILED},
     RunStatus.CANCELLING: {RunStatus.CANCELLED, RunStatus.FAILED},
@@ -28,7 +50,7 @@ def transition(current: RunStatus, target: RunStatus) -> RunStatus:
 
 
 def resolve_transition(
-    current: RunStatus, target: RunStatus, error: str | None = None
+    current: RunStatus, target: RunStatus, error: RunErrorCode | None = None
 ) -> RunStatus:
     """Resolve replayed commands and worker/cancellation races before validation."""
     if error is not None and target not in {RunStatus.FAILED, RunStatus.CANCELLED}:

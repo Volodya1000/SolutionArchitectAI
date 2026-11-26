@@ -1,9 +1,11 @@
+from typing import Final
+
 from alembic import op
 
-revision = "0003_unique_answer"
-down_revision = "0002_profile"
-branch_labels = None
-depends_on = None
+revision: Final[str] = "0003_unique_answer"
+down_revision: Final[str | None] = "0002_profile"
+branch_labels: Final[None] = None
+depends_on: Final[None] = None
 
 
 def upgrade() -> None:

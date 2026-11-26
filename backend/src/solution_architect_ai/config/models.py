@@ -1,12 +1,16 @@
 from pathlib import Path
-from typing import Literal
-from urllib.parse import urlsplit
+from typing import ClassVar, Literal
+from urllib.parse import SplitResult, urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
+from solution_architect_ai.application.context import FIXED_INPUT_COST, MESSAGE_OVERHEAD
+
 
 class Section(BaseModel):
-    model_config = ConfigDict(extra="forbid", hide_input_in_errors=True, allow_inf_nan=False)
+    model_config: ClassVar[ConfigDict] = ConfigDict(
+        extra="forbid", hide_input_in_errors=True, allow_inf_nan=False
+    )
 
 
 class ServerSettings(Section):
@@ -56,12 +60,12 @@ class LLMSettings(Section):
 
     @model_validator(mode="after")
     def validate_profile(self) -> "LLMSettings":
-        url = urlsplit(self.base_url)
+        url: SplitResult = urlsplit(self.base_url)
         if url.scheme not in {"http", "https"} or not url.hostname:
             raise ValueError("LLM endpoint must be an HTTP URL")
         if url.username or url.password or url.query or url.fragment:
             raise ValueError("LLM URL cannot contain credentials, query or fragment")
-        if self.output_limit + 256 >= self.context_window:
+        if self.output_limit + FIXED_INPUT_COST + MESSAGE_OVERHEAD >= self.context_window:
             raise ValueError("output limit leaves no input budget")
         return self
 

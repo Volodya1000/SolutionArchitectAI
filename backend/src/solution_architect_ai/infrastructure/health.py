@@ -1,16 +1,19 @@
 import asyncio
 import tempfile
 from pathlib import Path
+from typing import IO
 
-from solution_architect_ai.application.contracts import StorageUnavailable
+from solution_architect_ai.application.errors import StorageUnavailable
 
 
 class LocalResourceProbe:
     def __init__(self, directories: tuple[Path, ...]) -> None:
-        self.directories = directories
+        self.directories: tuple[Path, ...] = directories
 
     def check_directories(self) -> None:
+        directory: Path
         for directory in self.directories:
+            probe: IO[bytes]
             with tempfile.TemporaryFile(dir=directory) as probe:
                 probe.write(b"readiness")
                 probe.flush()

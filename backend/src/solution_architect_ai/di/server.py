@@ -1,10 +1,11 @@
 import uvicorn
 
+from solution_architect_ai.config.settings import Settings
 from solution_architect_ai.di.main import bootstrap
 
 
 def main() -> None:
-    settings = bootstrap()
+    settings: Settings = bootstrap()
     uvicorn.run(
         "solution_architect_ai.di.main:create_app",
         factory=True,

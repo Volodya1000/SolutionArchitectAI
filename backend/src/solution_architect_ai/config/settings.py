@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import ClassVar
 
 from pydantic import Field, ValidationError
 from pydantic_settings import (
@@ -27,7 +28,7 @@ from solution_architect_ai.config.sources import (
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
+    model_config: ClassVar[SettingsConfigDict] = SettingsConfigDict(
         env_prefix="SAA_", env_nested_delimiter="__", extra="forbid", hide_input_in_errors=True
     )
     config_root: Path = Field(exclude=True)
@@ -47,13 +48,13 @@ class Settings(BaseSettings):
         dotenv_settings: PydanticBaseSettingsSource,
         file_secret_settings: PydanticBaseSettingsSource,
     ) -> tuple[PydanticBaseSettingsSource, ...]:
-        initial = init_settings()
+        initial: dict[str, object] = init_settings()
         if initial.get("mode", "production") == "production" and contains_secret_override(initial):
             raise ValueError("Production secrets cannot be supplied through init overrides")
-        root = Path(str(initial.get("config_root", ".")))
-        data = read_yaml(root / "config/app.yaml")
+        root: Path = Path(str(initial.get("config_root", ".")))
+        data: dict[str, object] = read_yaml(root / "config/app.yaml")
         validate_keys(data, cls)
-        secret_dir = root / "secrets"
+        secret_dir: Path = root / "secrets"
         secrets: tuple[PydanticBaseSettingsSource, ...] = ()
         if secret_dir.exists():
             validate_secret_directory(secret_dir, env_settings(), dotenv_settings())
@@ -76,11 +77,13 @@ class Settings(BaseSettings):
 
 def load_settings(root: Path, mode: Mode) -> Settings:
     validate_environment(Settings)
-    dotenv = {"development": ".env", "test": ".env.test"}.get(mode)
+    dotenv: str | None = {"development": ".env", "test": ".env.test"}.get(mode)
     try:
         return Settings(
             config_root=root.resolve(), mode=mode, _env_file=root / dotenv if dotenv else None
         )
     except ValidationError as error:
-        locations = [".".join(str(part) for part in item["loc"]) for item in error.errors()]
+        locations: list[str] = [
+            ".".join(str(part) for part in item["loc"]) for item in error.errors()
+        ]
         raise ValueError("Invalid configuration fields: " + ", ".join(locations)) from None

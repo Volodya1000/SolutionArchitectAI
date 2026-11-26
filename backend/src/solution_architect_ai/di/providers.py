@@ -5,6 +5,7 @@ from hashlib import sha256
 
 import httpx
 from dishka import Provider, Scope, from_context, provide
+from dishka.dependency_source import CompositeDependencySource
 from langchain_openai import ChatOpenAI
 from sqlalchemy import URL
 from sqlalchemy.ext.asyncio import (
@@ -17,6 +18,7 @@ from sqlalchemy.ext.asyncio import (
 from solution_architect_ai.application.chat import ChatService
 from solution_architect_ai.application.generation import GenerationPolicy, RunWorker
 from solution_architect_ai.application.ports import LLM, ResourceProbe, StoreFactory
+from solution_architect_ai.config.models import DatabaseSettings, LLMSettings
 from solution_architect_ai.config.settings import Settings
 from solution_architect_ai.infrastructure.health import LocalResourceProbe
 from solution_architect_ai.infrastructure.llm import LangChainLLM
@@ -24,7 +26,7 @@ from solution_architect_ai.persistence.factory import SqlAlchemyStoreFactory
 
 
 def database_url(settings: Settings) -> URL:
-    db = settings.database
+    db: DatabaseSettings = settings.database
     return URL.create(
         "postgresql+psycopg",
         username=db.user,
@@ -36,11 +38,11 @@ def database_url(settings: Settings) -> URL:
 
 
 class AppProvider(Provider):
-    settings = from_context(Settings, scope=Scope.APP)
+    settings: CompositeDependencySource = from_context(Settings, scope=Scope.APP)
 
     @provide(scope=Scope.APP)
     async def engine(self, settings: Settings) -> AsyncIterator[AsyncEngine]:
-        engine = create_async_engine(
+        engine: AsyncEngine = create_async_engine(
             database_url(settings),
             pool_pre_ping=True,
             connect_args={"connect_timeout": 3},
@@ -55,16 +57,21 @@ class AppProvider(Provider):
 
     @provide(scope=Scope.APP)
     def stores(self, engine: AsyncEngine) -> StoreFactory:
-        sessions = async_sessionmaker[AsyncSession](engine, expire_on_commit=False)
+        sessions: async_sessionmaker[AsyncSession] = async_sessionmaker[AsyncSession](
+            engine, expire_on_commit=False
+        )
         return SqlAlchemyStoreFactory(sessions)
 
     @provide(scope=Scope.APP)
     async def llm(self, settings: Settings) -> AsyncIterator[LLM]:
-        profile = settings.llm
+        profile: LLMSettings = settings.llm
+        stack: AsyncExitStack
         async with AsyncExitStack() as stack:
-            sync_client = stack.enter_context(httpx.Client(trust_env=False))
-            client = await stack.enter_async_context(httpx.AsyncClient(trust_env=False))
-            model = ChatOpenAI(
+            sync_client: httpx.Client = stack.enter_context(httpx.Client(trust_env=False))
+            client: httpx.AsyncClient = await stack.enter_async_context(
+                httpx.AsyncClient(trust_env=False)
+            )
+            model: ChatOpenAI = ChatOpenAI(
                 model=profile.model,
                 base_url=profile.base_url,
                 api_key=profile.api_key or "local-no-external-key",
@@ -82,25 +89,25 @@ class AppProvider(Provider):
 
     @provide(scope=Scope.APP)
     def worker(self, stores: StoreFactory, llm: LLM, settings: Settings) -> RunWorker:
-        profile = settings.llm
-        policy = GenerationPolicy(
+        profile: LLMSettings = settings.llm
+        policy: GenerationPolicy = GenerationPolicy(
             concurrency=profile.concurrency,
             deadline=profile.retry.deadline_seconds,
             retries=profile.retry.network_retries,
             requests=profile.retry.max_total_requests,
             backoff=profile.retry.backoff_initial,
-            input_budget=profile.context_window - profile.output_limit - 256,
+            input_budget=profile.context_window - profile.output_limit,
             backoff_max=profile.retry.backoff_max,
             jitter=profile.retry.jitter,
         )
         return RunWorker(stores, llm, policy)
 
-    @provide(scope=Scope.REQUEST)
+    @provide(scope=Scope.APP)
     def service(
         self, stores: StoreFactory, settings: Settings, probe: ResourceProbe
     ) -> ChatService:
-        profile = settings.llm.model_dump(mode="json", exclude={"api_key"})
-        digest = sha256(json.dumps(profile, sort_keys=True).encode()).hexdigest()
+        profile: dict[str, object] = settings.llm.model_dump(mode="json", exclude={"api_key"})
+        digest: str = sha256(json.dumps(profile, sort_keys=True).encode()).hexdigest()
         return ChatService(stores, settings.llm.model, digest, probe)
 
     @provide(scope=Scope.APP)
