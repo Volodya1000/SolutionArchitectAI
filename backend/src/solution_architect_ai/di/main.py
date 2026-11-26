@@ -12,12 +12,20 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import TypeAdapter, ValidationError
 
+from solution_architect_ai.application.document_errors import DocumentFailure
+from solution_architect_ai.application.documents import DocumentService
 from solution_architect_ai.application.dto import APIError
 from solution_architect_ai.application.errors import ChatError, Conflict, Missing
+from solution_architect_ai.application.extraction_worker import ExtractionWorker
 from solution_architect_ai.application.generation import RunWorker
 from solution_architect_ai.config.models import Mode
 from solution_architect_ai.config.settings import Settings, load_settings
+from solution_architect_ai.di.documents import DocumentProvider
+from solution_architect_ai.di.extraction import ExtractionProvider
 from solution_architect_ai.di.providers import AppProvider
+from solution_architect_ai.presentation.document_routes import document_error
+from solution_architect_ai.presentation.document_routes import router as document_router
+from solution_architect_ai.presentation.extraction_routes import router as extraction_router
 from solution_architect_ai.presentation.routes import router
 
 
@@ -48,25 +56,41 @@ def bootstrap() -> Settings:
 def create_app() -> FastAPI:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     settings: Settings = bootstrap()
-    container: AsyncContainer = make_async_container(AppProvider(), context={Settings: settings})
+    container: AsyncContainer = make_async_container(
+        AppProvider(), DocumentProvider(), ExtractionProvider(), context={Settings: settings}
+    )
 
     @asynccontextmanager
     async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-        worker: RunWorker = await container.get(RunWorker)
         try:
-            await worker.recover()
-            group: asyncio.TaskGroup
-            async with asyncio.TaskGroup() as group:
-                group.create_task(worker.serve())
-                try:
-                    yield
-                finally:
-                    worker.stopping.set()
+            async with workers(container):
+                yield
         finally:
             await container.close()
 
     app: FastAPI = FastAPI(title="SolutionArchitectAI", version="0.1.0", lifespan=lifespan)
     app.include_router(router)
+    app.include_router(document_router)
+    app.include_router(extraction_router)
     app.add_exception_handler(ChatError, chat_error)
+    app.add_exception_handler(DocumentFailure, document_error)
     setup_dishka(container, app)
     return app
+
+
+@asynccontextmanager
+async def workers(container: AsyncContainer) -> AsyncIterator[None]:
+    worker: RunWorker = await container.get(RunWorker)
+    extraction: ExtractionWorker = await container.get(ExtractionWorker)
+    documents: DocumentService = await container.get(DocumentService)
+    await worker.recover()
+    await documents.recover()
+    group: asyncio.TaskGroup
+    async with asyncio.TaskGroup() as group:
+        group.create_task(worker.serve())
+        group.create_task(extraction.serve())
+        try:
+            yield
+        finally:
+            worker.stopping.set()
+            extraction.stopping.set()

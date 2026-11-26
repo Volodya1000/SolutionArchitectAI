@@ -94,9 +94,11 @@ async function validationError(response: Response): Promise<InputValidationError
   );
 }
 
-async function sendRequest(path: string, init?: RequestInit): Promise<Response> {
+export async function sendRequest(path: string, init?: RequestInit): Promise<Response> {
   try {
-    return await fetch(`/api${path}`, { ...init, headers: { 'Content-Type': 'application/json' } });
+    const headers = new Headers(init?.headers);
+    if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+    return await fetch(`/api${path}`, { ...init, headers });
   } catch {
     throw new Error('Не удалось соединиться с приложением. Проверьте подключение и повторите.');
   }

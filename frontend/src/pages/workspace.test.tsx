@@ -110,3 +110,13 @@ it('keeps the selected theme locally when the server cannot save it', async () =
   expect(document.documentElement).toHaveClass('dark');
   expect(localStorage.getItem('saa-theme')).toBe('dark');
 });
+
+it('exposes documents and requirements as independent workspace sections', () => {
+  showWorkspace();
+
+  expect(screen.getByRole('link', { name: 'Документы' })).toHaveAttribute('href', '/documents');
+  expect(screen.getByRole('link', { name: 'A-01 · Требования' })).toHaveAttribute(
+    'href',
+    '/requirements',
+  );
+});

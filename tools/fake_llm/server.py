@@ -39,6 +39,64 @@ def last_prompt(body: object) -> str:
     return prompt
 
 
+def document_fragments(body: object) -> list[dict[str, str]]:
+    if not isinstance(body, dict):
+        return []
+    messages: object = body.get("messages")
+    if not isinstance(messages, list):
+        return []
+    return [fragment for message in messages for fragment in message_fragments(message)]
+
+
+def message_fragments(message: object) -> list[dict[str, str]]:
+    if not isinstance(message, dict):
+        return []
+    content: object = message.get("content")
+    if not isinstance(content, str):
+        return []
+    try:
+        payload: object = json.loads(content)
+    except ValueError:
+        return []
+    if not isinstance(payload, dict):
+        return []
+    values: object = payload.get("fragments")
+    if not isinstance(values, list):
+        return []
+    return [item for value in values if (item := text_fragment(value)) is not None]
+
+
+def text_fragment(value: object) -> dict[str, str] | None:
+    if not isinstance(value, dict):
+        return None
+    identifier: object = value.get("fragment_id")
+    content: object = value.get("text")
+    if isinstance(identifier, str) and isinstance(content, str):
+        return {"fragment_id": identifier, "text": content}
+    return None
+
+
+def extracted_requirements(body: object) -> str:
+    requirements: list[dict[str, object]] = []
+    for fragment in document_fragments(body):
+        text: str = fragment["text"]
+        if text.strip():
+            quote: str = text[:2000]
+            requirements.append(
+                {
+                    "category": "non_functional"
+                    if "NFR" in text or "SLA" in text
+                    else "functional",
+                    "original_text": quote,
+                    "normalized_text": quote,
+                    "evidence": [{"fragment_id": fragment["fragment_id"], "quote": quote}],
+                }
+            )
+    return json.dumps(
+        {"requirements": requirements, "gaps": [], "contradictions": []}, ensure_ascii=False
+    )
+
+
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         self.send_response(200)
@@ -63,12 +121,44 @@ class Handler(BaseHTTPRequestHandler):
         if "[error]" in prompt:
             self.send_error(503)
             return
+        if isinstance(body, dict) and not body.get("stream", False):
+            self.structured(body, prompt)
+            return
         self.send_response(200)
         self.send_header("Content-Type", "text/event-stream")
         self.send_header("Cache-Control", "no-cache")
         self.end_headers()
         try:
             self.write_completion(prompt)
+        except (BrokenPipeError, ConnectionResetError):
+            self.close_connection = True
+
+    def structured(self, body: dict[str, object], prompt: str) -> None:
+        answer: str = extracted_requirements(body)
+        if "[slow]" in prompt:
+            time.sleep(2)
+        if "[invalid-json]" in prompt:
+            answer = "{bad json"
+        if "[empty]" in prompt:
+            answer = ""
+        payload: dict[str, object] = {
+            "id": "fake-structured",
+            "object": "chat.completion",
+            "created": 1,
+            "model": MODEL,
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {"role": "assistant", "content": answer},
+                    "finish_reason": "length" if "[truncated]" in prompt else "stop",
+                }
+            ],
+        }
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.end_headers()
+        try:
+            self.wfile.write(json.dumps(payload, ensure_ascii=False).encode())
         except (BrokenPipeError, ConnectionResetError):
             return
 

@@ -1,11 +1,14 @@
 llm:
   context_window: 4096
-  output_limit: 512
+  output_limit: 768
+  structured_mode: json_text
+  service_tokens: 256
   concurrency: 1
   temperature: 0.2
   approximate_chars_per_token: 1.0
   retry:
     network_retries: 1
-    max_total_requests: 2
-    deadline_seconds: 120
-    request_timeout_seconds: 60
+    validation_retries: 2
+    max_total_requests: 128
+    deadline_seconds: 1800
+    request_timeout_seconds: 120

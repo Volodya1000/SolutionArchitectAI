@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from solution_architect_ai.application.capacity import GenerationCapacity
 from solution_architect_ai.application.chat import ChatService
 from solution_architect_ai.application.generation import RunWorker
 from solution_architect_ai.application.ports import LLM, ResourceProbe, StoreFactory, TokenCounter
@@ -95,7 +96,12 @@ class AppProvider(Provider):
 
     @provide(scope=Scope.APP)
     def worker(
-        self, stores: StoreFactory, llm: LLM, settings: Settings, tokens: TokenCounter
+        self,
+        stores: StoreFactory,
+        llm: LLM,
+        settings: Settings,
+        tokens: TokenCounter,
+        capacity: GenerationCapacity,
     ) -> RunWorker:
         profile: LLMSettings = settings.llm
         policy: GenerationPolicy = GenerationPolicy(
@@ -110,7 +116,11 @@ class AppProvider(Provider):
         )
         if tokens.count([]) >= policy.input_budget:
             raise ValueError("output limit leaves no input budget for the system prompt")
-        return RunWorker(stores, llm, policy, tokens)
+        return RunWorker(stores, llm, policy, tokens, capacity)
+
+    @provide(scope=Scope.APP)
+    def capacity(self, settings: Settings) -> GenerationCapacity:
+        return GenerationCapacity(settings.llm.concurrency)
 
     @provide(scope=Scope.APP)
     def service(

@@ -1,8 +1,7 @@
 import { useMutation, useQuery, useQueryClient, type UseQueryResult } from '@tanstack/react-query';
-import { Layers3, MessageSquare, Plus, SunMoon, ArrowRight } from 'lucide-react';
-import { Link, useNavigate, useParams } from 'react-router';
+import { Layers3, MessageSquare, Plus, SunMoon, Files, ListChecks } from 'lucide-react';
+import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import { z } from 'zod';
-import { Chat } from '../features/chat';
 import {
   chatSchema,
   modelStatusSchema,
@@ -12,9 +11,12 @@ import {
 } from '../shared/api/client';
 import { Button } from '../shared/ui/button';
 import { useTheme } from '../shared/ui/theme-context';
+import { WorkspaceContent, WorkspaceHeading, type WorkspaceSection } from './workspace-content';
 
 export function Workspace() {
   const { chatId } = useParams();
+  const location = useLocation();
+  const section = workspaceSection(location.pathname);
   const navigate = useNavigate();
   const client = useQueryClient();
   const theme = useTheme();
@@ -37,7 +39,7 @@ export function Workspace() {
   return (
     <div className="workspace">
       <a className="skip-link" href="#conversation">
-        К диалогу
+        К основному содержимому
       </a>
       <aside className="sidebar">
         <Link className="brand" to="/">
@@ -55,6 +57,24 @@ export function Workspace() {
             Локальный проект<small>Обсуждение архитектуры</small>
           </div>
         </div>
+        <nav aria-label="Рабочее пространство" className="workspace-navigation">
+          <Link
+            className="chat-link"
+            to="/documents"
+            aria-current={section === 'documents' ? 'page' : undefined}
+          >
+            <Files size={16} />
+            Документы
+          </Link>
+          <Link
+            className="chat-link"
+            to="/requirements"
+            aria-current={section === 'requirements' ? 'page' : undefined}
+          >
+            <ListChecks size={16} />
+            A-01 · Требования
+          </Link>
+        </nav>
         <Button className="new-chat" onClick={() => create.mutate()} disabled={create.isPending}>
           <Plus size={17} />
           Новый чат
@@ -89,36 +109,24 @@ export function Workspace() {
       </aside>
       <main id="conversation">
         <header className="topbar">
-          <div>
-            <span className="breadcrumb">
-              Локальный проект <span>/</span> Чаты
-            </span>
-            <h2>{selected?.title ?? 'Рабочий чат'}</h2>
-          </div>
+          <WorkspaceHeading section={section} title={selected?.title} />
           <ModelIndicator />
         </header>
-        {chatId ? (
-          <Chat key={chatId} chatId={chatId} />
-        ) : (
-          <div className="empty-workspace">
-            <div className="welcome-icon">
-              <Layers3 size={30} />
-            </div>
-            <span className="eyebrow">SOLUTION ARCHITECT AI</span>
-            <h1>Место для продуманных решений</h1>
-            <p>
-              Обсуждайте требования и архитектуру в отдельных диалогах. Откройте сохранённый чат или
-              начните новый.
-            </p>
-            <Button onClick={() => create.mutate()} disabled={create.isPending}>
-              Начать обсуждение
-              <ArrowRight size={17} />
-            </Button>
-          </div>
-        )}
+        <WorkspaceContent
+          section={section}
+          chatId={chatId}
+          pending={create.isPending}
+          create={() => create.mutate()}
+        />
       </main>
     </div>
   );
+}
+
+function workspaceSection(path: string): WorkspaceSection {
+  if (path === '/documents') return 'documents';
+  if (path === '/requirements') return 'requirements';
+  return 'chat';
 }
 
 function ModelIndicator() {

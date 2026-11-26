@@ -7,6 +7,7 @@ from uuid import UUID
 
 from tenacity import AsyncRetrying
 
+from solution_architect_ai.application.capacity import GenerationCapacity
 from solution_architect_ai.application.context import select_context
 from solution_architect_ai.application.dto import ChatSnapshot, MessageView, PendingRun, RunView
 from solution_architect_ai.application.errors import GenerationFailure, StorageUnavailable
@@ -25,12 +26,18 @@ logger: logging.Logger = logging.getLogger(__name__)
 
 class RunWorker:
     def __init__(
-        self, stores: StoreFactory, llm: LLM, policy: GenerationPolicy, tokens: TokenCounter
+        self,
+        stores: StoreFactory,
+        llm: LLM,
+        policy: GenerationPolicy,
+        tokens: TokenCounter,
+        capacity: GenerationCapacity | None = None,
     ) -> None:
         self.stores: StoreFactory = stores
         self.llm: LLM = llm
         self.policy: GenerationPolicy = policy
         self.tokens: TokenCounter = tokens
+        self.capacity: GenerationCapacity = capacity or GenerationCapacity(policy.concurrency)
         self.active: dict[UUID, asyncio.Task[None]] = {}
         self.stopping: asyncio.Event = asyncio.Event()
 
@@ -101,7 +108,8 @@ class RunWorker:
         try:
             elapsed: float = (datetime.now(UTC) - run.created_at).total_seconds()
             async with asyncio.timeout(max(0, self.policy.deadline - elapsed)):
-                await self.generate(run_id)
+                async with self.capacity.slots:
+                    await self.generate(run_id)
         except asyncio.CancelledError:
             if self.stopping.is_set():
                 await self.safe_finish(run_id, RunStatus.FAILED, RunErrorCode.PROCESS_INTERRUPTED)
