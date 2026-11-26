@@ -23,3 +23,6 @@
 
 - Use type-aware ESLint, architectural import contracts, cycle checks, complexity/depth limits, React Refresh validation, Prettier, strict TypeScript, Vitest, and the planned Playwright coverage as documented.
 - Add actionlint, yamllint, markdownlint-cli2, and carefully configured typos checks as part of repository CI implementation, without removing the existing PDF workflow. No real paid LLM API calls are required in ordinary PR CI.
+- Use `uv run --locked --project backend python -m tools.quality setup` to install local hooks. `fast` is the pre-commit gate; `full` is the pre-push and CI gate. See the quality plan for scope and prerequisites; do not bypass failed hooks to publish changes.
+- Add explicit types to handwritten backend source, migrations, tests and `tools/`: parameters, returns, assignment targets, attributes and constants (`Final` where appropriate). Keep `Any` and unvalidated boundary values out of application code. Respect syntax limits for Enum members, comprehensions and pattern bindings; use existing Ruff/Mypy gates and review local annotation coverage.
+- Update the root `CHANGELOG.md` under Unreleased for significant user-facing or technical changes. Do not invent a release version before a release.

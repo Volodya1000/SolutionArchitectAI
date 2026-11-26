@@ -1,0 +1,289 @@
+"""The shared local-hook and CI quality entrypoint. Run from the repository root."""
+
+import argparse
+import os
+import shutil
+
+# Fixed development tool argument vectors; no shell commands.
+import subprocess  # nosec B404
+import sys
+from collections.abc import Mapping, Sequence
+from pathlib import Path
+from typing import Final, Literal
+
+from tools.quality_runtime import RuntimeEnvironment, isolated_runtime
+
+ROOT: Final[Path] = Path(__file__).resolve().parents[1]
+PYTHON: Final[str] = sys.executable
+TARGETS: Final[tuple[str, ...]] = ("backend/src", "backend/tests", "tools")
+CONFIG: Final[str] = "backend/pyproject.toml"
+type Mode = Literal["setup", "fast", "full"]
+
+
+def run(title: str, arguments: Sequence[str], env: Mapping[str, str], *, cwd: Path = ROOT) -> None:
+    print(f"Quality: {title}", flush=True)
+    subprocess.run(  # nosec B603
+        arguments,
+        cwd=cwd,
+        env=env,
+        check=True,
+        timeout=1800,
+    )
+
+
+def pnpm() -> str:
+    executable: str | None = shutil.which("pnpm.cmd" if os.name == "nt" else "pnpm")
+    if executable is None:
+        raise RuntimeError("pnpm 12 is required; see README development setup")
+    return executable
+
+
+def python_tool(name: str, *arguments: str) -> list[str]:
+    return [PYTHON, "-m", name, *arguments]
+
+
+def clean_environment() -> dict[str, str]:
+    env: dict[str, str] = {
+        key: value for key, value in os.environ.items() if not key.startswith(("SAA_", "COMPOSE_"))
+    }
+    env["PYTHONUTF8"] = "1"
+    return env
+
+
+def quality_binary(name: str) -> Path:
+    return ROOT / ".build" / "quality-tools" / name / (name + (".exe" if os.name == "nt" else ""))
+
+
+def setup(env: dict[str, str]) -> None:
+    run("locked Python dependencies", ["uv", "sync", "--locked", "--project", "backend"], env)
+    run(
+        "locked frontend dependencies",
+        [pnpm(), "--dir", "frontend", "install", "--frozen-lockfile"],
+        env,
+    )
+    run("pinned repository tools", python_tool("tools.install_quality_tools"), env)
+    run(
+        "install commit and push hooks",
+        [
+            "uv",
+            "run",
+            "--locked",
+            "--project",
+            "backend",
+            "pre-commit",
+            "install",
+            "--hook-type",
+            "pre-commit",
+            "--hook-type",
+            "pre-push",
+        ],
+        env,
+    )
+
+
+def backend_static(env: dict[str, str]) -> None:
+    run(
+        "Python environment matches lockfile",
+        ["uv", "sync", "--locked", "--check", "--project", "backend"],
+        env,
+    )
+    run("Ruff", python_tool("ruff", "check", "--config", CONFIG, *TARGETS), env)
+    run("Ruff format", python_tool("ruff", "format", "--check", "--config", CONFIG, *TARGETS), env)
+    run(
+        "Mypy strict: source, tests, tools",
+        python_tool("mypy", "--config-file", CONFIG, *TARGETS),
+        env,
+    )
+    run("Pylint source", python_tool("pylint", "--rcfile", CONFIG, "backend/src"), env)
+    run(
+        "Pylint tests and commands",
+        python_tool(
+            "pylint",
+            "--rcfile",
+            CONFIG,
+            "--disable=redefined-outer-name,protected-access",
+            "backend/tests",
+            "tools",
+        ),
+        env,
+    )
+    run("Bandit source", python_tool("bandit", "-c", CONFIG, "-r", "backend/src", "-q"), env)
+    run(
+        "Bandit tests and tools",
+        python_tool("bandit", "-r", "backend/tests", "tools", "-s", "B101", "-q"),
+        env,
+    )
+    run(
+        "application import contracts",
+        ["uv", "run", "--locked", "--project", "backend", "lint-imports", "backend/.importlinter"],
+        env,
+    )
+    run(
+        "Python cognitive complexity",
+        python_tool("flake8", "--config", "backend/.flake8", *TARGETS),
+        env,
+    )
+
+
+def frontend_fast(env: dict[str, str]) -> None:
+    if not (ROOT / "frontend/node_modules").is_dir():
+        raise RuntimeError("Frontend dependencies are missing; run tools.quality setup")
+    script: str
+    for script in ("lint", "format:check", "typecheck", "test"):
+        run(f"frontend {script}", [pnpm(), script], env, cwd=ROOT / "frontend")
+
+
+def repository_static(env: dict[str, str]) -> None:
+    name: str
+    for name in ("actionlint", "typos"):
+        if not quality_binary(name).is_file():
+            raise RuntimeError("Pinned repository tools are missing; run tools.quality setup")
+        run(name, [str(quality_binary(name))], env)
+    run("YAML", python_tool("yamllint", "."), env)
+    run(
+        "Markdown",
+        ["node", "frontend/node_modules/markdownlint-cli2/markdownlint-cli2-bin.mjs"],
+        env,
+    )
+    run("local documentation links", python_tool("tools.check_links"), env)
+    run("hook configuration", python_tool("pre_commit", "validate-config"), env)
+
+
+def fast(env: dict[str, str]) -> None:
+    backend_static(env)
+    frontend_fast(env)
+    repository_static(env)
+    run(
+        "fast Python unit tests",
+        python_tool(
+            "pytest",
+            "-c",
+            CONFIG,
+            "backend/tests/unit",
+            "backend/tests/quality/test_quality_runtime.py",
+            "--disable-socket",
+        ),
+        env,
+    )
+
+
+def audit(env: dict[str, str]) -> None:
+    run(
+        "frontend dependency audit",
+        [pnpm(), "audit", "--audit-level", "low"],
+        env,
+        cwd=ROOT / "frontend",
+    )
+    requirements: Path = ROOT / ".build" / "quality-requirements.txt"
+    requirements.parent.mkdir(exist_ok=True)
+    run(
+        "export hashed Python dependencies",
+        [
+            "uv",
+            "export",
+            "--project",
+            "backend",
+            "--frozen",
+            "--no-emit-project",
+            "--format",
+            "requirements-txt",
+            "--output-file",
+            str(requirements),
+        ],
+        env,
+    )
+    run(
+        "Python dependency audit",
+        [
+            "uvx",
+            "pip-audit==2.10.1",
+            "--require-hashes",
+            "--no-deps",
+            "--disable-pip",
+            "-r",
+            str(requirements),
+        ],
+        env,
+    )
+
+
+def browser_environment(env: dict[str, str]) -> dict[str, str]:
+    result: dict[str, str] = dict(env)
+    if result.get("CI"):
+        run(
+            "CI Chromium and system dependencies",
+            [pnpm(), "exec", "playwright", "install", "--with-deps", "chromium"],
+            result,
+            cwd=ROOT / "frontend",
+        )
+    elif os.name == "nt" and not result.get("PLAYWRIGHT_CHANNEL"):
+        base: str = os.environ.get("PROGRAMFILES(X86)", "")
+        if base and (Path(base) / "Microsoft/Edge/Application/msedge.exe").is_file():
+            result["PLAYWRIGHT_CHANNEL"] = "msedge"
+    return result
+
+
+def acceptance(env: dict[str, str]) -> None:
+    prepared: dict[str, str] = browser_environment(env)
+    runtime: RuntimeEnvironment
+    with isolated_runtime(ROOT) as runtime:
+        run(
+            "migrate dedicated test database",
+            python_tool("solution_architect_ai.di.migrate"),
+            runtime.backend,
+        )
+        run(
+            "all Python tests including PostgreSQL",
+            python_tool(
+                "pytest",
+                "-c",
+                CONFIG,
+                "backend/tests",
+                "--disable-socket",
+                "--allow-hosts=127.0.0.1,localhost",
+                "--allow-unix-socket",
+            ),
+            runtime.backend,
+        )
+        browser: dict[str, str] = dict(runtime.browser)
+        if "PLAYWRIGHT_CHANNEL" in prepared:
+            browser["PLAYWRIGHT_CHANNEL"] = prepared["PLAYWRIGHT_CHANNEL"]
+        run("browser acceptance", [pnpm(), "test:e2e"], browser, cwd=ROOT / "frontend")
+        run("isolated restart and failure smoke", python_tool("tools.runtime_smoke"), browser)
+
+
+def full(env: dict[str, str]) -> None:
+    fast(env)
+    run(
+        "frontend architecture and type probes",
+        ["node", "scripts/check-contracts.mjs"],
+        env,
+        cwd=ROOT / "frontend",
+    )
+    run("frontend production build", [pnpm(), "build"], env, cwd=ROOT / "frontend")
+    audit(env)
+    acceptance(env)
+
+
+def main() -> None:
+    parser: argparse.ArgumentParser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("mode", choices=("setup", "fast", "full"))
+    args: argparse.Namespace = parser.parse_args()
+    mode: str = args.mode
+    env: dict[str, str] = clean_environment()
+    try:
+        if mode == "setup":
+            setup(env)
+        elif mode == "fast":
+            fast(env)
+        else:
+            full(env)
+    except subprocess.CalledProcessError as error:
+        raise SystemExit(error.returncode) from None
+    except (OSError, RuntimeError, subprocess.TimeoutExpired) as error:
+        parser.exit(1, f"Quality failed: {error}\n")
+    print(f"Quality {mode}: passed.", flush=True)
+
+
+if __name__ == "__main__":
+    main()

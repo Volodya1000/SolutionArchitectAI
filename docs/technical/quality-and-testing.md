@@ -4,7 +4,19 @@
 
 ## Python: выбранный набор и разделение проверок
 
-Базовый набор backend: Ruff, Mypy, Pylint, Bandit, import-linter, точечный WPS231 из wemake-python-styleguide и pytest. Это будущие development-проверки; приложения и его конфигурации линтеров в этом PR нет. Ruff Formatter остаётся единственным форматтером Python. Целевая версия — Python 3.13.
+Базовый набор backend: Ruff, Mypy, Pylint, Bandit, import-linter, точечный WPS231 из wemake-python-styleguide и pytest. Эти проверки реализованы для первого рабочего чата. Ruff Formatter остаётся единственным форматтером Python. Целевая версия — Python 3.13.
+
+### Локальные hooks и CI
+
+Из корня репозитория выполните `uv sync --locked --project backend`, затем `uv run --locked --project backend python -m tools.quality setup`. Это устанавливает frontend по frozen lockfile, закреплённые repository tools и оба Git hooks. Требуются Python/uv, Node/pnpm 12 и Git; для полной проверки также Docker и доступ к реестрам аудита зависимостей.
+
+Единый runner `tools.quality` используется локально и в `.github/workflows/quality.yml`: режим `fast` запускает статические проверки backend/tests/tools и frontend, архитектурные контракты, форматирование, repository checks и быстрые Python/Vitest unit-тесты. Его вызывает pre-commit. Режим `full` дополнительно выполняет отрицательные пробы gates, production build, аудиты, полный pytest, Playwright и runtime fault smoke; его вызывают pre-push и CI. Вручную доступны те же команды `uv run --locked --project backend python -m tools.quality fast` и `… full`. Hooks проверяют весь применимый код, а не только переданные имена файлов; ошибки не исправляются и не скрываются автоматически.
+
+Полный runner создаёт собственный Compose project `saa-quality-*`, временные volumes, отдельную тестовую БД и свободные loopback-порты. `.env.quality` исключает влияние локального `.env`; fake LLM обязателен. Проверка не переключает настоящую модель и не перезапускает пользовательский стенд. Логи сохраняются в `.build/quality/`, временные контейнеры и volumes удаляются при завершении. На Windows используется установленный Edge либо явно заданный `PLAYWRIGHT_CHANNEL`; CI устанавливает Chromium и системные зависимости.
+
+Ruff ANN проверяет аннотации функций, Mypy strict охватывает `backend/src`, `backend/tests` и `tools` и запрещает явный `Any`. Явные локальные/модульные аннотации, атрибуты и `Final` проверяются также при ревью: Ruff/Mypy допускают вывод типов локальных переменных и не обещают запрет каждой неаннотированной записи. Отдельный сложный линтер ради этого не вводится. Для loop/with/unpacking имена можно объявить перед конструкцией; Enum members и локальные переменные comprehension сохраняют корректный синтаксис Python. Тестам разрешён assert, Pylint учитывает fixtures и тестовые обращения к закрытым деталям, а прочие проверки типов/сложности/безопасности сохраняются. CLI-вывод в tools не считается ошибкой T201.
+
+Application quality запускается для каждого PR и push в main, без второго запуска для push в task branch. PDF workflow имеет фильтры только по входам публикации и сохраняет ручной запуск. Его нельзя назначать безусловно обязательным status check: пропуск workflow по paths оставляет такой check Pending. При проверке 26 ноября main не имел обязательных checks или rulesets; настройки защиты ветки не изменялись. При включении защиты обязательным должен быть безусловный application `verify`, а условный PDF workflow — отдельной политикой документации.
 
 | Инструмент | Назначение и граница с другими проверками |
 | --- | --- |
