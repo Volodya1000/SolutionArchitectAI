@@ -1,4 +1,5 @@
 import os
+import sys
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from uuid import uuid4
@@ -52,8 +53,10 @@ def test_symlinked_parent_cannot_escape_storage(tmp_path: Path) -> None:
     try:
         parent.symlink_to(outside, target_is_directory=True)
     except OSError as error:
-        if os.name == "nt" and error.winerror == 1314:
-            pytest.skip("Windows user does not hold symlink creation privilege")
+        if sys.platform == "win32":
+            windows_error: int | None = error.winerror
+            if windows_error == 1314:
+                pytest.skip("Windows user does not hold symlink creation privilege")
         raise
     with pytest.raises(DocumentFailure) as failure:
         storage.path(f"{parent.name}/{uuid4()}")
