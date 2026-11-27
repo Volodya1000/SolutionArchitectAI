@@ -3,7 +3,11 @@ import logging
 from uuid import UUID
 
 from solution_architect_ai.application.capacity import GenerationCapacity
-from solution_architect_ai.application.errors.chat_errors import Conflict, StorageUnavailable
+from solution_architect_ai.application.errors.chat_errors import (
+    Conflict,
+    Missing,
+    StorageUnavailable,
+)
 from solution_architect_ai.application.errors.document_errors import DocumentFailure
 from solution_architect_ai.application.errors.extraction_errors import (
     ExtractionError,
@@ -14,15 +18,12 @@ from solution_architect_ai.application.errors.extraction_failure_mapper import (
 )
 from solution_architect_ai.application.errors.structured_errors import StructuredGenerationFailure
 from solution_architect_ai.application.models.extraction_models import ExtractionView
-from solution_architect_ai.application.protocols.clarification_protocols import (
-    ClarificationStore,
-    ClarificationStoreFactory,
-)
+from solution_architect_ai.application.protocols.clarification_protocols import ClarificationStore
 from solution_architect_ai.application.protocols.extraction_protocols import (
     ExtractionGraph,
     ExtractionStore,
-    ExtractionStoreFactory,
 )
+from solution_architect_ai.application.protocols.store_context_protocols import StoreContext
 from solution_architect_ai.domain.runs import RunStatus
 
 logger: logging.Logger = logging.getLogger(__name__)
@@ -31,19 +32,21 @@ logger: logging.Logger = logging.getLogger(__name__)
 class ExtractionWorker:
     def __init__(
         self,
-        stores: ExtractionStoreFactory,
-        graph: ExtractionGraph,
+        extraction_store_context: StoreContext[ExtractionStore],
+        extraction_graph: ExtractionGraph,
         capacity: GenerationCapacity,
         deadline: float,
-        clarifications: ClarificationStoreFactory | None = None,
+        clarification_store_context: StoreContext[ClarificationStore] | None = None,
     ) -> None:
-        self.stores: ExtractionStoreFactory = stores
-        self.graph: ExtractionGraph = graph
+        self.extraction_store_context: StoreContext[ExtractionStore] = extraction_store_context
+        self.extraction_graph: ExtractionGraph = extraction_graph
         self.capacity: GenerationCapacity = capacity
         self.deadline: float = deadline
         self.active: dict[UUID, asyncio.Task[None]] = {}
         self.stopping: asyncio.Event = asyncio.Event()
-        self.clarifications: ClarificationStoreFactory | None = clarifications
+        self.clarification_store_context: StoreContext[ClarificationStore] | None = (
+            clarification_store_context
+        )
         self.recovered: bool = False
 
     async def finish(
@@ -51,7 +54,7 @@ class ExtractionWorker:
     ) -> RunStatus | None:
         store: ExtractionStore
         try:
-            async with self.stores.open() as store:
+            async with self.extraction_store_context.open() as store:
                 return (await store.set_status(run_id, status, error)).status
         except (StorageUnavailable, StoredExtractionCorrupt):
             logger.warning("extraction_status_pending run_id=%s", run_id)
@@ -68,6 +71,8 @@ class ExtractionWorker:
             raise
         except Conflict as error:
             await self.handle_conflict(run_id, error)
+        except Missing as error:
+            await self.handle_missing(run_id, error)
         except (
             StructuredGenerationFailure,
             ExtractionError,
@@ -88,45 +93,53 @@ class ExtractionWorker:
         if error.code != "extraction_already_running":
             await self.finish(run_id, RunStatus.FAILED, extraction_failure_code(error))
 
+    async def handle_missing(self, run_id: UUID, error: Missing) -> None:
+        code: str = (
+            "answer_history_unavailable"
+            if str(error) == "answer_history"
+            else "stored_result_corrupt"
+        )
+        await self.finish(run_id, RunStatus.FAILED, code)
+
     async def run_graph(self, run_id: UUID) -> None:
         store: ExtractionStore
-        async with self.stores.open() as store:
+        async with self.extraction_store_context.open() as store:
             view: ExtractionView = await store.get(run_id)
         async with self.capacity.slots:
-            if self.clarifications is None:
+            if self.clarification_store_context is None:
                 async with asyncio.timeout(max(0, self.deadline - view.elapsed_seconds)):
-                    await self.graph.run(run_id)
+                    await self.extraction_graph.run(run_id)
             else:
                 await self.run_segment(run_id)
 
     async def run_segment(self, run_id: UUID) -> None:
-        if self.clarifications is None:
+        if self.clarification_store_context is None:
             return
         store: ClarificationStore
-        async with self.clarifications.open() as store:
+        async with self.clarification_store_context.open() as store:
             elapsed: float = await store.begin_segment(run_id)
         heartbeat: asyncio.Task[None] = asyncio.create_task(self.heartbeat(run_id))
         try:
             async with asyncio.timeout(max(0, self.deadline - elapsed)):
-                await self.graph.run(run_id)
+                await self.extraction_graph.run(run_id)
         finally:
             heartbeat.cancel()
             await asyncio.gather(heartbeat, return_exceptions=True)
-            async with self.clarifications.open() as store:
+            async with self.clarification_store_context.open() as store:
                 await store.heartbeat(run_id, finish=True)
 
     async def heartbeat(self, run_id: UUID) -> None:
-        if self.clarifications is None:
+        if self.clarification_store_context is None:
             return
         while True:
             await asyncio.sleep(1)
             store: ClarificationStore
-            async with self.clarifications.open() as store:
+            async with self.clarification_store_context.open() as store:
                 await store.heartbeat(run_id)
 
     async def dispatch(self, group: asyncio.TaskGroup) -> None:
         store: ExtractionStore
-        async with self.stores.open() as store:
+        async with self.extraction_store_context.open() as store:
             pending: list[ExtractionView] = await store.pending()
         run: ExtractionView
         for run in pending:
@@ -158,9 +171,9 @@ class ExtractionWorker:
     async def poll(self, group: asyncio.TaskGroup) -> None:
         try:
             if not self.recovered:
-                if self.clarifications is not None:
+                if self.clarification_store_context is not None:
                     store: ClarificationStore
-                    async with self.clarifications.open() as store:
+                    async with self.clarification_store_context.open() as store:
                         await store.recover_waiting()
                 self.recovered = True
             await self.dispatch(group)

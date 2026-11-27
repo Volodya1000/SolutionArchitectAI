@@ -15,6 +15,7 @@ const created = { ...original, id: 'new-chat', title: 'Диалог 2' };
 const server = setupServer(
   http.get('/api/preferences', () => HttpResponse.json({ theme: 'system' })),
   http.get('/api/model', () => HttpResponse.json({ model: 'fake-chat', available: true })),
+  http.get('/api/chats/:id/discussion', () => HttpResponse.json(null)),
 );
 
 beforeAll(() => server.listen({ onUnhandledFrame: 'error' }));
@@ -78,10 +79,15 @@ it('opens a saved chat by URL and navigates to a newly created conversation', as
   expect(screen.getByRole('button', { name: 'Новый чат' })).toBeDisabled();
   completeCreation();
 
-  expect(await screen.findByRole('heading', { name: created.title })).toBeVisible();
+  expect(await screen.findByRole('heading', { name: 'Рабочий чат' })).toBeVisible();
   expect(submitted).toEqual({ title: created.title });
+  await waitFor(() =>
+    expect(screen.getByRole('link', { name: created.title })).toHaveAttribute(
+      'aria-current',
+      'page',
+    ),
+  );
   expect(window.location.pathname).toBe('/chats/new-chat');
-  expect(screen.getByRole('link', { name: created.title })).toHaveAttribute('aria-current', 'page');
   expect(await screen.findByRole('textbox', { name: 'Сообщение' })).toBeVisible();
   expect(screen.queryByText('Согласуем границы сервиса')).not.toBeInTheDocument();
 

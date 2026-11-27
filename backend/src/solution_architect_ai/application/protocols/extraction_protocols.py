@@ -1,4 +1,3 @@
-from contextlib import AbstractAsyncContextManager
 from typing import Protocol
 from uuid import UUID
 
@@ -54,10 +53,6 @@ class ExtractionStore(Protocol):
     async def complete(
         self, run_id: UUID, result: list[PartResult], elapsed: float, *, finalize: bool = True
     ) -> ExtractionView: ...
-
-
-class ExtractionStoreFactory(Protocol):
-    def open(self) -> AbstractAsyncContextManager[ExtractionStore]: ...
 
 
 class ExtractionGraph(Protocol):

@@ -1,4 +1,3 @@
-from contextlib import AbstractAsyncContextManager
 from typing import Protocol
 from uuid import UUID
 
@@ -15,6 +14,7 @@ from solution_architect_ai.application.models.clarification_models import (
 
 
 class ClarificationStore(Protocol):
+    async def set_review_metadata(self, run_id: UUID, metadata: ClarificationMetadata) -> None: ...
     async def preflight_answer(
         self, run_id: UUID, question_id: UUID, command: AnswerClarification
     ) -> DecisionResult | None: ...
@@ -40,7 +40,3 @@ class ClarificationStore(Protocol):
     async def resolve(self, decision_id: UUID, command: ResolveAssumption) -> DecisionResult: ...
     async def resume(self, run_id: UUID, command: ResumeRun) -> CommandResult: ...
     async def operation(self, operation_id: UUID) -> str: ...
-
-
-class ClarificationStoreFactory(Protocol):
-    def open(self) -> AbstractAsyncContextManager[ClarificationStore]: ...

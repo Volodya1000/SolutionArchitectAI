@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from backend.tests.sql_store_setup import SqlStoreSetup, clarification_store_setup
 from solution_architect_ai.application.errors.chat_errors import Conflict, Missing
 from solution_architect_ai.application.errors.clarification_errors import PermissionDenied
 from solution_architect_ai.application.models.clarification_models import (
@@ -40,9 +41,6 @@ from solution_architect_ai.di.main import bootstrap
 from solution_architect_ai.di.providers import database_url
 from solution_architect_ai.domain.requirements import RequirementCategory
 from solution_architect_ai.domain.runs import RunStatus
-from solution_architect_ai.persistence.clarifications.clarification_factory import (
-    SqlAlchemyClarificationStoreFactory,
-)
 from solution_architect_ai.persistence.clarifications.clarification_models import (
     ClarificationRunRow,
     DecisionRow,
@@ -57,7 +55,9 @@ pytestmark: Final[list[pytest.MarkDecorator]] = [pytest.mark.anyio, pytest.mark.
 
 
 async def seed_run(
-    stores: SqlAlchemyClarificationStoreFactory, run_id: UUID, question: ClarificationQuestion
+    stores: SqlStoreSetup[SqlAlchemyClarificationStore],
+    run_id: UUID,
+    question: ClarificationQuestion,
 ) -> None:
     command: ExtractionStart = ExtractionStart(
         operation_id=uuid4(), version_ids=[uuid4()], answer_history_mode="new"
@@ -106,19 +106,19 @@ async def seed_run(
 
 
 @pytest.fixture(name="decision_stores")
-async def decision_stores_fixture() -> AsyncIterator[SqlAlchemyClarificationStoreFactory]:
+async def decision_stores_fixture() -> AsyncIterator[SqlStoreSetup[SqlAlchemyClarificationStore]]:
     assert os.environ.get("SAA_DATABASE__DATABASE", "").endswith("_test")
     settings: Settings = bootstrap()
     engine: AsyncEngine = create_async_engine(database_url(settings))
     sessions: async_sessionmaker[AsyncSession] = async_sessionmaker(engine, expire_on_commit=False)
     try:
-        yield SqlAlchemyClarificationStoreFactory(sessions, ActorContext.local(DEFAULT_TASK_ID))
+        yield clarification_store_setup(sessions, ActorContext.local(DEFAULT_TASK_ID))
     finally:
         await engine.dispose()
 
 
 async def wait_for_database_lock(
-    stores: SqlAlchemyClarificationStoreFactory, backend_pid: int
+    stores: SqlStoreSetup[SqlAlchemyClarificationStore], backend_pid: int
 ) -> None:
     monitor: SqlAlchemyClarificationStore
     async with stores.open() as monitor, asyncio.timeout(3):
@@ -133,7 +133,7 @@ async def wait_for_database_lock(
 
 
 async def submit_contending_command(
-    stores: SqlAlchemyClarificationStoreFactory,
+    stores: SqlStoreSetup[SqlAlchemyClarificationStore],
     run_id: UUID,
     question_id: UUID,
     command: AnswerClarification,
@@ -151,7 +151,7 @@ async def submit_contending_command(
 
 
 async def staged_command_race(
-    stores: SqlAlchemyClarificationStoreFactory,
+    stores: SqlStoreSetup[SqlAlchemyClarificationStore],
     run_id: UUID,
     question_id: UUID,
     commands: list[AnswerClarification],
@@ -181,7 +181,7 @@ async def staged_command_race(
 
 @pytest.mark.parametrize("answer_first", [True, False])
 async def test_answer_racing_assumption_commits_exactly_one_revision(
-    decision_stores: SqlAlchemyClarificationStoreFactory, answer_first: bool
+    decision_stores: SqlStoreSetup[SqlAlchemyClarificationStore], answer_first: bool
 ) -> None:
     # A CAS missing from the question revision would allow both distinct commands to win.
     run_id: UUID = uuid4()
@@ -254,7 +254,7 @@ async def test_answer_racing_assumption_commits_exactly_one_revision(
 
 
 async def test_first_answer_updates_requirement_while_other_blocker_remains_open(
-    decision_stores: SqlAlchemyClarificationStoreFactory,
+    decision_stores: SqlStoreSetup[SqlAlchemyClarificationStore],
 ) -> None:
     run_id: UUID = uuid4()
     first: ClarificationQuestion = ClarificationQuestion(
@@ -296,7 +296,7 @@ async def test_first_answer_updates_requirement_while_other_blocker_remains_open
 
 
 async def test_rejecting_assumption_preserves_decision_and_opens_new_revision(
-    decision_stores: SqlAlchemyClarificationStoreFactory,
+    decision_stores: SqlStoreSetup[SqlAlchemyClarificationStore],
 ) -> None:
     run_id: UUID = uuid4()
     question: ClarificationQuestion = ClarificationQuestion(
@@ -353,7 +353,7 @@ async def test_rejecting_assumption_preserves_decision_and_opens_new_revision(
 
 
 async def test_invalid_commands_leave_no_decision_or_resume_request(
-    decision_stores: SqlAlchemyClarificationStoreFactory,
+    decision_stores: SqlStoreSetup[SqlAlchemyClarificationStore],
 ) -> None:
     run_id: UUID = uuid4()
     question: ClarificationQuestion = ClarificationQuestion(
@@ -375,10 +375,10 @@ async def test_invalid_commands_leave_no_decision_or_resume_request(
         text="Отклонять запрос",
         basis="Решение архитектора",
     )
-    readonly: SqlAlchemyClarificationStoreFactory = SqlAlchemyClarificationStoreFactory(
+    readonly: SqlStoreSetup[SqlAlchemyClarificationStore] = clarification_store_setup(
         decision_stores.sessions, replace(decision_stores.actor, can_write=False)
     )
-    foreign: SqlAlchemyClarificationStoreFactory = SqlAlchemyClarificationStoreFactory(
+    foreign: SqlStoreSetup[SqlAlchemyClarificationStore] = clarification_store_setup(
         decision_stores.sessions, replace(decision_stores.actor, task_id=uuid4())
     )
     store: SqlAlchemyClarificationStore

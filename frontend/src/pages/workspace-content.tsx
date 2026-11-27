@@ -41,13 +41,12 @@ export function WorkspaceContent({
 
 export function WorkspaceHeading({
   section,
-  title,
 }: {
   section: WorkspaceSection;
   title: string | undefined;
 }) {
   const headings: Readonly<Record<WorkspaceSection, string>> = {
-    chat: title ?? 'Рабочий чат',
+    chat: 'Рабочий чат',
     documents: 'Документы',
     requirements: 'Требования',
   };

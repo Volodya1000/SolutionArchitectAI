@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router';
+import { MessageSquare } from 'lucide-react';
 import {
   discussionCommandSchema,
   recoverDiscussion,
@@ -27,12 +28,14 @@ function DiscussionCommandButton({ subject }: { subject: DiscussionSubject }) {
     },
   });
   return (
-    <div>
+    <div className="discussion-action">
       <Button
-        variant="outline"
+        variant="ghost"
+        className="discuss-button"
         disabled={state.mutation.isPending || state.recovery.isFetching || state.recovery.isError}
         onClick={() => state.submit({ operation_id: crypto.randomUUID(), subject })}
       >
+        <MessageSquare size={14} aria-hidden="true" />
         {state.pending ? 'Повторить обсуждение' : 'Обсудить'}
       </Button>
       {state.mutation.isError && (

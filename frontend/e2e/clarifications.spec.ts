@@ -47,6 +47,7 @@ test('А–Б: discuss a real incomplete input, restart with volumes, save one a
   await card.getByRole('button', { name: 'Сохранить ответ', exact: true }).click();
   await expect.poll(async () => (await runStatus(reopened, run)).status).toBe('completed');
   await reopened.getByRole('link', { name: 'Вернуться к требованию', exact: true }).click();
+  await reopened.getByRole('tab', { name: /^Уточнения / }).click();
   await expect(reopened.getByText('Добавил архитектор', { exact: true })).toBeVisible();
   const after = await readClarifications(reopened, run);
   expect(after.questions).toHaveLength(1);
@@ -85,6 +86,7 @@ for (const resolution of ['confirm', 'reject'] as const) {
     await expect(page.getByRole('region', { name: 'Риски A-07' })).toContainText(
       'Ошибочное отклонение запроса',
     );
+    await page.getByRole('tab', { name: /^Уточнения / }).click();
     const accepted = await readClarifications(page, run);
     const requests = (await runStatus(page, run)).requests;
     await page
@@ -210,6 +212,7 @@ test('nonblocking question remains visible without pausing the analysis', async 
     Buffer.from('# Правила\nУточнить предпочтение. [clarification:nonblocking]'),
   );
   expect((await runStatus(page, run)).status).toBe('completed');
+  await page.getByRole('tab', { name: /^Уточнения / }).click();
   await expect(page.getByText('Неблокирующий', { exact: false })).toBeVisible();
   expect((await readClarifications(page, run)).questions[0]?.status).toBe('open');
 });

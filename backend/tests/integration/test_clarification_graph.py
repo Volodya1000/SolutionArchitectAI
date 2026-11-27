@@ -6,6 +6,7 @@ from uuid import UUID, uuid4
 import pytest
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from backend.tests.integration.test_extraction_lifecycle import ExtractionResources, upload
 
@@ -13,16 +14,18 @@ from backend.tests.integration.test_extraction_lifecycle import ExtractionResour
 from backend.tests.integration.test_extraction_lifecycle import (  # pylint: disable=unused-import,useless-import-alias
     extraction_resources as extraction_resources,
 )
+from backend.tests.sql_store_setup import SqlStoreSetup, clarification_store_setup
 from solution_architect_ai.application.agents.clarification_agent import ClarificationAgent
-from solution_architect_ai.application.context.clarification_context_builder import (
-    ClarificationContext,
-)
 from solution_architect_ai.application.errors.chat_errors import StorageUnavailable
 from solution_architect_ai.application.errors.structured_errors import (
     StructuredErrorCode,
     StructuredGenerationFailure,
 )
+from solution_architect_ai.application.models.clarification_context_models import (
+    ClarificationContext,
+)
 from solution_architect_ai.application.models.clarification_models import (
+    ActorContext,
     AnswerClarification,
     AssumptionDetails,
     ClarificationQuestion,
@@ -37,17 +40,11 @@ from solution_architect_ai.application.models.extraction_models import (
     ExtractionView,
 )
 from solution_architect_ai.application.models.structured_models import ExecutionBudget
-from solution_architect_ai.application.protocols.clarification_protocols import (
-    ClarificationStoreFactory,
-)
 from solution_architect_ai.application.protocols.extraction_protocols import ExtractionGraph
 from solution_architect_ai.application.services.clarification_service import ClarificationService
 from solution_architect_ai.application.workflows.extraction_worker import ExtractionWorker
 from solution_architect_ai.domain.runs import RunStatus
 from solution_architect_ai.infrastructure.extraction_graph import LangGraphExtraction
-from solution_architect_ai.persistence.clarifications.clarification_factory import (
-    SqlAlchemyClarificationStoreFactory,
-)
 from solution_architect_ai.persistence.clarifications.clarification_models import (
     ClarificationRunRow,
 )
@@ -85,7 +82,12 @@ async def install_questions(
                 requirement_ids=[UUID(identifier)],
                 sources=[],
             )
-            for index, identifier in enumerate(sorted(context.requirement_ids)[:count])
+            for index, identifier in enumerate(
+                str(requirement.id)
+                for requirement in sorted(context.requirements, key=lambda item: item.original_text)
+                if str(requirement.id) in context.requirement_ids
+            )
+            if index < count
         ]
 
     monkeypatch.setattr(agent, "clarify", scripted)
@@ -202,7 +204,7 @@ async def test_answer_committed_before_checkpoint_is_recovered_by_new_graph(
     view: ClarificationView = await service.get(run.id)
     command: AnswerClarification = answer(view.questions[0])
     decision: DecisionResult = await service.answer(run.id, view.questions[0].id, command)
-    graph: ExtractionGraph = worker.graph
+    graph: ExtractionGraph = worker.extraction_graph
     assert isinstance(graph, LangGraphExtraction)
 
     async def lose_checkpoint(_run_id: UUID) -> None:
@@ -211,9 +213,11 @@ async def test_answer_committed_before_checkpoint_is_recovered_by_new_graph(
     monkeypatch.setattr(graph, "invoke", lose_checkpoint)
     await worker.execute(run.id)
     assert (await service.get(run.id)).resume_pending
-    checkpointer: object = graph.graph.checkpointer
+    checkpointer: object = graph.state_graph.checkpointer
     assert isinstance(checkpointer, AsyncPostgresSaver)
-    worker.graph = LangGraphExtraction(graph.steps, checkpointer, graph.workflow)
+    worker.extraction_graph = LangGraphExtraction(
+        graph.extraction_steps, checkpointer, graph.clarification_workflow
+    )
     await worker.execute(run.id)
     assert (await resources.view(run.id)).status == RunStatus.COMPLETED
     assert await service.answer(run.id, view.questions[0].id, command) == decision
@@ -231,8 +235,10 @@ async def test_waiting_releases_resources_and_next_day_does_not_exhaust_budget(
     await worker.execute(run.id)
     assert not worker.capacity.slots.locked()
     assert not worker.active
-    stores: ClarificationStoreFactory = await resources.container.get(ClarificationStoreFactory)
-    assert isinstance(stores, SqlAlchemyClarificationStoreFactory)
+    stores: SqlStoreSetup[SqlAlchemyClarificationStore] = clarification_store_setup(
+        await resources.container.get(async_sessionmaker[AsyncSession]),
+        await resources.container.get(ActorContext),
+    )
     store: SqlAlchemyClarificationStore
     async with stores.open() as store:
         state: ClarificationRunRow = await store.run(run.id)
@@ -287,9 +293,9 @@ async def test_resumed_failure_or_cancellation_retains_human_decision(
     await worker.execute(run.id)
     view: ClarificationView = await service.get(run.id)
     await service.answer(run.id, view.questions[0].id, answer(view.questions[0]))
-    graph: ExtractionGraph = worker.graph
+    graph: ExtractionGraph = worker.extraction_graph
     assert isinstance(graph, LangGraphExtraction)
-    assert graph.workflow is not None
+    assert graph.clarification_workflow is not None
     entered: asyncio.Event = asyncio.Event()
 
     async def failing_complete(_run_id: UUID, _expected_cycle: int) -> None:
@@ -298,7 +304,7 @@ async def test_resumed_failure_or_cancellation_retains_human_decision(
             await asyncio.Event().wait()
         raise StructuredGenerationFailure(StructuredErrorCode.UNAVAILABLE)
 
-    monkeypatch.setattr(graph.workflow, "complete", failing_complete)
+    monkeypatch.setattr(graph.clarification_workflow, "complete", failing_complete)
     group: asyncio.TaskGroup
     async with asyncio.TaskGroup() as group:
         await worker.dispatch_run(group, await resources.view(run.id))

@@ -88,7 +88,9 @@ async def get_matching_extractions(
                 cast(ExtractionRow.command_json, JSONB)["answer_history_mode"].as_string() != "new",
             ),
         )
-    active: object = await session.scalar(query.where(ExtractionRow.status.in_(ACTIVE_STATUSES)))
+    active: object = await session.scalar(
+        query.where(ExtractionRow.status.in_((*ACTIVE_STATUSES, RunStatus.WAITING_INPUT)))
+    )
     completed: Select[object] = query.where(ExtractionRow.status == RunStatus.COMPLETED.value)
     latest: object = await session.scalar(completed)
     current: object = await session.scalar(

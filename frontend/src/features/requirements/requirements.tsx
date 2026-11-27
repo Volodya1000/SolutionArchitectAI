@@ -1,24 +1,17 @@
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { scopeKey } from '../../shared/api/client';
 import {
-  categories,
-  categorySchema,
   extractionActive,
   readExtraction,
-  type Category,
   type ExtractionSummary,
-  type Extraction,
-  type Requirement,
 } from '../../shared/api/extractions';
 import { useExtractionHistory, useExtractionStatus } from '../../shared/api/use-extraction-history';
 import { QueryError } from '../../shared/ui/query-error';
 import { Button } from '../../shared/ui/button';
-import { RequirementTable } from './requirement-table';
 import { RunStatus } from './run-status';
-import { Clarifications } from '../clarifications';
-import { useClarifications } from '../../shared/api/use-clarifications';
+import { RunResult } from './run-result';
+import { ReviewCoverage } from './review-coverage';
 
 export function Requirements() {
   const [search, setSearch] = useSearchParams();
@@ -32,7 +25,10 @@ export function Requirements() {
           Результаты анализа — кандидаты для проверки. Цитаты сверены с исходным текстом; это не
           подтверждает правильность формулировок и категорий.
         </p>
-        <Link className="text-link" to="/documents">
+        <Link
+          className="text-link"
+          to={selectedId ? `/documents?run=${encodeURIComponent(selectedId)}` : '/documents'}
+        >
           Выбрать документы для нового анализа
         </Link>
       </div>
@@ -128,6 +124,7 @@ function RunPanel({ id, initial }: { id: string; initial: ExtractionSummary | un
         />
       )}
       {status.data && <RunStatus run={status.data} coverage={run.data?.coverage} />}
+      {status.data && <ReviewCoverage run={status.data} />}
       {run.isFetching && <p role="status">Загружаем результат…</p>}
       {run.isError && (
         <QueryError
@@ -138,52 +135,6 @@ function RunPanel({ id, initial }: { id: string; initial: ExtractionSummary | un
         />
       )}
       {run.data && <RunResult run={run.data} />}
-    </>
-  );
-}
-
-function RunResult({ run }: { run: Extraction }) {
-  const clarifications = useClarifications(run.id);
-  const requirements = clarifications.data?.initialized
-    ? clarifications.data.requirements
-    : run.requirements;
-  return (
-    <>
-      <ExtractionResult runId={run.id} candidates={requirements} />
-      <Clarifications runId={run.id} />
-    </>
-  );
-}
-
-function ExtractionResult({ candidates, runId }: { candidates: Requirement[]; runId: string }) {
-  const [category, setCategory] = useState<Category | 'all'>('all');
-  const requirements = candidates.filter(
-    (item) => category === 'all' || item.category === category,
-  );
-  return (
-    <>
-      <div className="section-heading">
-        <label className="field-label">
-          Категория требований
-          <select
-            value={category}
-            onChange={(event) =>
-              setCategory(
-                event.target.value === 'all' ? 'all' : categorySchema.parse(event.target.value),
-              )
-            }
-          >
-            <option value="all">Все категории</option>
-            {Object.entries(categories).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <span className="notice">Кандидатов: {requirements.length}</span>
-      </div>
-      <RequirementTable requirements={requirements} runId={runId} />
     </>
   );
 }

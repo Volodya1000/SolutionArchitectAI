@@ -3,8 +3,8 @@ from uuid import uuid4
 
 import pytest
 
-from solution_architect_ai.application.context.clarification_history import fragment_fingerprints
 from solution_architect_ai.application.context.context_models import ContextFragment
+from solution_architect_ai.application.context.source_fingerprints import fragment_fingerprints
 from solution_architect_ai.domain.documents import LocatorKind, SourceLocator
 
 

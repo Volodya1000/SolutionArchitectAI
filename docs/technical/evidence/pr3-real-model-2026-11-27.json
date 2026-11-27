@@ -1,0 +1,189 @@
+{
+  "recorded_date": "2026-11-27",
+  "model": "qwen2.5-coder-14b-instruct",
+  "quantization": "Q4_K_M",
+  "profile": {
+    "name": "qwen2.5-coder-14b-instruct",
+    "mode": "native_json_schema",
+    "context_window": 12288,
+    "output_limit": 6912,
+    "service_tokens": 256
+  },
+  "configuration": {
+    "temperature": 0.2,
+    "concurrency": 1,
+    "request_timeout_seconds": 600,
+    "active_deadline_seconds": 3600,
+    "max_total_requests": 128,
+    "network_retries": 1,
+    "validation_retries": 2
+  },
+  "runs": [
+    {
+      "input": "docs/examples/pr3/reporting-system-complete.md",
+      "sha256": "58854d050ec658b332f7fd87e8dfc026aca955868ac43ff52c579dcd740b9bbc",
+      "run_id": "9214e756-8900-4599-8321-7c2229b01a7b",
+      "history_id": "9214e756-8900-4599-8321-7c2229b01a7b",
+      "thread_id": "9214e756-8900-4599-8321-7c2229b01a7b",
+      "status": "completed",
+      "error_code": null,
+      "elapsed_seconds": 381.88003299999986,
+      "progress": {
+        "completed_parts": 4,
+        "total_parts": 4
+      },
+      "requests": 18,
+      "corrections": 0,
+      "clarification_metadata": {
+        "prompt_version": "clarify-3",
+        "contract_version": "clarification-1",
+        "context_digest": "f1ff03ccb93dee1685d679a0de2a3a4aca9378b07d374c24af8bfd67cb72ea52",
+        "model_profile": {
+          "name": "qwen2.5-coder-14b-instruct",
+          "mode": "native_json_schema",
+          "context_window": 12288,
+          "output_limit": 6912,
+          "service_tokens": 256
+        },
+        "coverage": {
+          "total_fragments": 62,
+          "reviewed_fragments": 62,
+          "total_history": 0,
+          "reviewed_history": 0,
+          "model_requests": 14,
+          "complete": true,
+          "unreviewed_fragment_ids": [],
+          "unreviewed_question_ids": []
+        }
+      },
+      "question_count": 0,
+      "decision_count": 0,
+      "r04": {
+        "id": "d9639b1e-2c28-487a-98d3-277e13d7b1a0",
+        "category": "data",
+        "original_text": "Аналитик выбирает день в пределах 30-дневного окна хранения и видит подразделения с продажами: наименование, количество продаж и общую сумму. При отсутствии продаж выводится пустая сводка. Запрос даты вне окна отклоняется с сообщением о допустимом диапазоне",
+        "normalized_text": "Аналитик должен иметь возможность выбрать день в пределах 30-дневного хранения данных и видеть подразделения с продажами, включая наименование, количество продаж и общую сумму. При отсутствии продаж выводится пустая сводка. Запросы за даты вне этого окна должны быть отклонены с сообщением о допустимом диапазоне.",
+        "sources": [
+          {
+            "file_id": "91e0c9ce-8063-47f6-ba5a-9417826cb791",
+            "version_id": "46e73e6e-5c6e-4681-9562-49212480b5b1",
+            "sha256": "58854d050ec658b332f7fd87e8dfc026aca955868ac43ff52c579dcd740b9bbc",
+            "fragment_id": "e3f01959-13f9-59c0-b6da-38aee3b68d17",
+            "locator": {
+              "kind": "lines",
+              "start": 20,
+              "end": 20,
+              "section": "Требования",
+              "path": ""
+            },
+            "quote": "Аналитик выбирает день в пределах 30-дневного окна хранения и видит подразделения с продажами: наименование, количество продаж и общую сумму. При отсутствии продаж выводится пустая сводка. Запрос даты вне окна отклоняется с сообщением о допустимом диапазоне",
+            "status": "verified",
+            "reason": null
+          }
+        ],
+        "status": "needs_review"
+      },
+      "semantic_acceptance": "passed"
+    },
+    {
+      "input": "docs/examples/pr3/reporting-system-incomplete.md",
+      "sha256": "e7366ed877941f5615d31a2debdda7e5d64ba4dea98ecc262b384d9c5f6496b8",
+      "run_id": "3b96022d-11a2-4218-90d6-5157bfc337d0",
+      "history_id": "3b96022d-11a2-4218-90d6-5157bfc337d0",
+      "thread_id": "3b96022d-11a2-4218-90d6-5157bfc337d0",
+      "status": "completed",
+      "error_code": null,
+      "elapsed_seconds": 413.76413399999996,
+      "progress": {
+        "completed_parts": 4,
+        "total_parts": 4
+      },
+      "requests": 18,
+      "corrections": 0,
+      "clarification_metadata": {
+        "prompt_version": "clarify-3",
+        "contract_version": "clarification-1",
+        "context_digest": "a839d10f075e6e1e4eb98ed12825df3f1759d59dffa1d6453846212f017ccbaa",
+        "model_profile": {
+          "name": "qwen2.5-coder-14b-instruct",
+          "mode": "native_json_schema",
+          "context_window": 12288,
+          "output_limit": 6912,
+          "service_tokens": 256
+        },
+        "coverage": {
+          "total_fragments": 62,
+          "reviewed_fragments": 62,
+          "total_history": 0,
+          "reviewed_history": 0,
+          "model_requests": 14,
+          "complete": true,
+          "unreviewed_fragment_ids": [],
+          "unreviewed_question_ids": []
+        }
+      },
+      "question_count": 0,
+      "decision_count": 0,
+      "r04": {
+        "id": "683c360c-ab58-4a28-ac90-f252aebebc6f",
+        "category": "data",
+        "original_text": "Аналитик выбирает день в пределах 30-дневного окна хранения и видит подразделения с продажами: наименование, количество продаж и общую сумму. При отсутствии продаж выводится пустая сводка.",
+        "normalized_text": "Аналитик должен иметь возможность выбрать день в пределах 30-дневного окна хранения данных и видеть информацию о подразделениях с продажами, включая наименование, количество продаж и общую сумму. При отсутствии продаж должна быть выведена пустая сводка.",
+        "sources": [
+          {
+            "file_id": "03d93d8b-c1c3-41f9-a6ab-fc18fd904ae8",
+            "version_id": "2db6a72d-5e76-45f4-ae96-7a67b356038b",
+            "sha256": "e7366ed877941f5615d31a2debdda7e5d64ba4dea98ecc262b384d9c5f6496b8",
+            "fragment_id": "b427c1da-5595-5c16-bdaa-5ac555f579b1",
+            "locator": {
+              "kind": "lines",
+              "start": 20,
+              "end": 20,
+              "section": "Требования",
+              "path": ""
+            },
+            "quote": "Аналитик выбирает день в пределах 30-дневного окна хранения и видит подразделения с продажами: наименование, количество продаж и общую сумму. При отсутствии продаж выводится пустая сводка.",
+            "status": "verified",
+            "reason": null
+          }
+        ],
+        "status": "needs_review"
+      },
+      "semantic_acceptance": "failed_missed_gap"
+    }
+  ],
+  "discussion": {
+    "analysis_id": "3b96022d-11a2-4218-90d6-5157bfc337d0",
+    "chat_id": "1fabf1d7-0fad-44b6-9d22-353ea25408a6",
+    "chat_run_id": "b9c17f1b-df50-4dcb-8182-12c9e83b3a74",
+    "prompt": "Срок хранения уже указан. Что именно нужно уточнить?",
+    "status": "completed",
+    "response_text": "На основании предоставленных данных, требование R-03 уже указывает срок хранения данных:\n\nR-03 Хранить продажи за последние 30 календарных дней, включая текущий день, по UTC.\n\nТаким образом, срок хранения продаж составляет 30 календарных дней.\n\nЕсли требуется уточнение, то это может быть связано с конкретными аспектами реализации или дополнительными требованиями, которые не были явно указаны в данном требовании. Например:\n\nТехнические детали хранения: Как именно будут организованы данные на уровне базы данных или хранилища.\nПроцедуры очистки: Как будут удаляться старые данные и какова точная временная метка для удаления.\nСогласование с другими системами: Возможно, есть требования по согласованию хранения данных с другими модулями или системами.\n\nЕсли вам нужно уточнить что-то конкретное, пожалуйста, уточните детали того, что именно вы хотите разобраться.",
+    "source_urls": [
+      {
+        "label": "R-03",
+        "href": "/documents?version=2db6a72d-5e76-45f4-ae96-7a67b356038b&fragment=dfc34773-c8b8-5702-91b6-7a60b033086a"
+      }
+    ],
+    "question_count_before": 0,
+    "question_count_after": 0,
+    "decision_count_before": 0,
+    "decision_count_after": 0,
+    "analysis_requests_before": 18,
+    "analysis_requests_after": 18,
+    "effective_requirements_unchanged": true,
+    "semantic_acceptance": "failed_missing_boundary_not_identified"
+  },
+  "limitations": [
+    "Incomplete input missed the expected outside-window clarification despite complete source review.",
+    "The real discussion cited known retention but did not identify the missing boundary response.",
+    "No architect answer or resume was fabricated; those real-model acceptance steps were not reached."
+  ],
+  "runtime_verification": {
+    "backend_source_files": 158,
+    "root_and_runtime_source_files_match": true,
+    "sources_results_and_chat_preserved_after_restart": true,
+    "incomplete_thread_checkpoint_count": 13,
+    "chat_text_sha256": "d0289d7ef257129eef7cd7f678ac1edeb32cb1c539f75efa9b12ab6c65a28276"
+  }
+}

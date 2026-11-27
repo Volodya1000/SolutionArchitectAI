@@ -20,7 +20,8 @@ from solution_architect_ai.application.models.chat_dto import (
     RunView,
     StartRun,
 )
-from solution_architect_ai.application.protocols.chat_protocols import ChatStore, StoreFactory
+from solution_architect_ai.application.protocols.chat_protocols import ChatStore
+from solution_architect_ai.application.protocols.store_context_protocols import StoreContext
 from solution_architect_ai.config.settings import Settings
 from solution_architect_ai.di.main import bootstrap
 from solution_architect_ai.di.providers import AppProvider
@@ -32,19 +33,19 @@ pytestmark: Final[list[pytest.MarkDecorator]] = [pytest.mark.anyio, pytest.mark.
 
 
 @pytest.fixture(name="resources")
-async def database_resources() -> AsyncIterator[tuple[StoreFactory, AsyncEngine]]:
+async def database_resources() -> AsyncIterator[tuple[StoreContext[ChatStore], AsyncEngine]]:
     assert os.environ.get("SAA_DATABASE__DATABASE", "").endswith("_test")
     container: AsyncContainer = make_async_container(AppProvider(), context={Settings: bootstrap()})
     try:
-        yield await container.get(StoreFactory), await container.get(AsyncEngine)
+        yield await container.get(StoreContext[ChatStore]), await container.get(AsyncEngine)
     finally:
         await container.close()
 
 
 async def test_cancel_wins_before_worker_claims_run(
-    resources: tuple[StoreFactory, AsyncEngine],
+    resources: tuple[StoreContext[ChatStore], AsyncEngine],
 ) -> None:
-    stores: StoreFactory = resources[0]
+    stores: StoreContext[ChatStore] = resources[0]
     store: ChatStore
     async with stores.open() as store:
         chat: ChatView = await store.create_chat("Гонка отмены")
@@ -64,9 +65,9 @@ async def test_cancel_wins_before_worker_claims_run(
 
 
 async def test_snapshot_never_pairs_terminal_status_with_older_message(
-    resources: tuple[StoreFactory, AsyncEngine], monkeypatch: pytest.MonkeyPatch
+    resources: tuple[StoreContext[ChatStore], AsyncEngine], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    stores: StoreFactory
+    stores: StoreContext[ChatStore]
     engine: AsyncEngine
     stores, engine = resources
     store: ChatStore
@@ -126,9 +127,9 @@ def record_selects(engine: AsyncEngine) -> Iterator[list[str]]:
 
 
 async def test_pending_fetches_all_runs_in_one_statement(
-    resources: tuple[StoreFactory, AsyncEngine],
+    resources: tuple[StoreContext[ChatStore], AsyncEngine],
 ) -> None:
-    stores: StoreFactory
+    stores: StoreContext[ChatStore]
     engine: AsyncEngine
     stores, engine = resources
     store: ChatStore
@@ -156,9 +157,9 @@ async def test_pending_fetches_all_runs_in_one_statement(
 
 
 async def test_preference_reads_do_not_lock_and_writes_are_explicit(
-    resources: tuple[StoreFactory, AsyncEngine],
+    resources: tuple[StoreContext[ChatStore], AsyncEngine],
 ) -> None:
-    stores: StoreFactory
+    stores: StoreContext[ChatStore]
     engine: AsyncEngine
     stores, engine = resources
     store: ChatStore
@@ -175,9 +176,9 @@ async def test_preference_reads_do_not_lock_and_writes_are_explicit(
 
 
 async def test_task_scope_applies_to_creating_listing_and_loading_chat(
-    resources: tuple[StoreFactory, AsyncEngine],
+    resources: tuple[StoreContext[ChatStore], AsyncEngine],
 ) -> None:
-    stores: StoreFactory
+    stores: StoreContext[ChatStore]
     engine: AsyncEngine
     stores, engine = resources
     store: ChatStore
@@ -205,9 +206,9 @@ async def test_task_scope_applies_to_creating_listing_and_loading_chat(
 
 
 async def test_assistant_message_cannot_belong_to_two_runs(
-    resources: tuple[StoreFactory, AsyncEngine],
+    resources: tuple[StoreContext[ChatStore], AsyncEngine],
 ) -> None:
-    stores: StoreFactory
+    stores: StoreContext[ChatStore]
     engine: AsyncEngine
     stores, engine = resources
     store: ChatStore
@@ -238,7 +239,7 @@ async def test_assistant_message_cannot_belong_to_two_runs(
 
 
 async def test_readiness_reports_stale_schema_as_storage_unavailable(
-    resources: tuple[StoreFactory, AsyncEngine],
+    resources: tuple[StoreContext[ChatStore], AsyncEngine],
 ) -> None:
     engine: AsyncEngine = resources[1]
     sessions: async_sessionmaker[AsyncSession] = async_sessionmaker[AsyncSession](
@@ -254,9 +255,9 @@ async def test_readiness_reports_stale_schema_as_storage_unavailable(
 
 
 async def test_status_write_uses_loaded_rows_and_keeps_cancel_precedence(
-    resources: tuple[StoreFactory, AsyncEngine],
+    resources: tuple[StoreContext[ChatStore], AsyncEngine],
 ) -> None:
-    stores: StoreFactory
+    stores: StoreContext[ChatStore]
     engine: AsyncEngine
     stores, engine = resources
     store: ChatStore

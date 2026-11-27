@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from uuid import UUID
 
 from solution_architect_ai.application.models.structured_models import (
@@ -44,6 +44,7 @@ class ContextPart:
     fragments: tuple[ContextFragment, ...]
     messages: tuple[StructuredMessage, ...]
     token_estimate: int
+    structural_fragment_ids: frozenset[str] = field(default_factory=frozenset)
 
 
 @dataclass(frozen=True)

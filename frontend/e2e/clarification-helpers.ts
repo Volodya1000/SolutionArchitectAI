@@ -63,6 +63,9 @@ export async function fillAnswer(
   question: Question,
   text = 'Отклонять запрос и показывать допустимый диапазон дат',
 ) {
+  if (new URL(page.url()).pathname === '/requirements') {
+    await page.getByRole('tab', { name: /^Уточнения / }).click();
+  }
   const card = page.getByRole('region', { name: question.text, exact: true }).first();
   await card.getByRole('textbox', { name: 'Ответ архитектора', exact: true }).fill(text);
   await card

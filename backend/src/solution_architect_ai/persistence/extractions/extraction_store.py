@@ -115,6 +115,7 @@ class SqlAlchemyExtractionStore:
             if existing.payload_digest != digest:
                 raise Conflict("operation_payload_changed")
             return extraction_view(existing)
+        await self._validate_answer_history(command)
         created: datetime = datetime.now(UTC)
         view: ExtractionView = ExtractionView(
             id=uuid4(),
@@ -152,12 +153,32 @@ class SqlAlchemyExtractionStore:
         )
         return view
 
-    async def get(self, run_id: UUID) -> ExtractionView:
-        view: ExtractionView = extraction_view(await self._get_extraction_row(run_id))
-        budget: ClarificationRunRow | None = await self.session.get(ClarificationRunRow, run_id)
+    async def _validate_answer_history(self, command: ExtractionStart) -> None:
+        if command.answer_history_id is None:
+            return
+        if command.answer_history_mode == "new":
+            raise Conflict("answer_history_selection_conflict")
+        owner: UUID | None = await self.session.scalar(
+            select(ClarificationRunRow.run_id)
+            .join(ExtractionRow, ExtractionRow.id == ClarificationRunRow.run_id)
+            .where(
+                ClarificationRunRow.history_id == command.answer_history_id,
+                ExtractionRow.task_id == self.task_id,
+            )
+            .limit(1)
+        )
+        if owner is None:
+            raise Missing("answer_history")
+
+    async def _describe_extraction(self, row: ExtractionRow) -> ExtractionView:
+        view: ExtractionView = extraction_view(row)
+        budget: ClarificationRunRow | None = await self.session.get(ClarificationRunRow, row.id)
         if budget is not None:
-            view.elapsed_seconds = active_elapsed(budget)
+            view.elapsed_seconds = max(view.elapsed_seconds, active_elapsed(budget))
         return view
+
+    async def get(self, run_id: UUID) -> ExtractionView:
+        return await self._describe_extraction(await self._get_extraction_row(run_id))
 
     async def get_operation(self, operation_id: UUID) -> ExtractionView:
         row: ExtractionRow | None = await self.session.scalar(
@@ -168,7 +189,7 @@ class SqlAlchemyExtractionStore:
         )
         if row is None:
             raise Missing("extraction_operation")
-        return extraction_view(row)
+        return await self._describe_extraction(row)
 
     async def get_status(self, run_id: UUID) -> StoredExtractionSummary:
         metadata: object = await self.session.scalar(
@@ -234,8 +255,20 @@ class SqlAlchemyExtractionStore:
             )
             .where(
                 QuestionLinkRow.run_id == ExtractionRow.id,
-                QuestionRevisionRow.status == "open",
-                cast(QuestionRevisionRow.snapshot_json, JSONB)["blocking"].as_boolean().is_(True),
+                or_(
+                    and_(
+                        QuestionRevisionRow.status == "open",
+                        cast(QuestionRevisionRow.snapshot_json, JSONB)["blocking"]
+                        .as_boolean()
+                        .is_(True),
+                    ),
+                    and_(
+                        QuestionRevisionRow.status.in_(("open", "assumed")),
+                        cast(QuestionRevisionRow.snapshot_json, JSONB)["mandatory_conflict"]
+                        .as_string()
+                        .is_not(None),
+                    ),
+                ),
             )
             .exists()
         )
@@ -249,6 +282,7 @@ class SqlAlchemyExtractionStore:
                     (
                         ClarificationRunRow.resume_pending.is_(True)
                         & ExtractionRow.status.in_((RunStatus.WAITING_INPUT, RunStatus.COMPLETED))
+                        & ~open_blockers
                     ),
                     and_(
                         ExtractionRow.status == RunStatus.WAITING_INPUT,
@@ -294,7 +328,7 @@ class SqlAlchemyExtractionStore:
         budget: ClarificationRunRow | None = await self.session.get(ClarificationRunRow, run_id)
         if budget is None:
             return
-        view.elapsed_seconds = active_elapsed(budget)
+        view.elapsed_seconds = max(view.elapsed_seconds, active_elapsed(budget))
         if view.status in {RunStatus.FAILED, RunStatus.CANCELLED}:
             budget.resume_pending = False
 

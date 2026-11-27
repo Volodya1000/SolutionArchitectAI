@@ -12,13 +12,15 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from backend.tests.sql_store_setup import SqlStoreSetup, chat_store_setup
 from solution_architect_ai.application.errors.chat_errors import StorageUnavailable
 from solution_architect_ai.application.models.chat_dto import ChatView
-from solution_architect_ai.application.protocols.chat_protocols import ChatStore, StoreFactory
+from solution_architect_ai.application.protocols.chat_protocols import ChatStore
+from solution_architect_ai.application.protocols.store_context_protocols import StoreContext
 from solution_architect_ai.config.settings import Settings
 from solution_architect_ai.di.main import bootstrap
 from solution_architect_ai.di.providers import AppProvider
-from solution_architect_ai.persistence.factory import SqlAlchemyStoreFactory
+from solution_architect_ai.persistence.store import SqlAlchemyStore
 
 pytestmark: Final[list[pytest.MarkDecorator]] = [pytest.mark.anyio, pytest.mark.integration]
 
@@ -29,7 +31,7 @@ def checked_out(engine: AsyncEngine) -> int:
     return pool.checkedout()
 
 
-async def write_then_fail(stores: StoreFactory) -> None:
+async def write_then_fail(stores: StoreContext[ChatStore]) -> None:
     store: ChatStore
     async with stores.open() as store:
         await store.create_chat("Откатить этот чат")
@@ -41,7 +43,7 @@ async def test_factory_commits_success_rolls_back_failure_and_releases_connectio
     container: AsyncContainer = make_async_container(AppProvider(), context={Settings: bootstrap()})
     try:
         engine: AsyncEngine = await container.get(AsyncEngine)
-        stores: StoreFactory = await container.get(StoreFactory)
+        stores: StoreContext[ChatStore] = await container.get(StoreContext[ChatStore])
         store: ChatStore
         async with stores.open() as store:
             chat: ChatView = await store.create_chat("Сохранённый чат")
@@ -63,7 +65,7 @@ async def test_cancellation_rolls_back_and_releases_session() -> None:
     entered: asyncio.Event = asyncio.Event()
     try:
         engine: AsyncEngine = await container.get(AsyncEngine)
-        stores: StoreFactory = await container.get(StoreFactory)
+        stores: StoreContext[ChatStore] = await container.get(StoreContext[ChatStore])
 
         async def interrupted() -> None:
             store: ChatStore
@@ -90,7 +92,7 @@ async def test_cancellation_rolls_back_and_releases_session() -> None:
 async def test_failed_connection_initialization_releases_pool_slot() -> None:
     url: URL = URL.create("postgresql+psycopg", username="test", host="127.0.0.1", port=1)
     engine: AsyncEngine = create_async_engine(url, connect_args={"connect_timeout": 1})
-    stores: SqlAlchemyStoreFactory = SqlAlchemyStoreFactory(
+    stores: SqlStoreSetup[SqlAlchemyStore] = chat_store_setup(
         async_sessionmaker[AsyncSession](engine)
     )
     try:

@@ -53,7 +53,7 @@ const clarification = {
 };
 const server = setupServer(
   http.get('/api/chats/chat/discussion', () => HttpResponse.json(discussion)),
-  http.get('/api/extractions/analysis/clarifications', () => HttpResponse.json(clarification)),
+  http.get('/api/chats/chat/discussion/clarifications', () => HttpResponse.json(clarification)),
   http.get('/api/chats/chat', () =>
     HttpResponse.json({
       chat: {
@@ -94,6 +94,8 @@ it('shows the full effective requirement and original pinned quote even without 
     '/documents?version=v1&fragment=fragment&run=analysis',
   );
   expect(within(panel).getByText('Блокирующих вопросов: 0')).toBeVisible();
+  expect(within(panel).getByText(/SHA-256: abc/)).not.toBeVisible();
+  await userEvent.click(within(panel).getByText('Технические сведения источника'));
   expect(within(panel).getByText(/SHA-256: abc/)).toBeVisible();
 });
 
@@ -117,6 +119,7 @@ it('keeps the subject beside the conversation and preserves the composer when th
 
 it('shows only the selected immutable fragment in a direct source discussion', async () => {
   server.use(
+    http.get('/api/chats/chat/discussion/clarifications', () => HttpResponse.json(null)),
     http.get('/api/chats/chat/discussion', () =>
       HttpResponse.json({
         ...discussion,

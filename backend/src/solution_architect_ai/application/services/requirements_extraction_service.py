@@ -15,10 +15,8 @@ from solution_architect_ai.application.prompts.extraction_prompt import (
     CONTRACT_VERSION,
     PROMPT_VERSION,
 )
-from solution_architect_ai.application.protocols.extraction_protocols import (
-    ExtractionStore,
-    ExtractionStoreFactory,
-)
+from solution_architect_ai.application.protocols.extraction_protocols import ExtractionStore
+from solution_architect_ai.application.protocols.store_context_protocols import StoreContext
 from solution_architect_ai.application.services.document_service import DocumentService
 from solution_architect_ai.domain.runs import RunStatus
 
@@ -26,14 +24,14 @@ from solution_architect_ai.domain.runs import RunStatus
 class RequirementsExtractionService:
     def __init__(
         self,
-        stores: ExtractionStoreFactory,
-        documents: DocumentService,
-        profile: StoredModelProfile,
+        extraction_store_context: StoreContext[ExtractionStore],
+        documents_service: DocumentService,
+        model_profile: StoredModelProfile,
         config_digest: str,
     ) -> None:
-        self.stores: ExtractionStoreFactory = stores
-        self.documents: DocumentService = documents
-        self.profile: StoredModelProfile = profile
+        self.extraction_store_context: StoreContext[ExtractionStore] = extraction_store_context
+        self.documents_service: DocumentService = documents_service
+        self.model_profile: StoredModelProfile = model_profile
         self.config_digest: str = config_digest
 
     async def start(self, command: ExtractionStart) -> ExtractionView:
@@ -42,29 +40,29 @@ class RequirementsExtractionService:
         )
         version_id: UUID
         for version_id in command.version_ids:
-            await self.documents.get_version(version_id)
+            await self.documents_service.get_version(version_id)
         store: ExtractionStore
-        async with self.stores.open() as store:
-            return self.describe(await store.start(command, self.profile, self.config_digest))
+        async with self.extraction_store_context.open() as store:
+            return self.describe(await store.start(command, self.model_profile, self.config_digest))
 
     async def get(self, run_id: UUID) -> ExtractionView:
         store: ExtractionStore
-        async with self.stores.open() as store:
+        async with self.extraction_store_context.open() as store:
             return self.describe(await store.get(run_id))
 
     async def list_runs(self) -> list[ExtractionView]:
         store: ExtractionStore
-        async with self.stores.open() as store:
+        async with self.extraction_store_context.open() as store:
             return [self.describe(view) for view in await store.list_runs()]
 
     async def get_operation(self, operation_id: UUID) -> ExtractionView:
         store: ExtractionStore
-        async with self.stores.open() as store:
+        async with self.extraction_store_context.open() as store:
             return self.describe(await store.get_operation(operation_id))
 
     async def get_status(self, run_id: UUID) -> ExtractionSummary:
         store: ExtractionStore
-        async with self.stores.open() as store:
+        async with self.extraction_store_context.open() as store:
             return self.summarize(await store.get_status(run_id))
 
     async def get_matching(
@@ -74,9 +72,9 @@ class RequirementsExtractionService:
         history: AnswerHistorySelection | None = None,
     ) -> ExtractionMatches:
         store: ExtractionStore
-        async with self.stores.open() as store:
+        async with self.extraction_store_context.open() as store:
             matches: StoredExtractionMatches = await store.get_matching(
-                version_ids, analysis_scope, self.profile, history
+                version_ids, analysis_scope, self.model_profile, history
             )
         return ExtractionMatches(
             active=self.summarize(matches.active) if matches.active is not None else None,
@@ -90,7 +88,7 @@ class RequirementsExtractionService:
 
     async def list_history(self, *, limit: int, offset: int) -> ExtractionHistory:
         store: ExtractionStore
-        async with self.stores.open() as store:
+        async with self.extraction_store_context.open() as store:
             rows: list[StoredExtractionSummary] = await store.list_history(
                 limit=limit, offset=offset
             )
@@ -105,14 +103,14 @@ class RequirementsExtractionService:
 
     def configuration_current(self, view: StoredExtractionSummary) -> bool:
         return (
-            view.model_profile == self.profile
+            view.model_profile == self.model_profile
             and view.prompt_version == PROMPT_VERSION
             and view.contract_version == CONTRACT_VERSION
         )
 
     async def cancel(self, run_id: UUID) -> ExtractionView:
         store: ExtractionStore
-        async with self.stores.open() as store:
+        async with self.extraction_store_context.open() as store:
             return self.describe(await store.set_status(run_id, RunStatus.CANCELLING))
 
     def describe(self, view: ExtractionView) -> ExtractionView:

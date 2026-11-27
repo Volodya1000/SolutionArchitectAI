@@ -18,14 +18,16 @@ from solution_architect_ai.application.agents.extraction_sources import (
     verify_evidence,
 )
 from solution_architect_ai.application.agents.requirements_extraction_agent import (
-    AgentRequest,
-    AgentResult,
     RequirementsExtractionAgent,
 )
 from solution_architect_ai.application.context.context_models import ContextFragment, ContextPart
 from solution_architect_ai.application.errors.structured_errors import (
     StructuredErrorCode,
     StructuredGenerationFailure,
+)
+from solution_architect_ai.application.models.extraction_agent_models import (
+    AgentRequest,
+    AgentResult,
 )
 from solution_architect_ai.application.models.extraction_models import (
     Evidence,

@@ -14,6 +14,7 @@ from fastapi import FastAPI
 from pydantic import TypeAdapter
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from backend.tests.sql_store_setup import SqlStoreSetup, chat_store_setup, document_store_setup
 from solution_architect_ai.application.errors.chat_errors import ChatError
 from solution_architect_ai.application.errors.document_errors import DocumentFailure
 from solution_architect_ai.application.models.chat_dto import ChatSnapshot, ChatView, StartRun
@@ -24,7 +25,8 @@ from solution_architect_ai.application.models.document_dto import (
     UploadOperationView,
 )
 from solution_architect_ai.application.protocols.chat_protocols import ChatStore
-from solution_architect_ai.application.protocols.document_protocols import DocumentStoreFactory
+from solution_architect_ai.application.protocols.document_protocols import DocumentStore
+from solution_architect_ai.application.protocols.store_context_protocols import StoreContext
 from solution_architect_ai.application.services.document_identity import PARSED_DOCUMENT
 from solution_architect_ai.application.services.document_service import DocumentService
 from solution_architect_ai.config.settings import Settings
@@ -33,10 +35,7 @@ from solution_architect_ai.di.providers import AppProvider
 from solution_architect_ai.domain.documents import ParsedDocument
 from solution_architect_ai.infrastructure.parsers.document_parser import DocumentParser
 from solution_architect_ai.infrastructure.storage.local_files_storage import LocalFileStorage
-from solution_architect_ai.persistence.documents.document_factory import (
-    SqlAlchemyDocumentStoreFactory,
-)
-from solution_architect_ai.persistence.factory import SqlAlchemyStoreFactory
+from solution_architect_ai.persistence.store import SqlAlchemyStore
 from solution_architect_ai.presentation.document_routes import document_error, router
 
 pytestmark: Final[list[pytest.MarkDecorator]] = [pytest.mark.anyio, pytest.mark.integration]
@@ -61,7 +60,7 @@ async def document_client(tmp_path: Path) -> AsyncIterator[tuple[httpx.AsyncClie
         sessions: async_sessionmaker[AsyncSession] = async_sessionmaker[AsyncSession](
             engine, expire_on_commit=False
         )
-        stores: DocumentStoreFactory = SqlAlchemyDocumentStoreFactory(sessions)
+        stores: StoreContext[DocumentStore] = document_store_setup(sessions)
         service: DocumentService = DocumentService(
             stores, LocalFileStorage(tmp_path, max_bytes=4096), DocumentParser()
         )
@@ -208,7 +207,7 @@ async def test_message_pin_keeps_exact_old_version(
     sessions: async_sessionmaker[AsyncSession] = async_sessionmaker[AsyncSession](
         client[1], expire_on_commit=False
     )
-    stores: SqlAlchemyStoreFactory = SqlAlchemyStoreFactory(sessions)
+    stores: SqlStoreSetup[SqlAlchemyStore] = chat_store_setup(sessions)
     store: ChatStore
     async with stores.open() as store:
         chat: ChatView = await store.create_chat("Pinned source")

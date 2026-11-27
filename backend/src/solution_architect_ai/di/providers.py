@@ -19,10 +19,11 @@ from solution_architect_ai.application.capacity import GenerationCapacity
 from solution_architect_ai.application.generation import RunWorker
 from solution_architect_ai.application.protocols.chat_protocols import (
     LLM,
+    ChatStore,
     ResourceProbe,
-    StoreFactory,
     TokenCounter,
 )
+from solution_architect_ai.application.protocols.store_context_protocols import StoreContext
 from solution_architect_ai.application.retry import GenerationPolicy
 from solution_architect_ai.application.services.chat_service import ChatService
 from solution_architect_ai.config.models import DatabaseSettings, LLMSettings
@@ -30,7 +31,8 @@ from solution_architect_ai.config.settings import Settings
 from solution_architect_ai.infrastructure.context import LangChainTokenCounter
 from solution_architect_ai.infrastructure.health import LocalResourceProbe
 from solution_architect_ai.infrastructure.llm import LangChainLLM
-from solution_architect_ai.persistence.factory import SqlAlchemyStoreFactory
+from solution_architect_ai.persistence.store import SqlAlchemyStore
+from solution_architect_ai.persistence.store_context import SqlAlchemyStoreContext
 
 
 def database_url(settings: Settings) -> URL:
@@ -64,11 +66,14 @@ class AppProvider(Provider):
             await engine.dispose()
 
     @provide(scope=Scope.APP)
-    def stores(self, engine: AsyncEngine) -> StoreFactory:
-        sessions: async_sessionmaker[AsyncSession] = async_sessionmaker[AsyncSession](
-            engine, expire_on_commit=False
-        )
-        return SqlAlchemyStoreFactory(sessions)
+    def database_sessions(self, engine: AsyncEngine) -> async_sessionmaker[AsyncSession]:
+        return async_sessionmaker[AsyncSession](engine, expire_on_commit=False)
+
+    @provide(scope=Scope.APP)
+    def chat_store_context(
+        self, database_sessions: async_sessionmaker[AsyncSession]
+    ) -> StoreContext[ChatStore]:
+        return SqlAlchemyStoreContext(database_sessions, SqlAlchemyStore)
 
     @provide(scope=Scope.APP)
     async def llm(self, settings: Settings) -> AsyncGenerator[LLM]:
@@ -96,20 +101,20 @@ class AppProvider(Provider):
             yield LangChainLLM(model)
 
     @provide(scope=Scope.APP)
-    def tokens(self, settings: Settings) -> TokenCounter:
+    def chat_token_counter(self, settings: Settings) -> TokenCounter:
         return LangChainTokenCounter(settings.llm.approximate_chars_per_token)
 
     @provide(scope=Scope.APP)
-    def worker(
+    def chat_worker(
         self,
-        stores: StoreFactory,
+        chat_store_context: StoreContext[ChatStore],
         llm: LLM,
         settings: Settings,
-        tokens: TokenCounter,
+        chat_token_counter: TokenCounter,
         capacity: GenerationCapacity,
     ) -> RunWorker:
         profile: LLMSettings = settings.llm
-        policy: GenerationPolicy = GenerationPolicy(
+        generation_policy: GenerationPolicy = GenerationPolicy(
             concurrency=profile.concurrency,
             deadline=profile.retry.deadline_seconds,
             retries=profile.retry.network_retries,
@@ -119,21 +124,24 @@ class AppProvider(Provider):
             backoff_max=profile.retry.backoff_max,
             jitter=profile.retry.jitter,
         )
-        if tokens.count([]) >= policy.input_budget:
+        if chat_token_counter.count([]) >= generation_policy.input_budget:
             raise ValueError("output limit leaves no input budget for the system prompt")
-        return RunWorker(stores, llm, policy, tokens, capacity)
+        return RunWorker(chat_store_context, llm, generation_policy, chat_token_counter, capacity)
 
     @provide(scope=Scope.APP)
     def capacity(self, settings: Settings) -> GenerationCapacity:
         return GenerationCapacity(settings.llm.concurrency)
 
     @provide(scope=Scope.APP)
-    def service(
-        self, stores: StoreFactory, settings: Settings, probe: ResourceProbe
+    def chat_service(
+        self,
+        chat_store_context: StoreContext[ChatStore],
+        settings: Settings,
+        resource_probe: ResourceProbe,
     ) -> ChatService:
         profile: dict[str, object] = settings.llm.model_dump(mode="json", exclude={"api_key"})
-        digest: str = sha256(json.dumps(profile, sort_keys=True).encode()).hexdigest()
-        return ChatService(stores, settings.llm.model, digest, probe)
+        config_digest: str = sha256(json.dumps(profile, sort_keys=True).encode()).hexdigest()
+        return ChatService(chat_store_context, settings.llm.model, config_digest, resource_probe)
 
     @provide(scope=Scope.APP)
     def resource_probe(self, settings: Settings) -> ResourceProbe:

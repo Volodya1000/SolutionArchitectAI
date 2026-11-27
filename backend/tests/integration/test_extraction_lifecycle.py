@@ -13,11 +13,10 @@ from dishka import AsyncContainer, make_async_container
 from langchain_core.runnables import RunnableConfig
 from langgraph.types import StateSnapshot
 from sqlalchemy import func, select, update
-from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, async_sessionmaker
 
+from backend.tests.sql_store_setup import SqlStoreSetup, extraction_store_setup
 from solution_architect_ai.application.agents.requirements_extraction_agent import (
-    AgentRequest,
-    AgentResult,
     RequirementsExtractionAgent,
 )
 from solution_architect_ai.application.capacity import GenerationCapacity
@@ -31,6 +30,10 @@ from solution_architect_ai.application.models.document_dto import (
     DocumentVersionView,
     UploadDocument,
 )
+from solution_architect_ai.application.models.extraction_agent_models import (
+    AgentRequest,
+    AgentResult,
+)
 from solution_architect_ai.application.models.extraction_models import (
     ExtractionStart,
     ExtractionView,
@@ -40,8 +43,8 @@ from solution_architect_ai.application.models.structured_models import BudgetUsa
 from solution_architect_ai.application.protocols.extraction_protocols import (
     ExtractionGraph,
     ExtractionStore,
-    ExtractionStoreFactory,
 )
+from solution_architect_ai.application.protocols.store_context_protocols import StoreContext
 from solution_architect_ai.application.services.document_service import DocumentService
 from solution_architect_ai.application.services.requirements_extraction_service import (
     RequirementsExtractionService,
@@ -62,14 +65,12 @@ from solution_architect_ai.domain.documents import ParsedDocument
 from solution_architect_ai.domain.requirements import EvidenceStatus
 from solution_architect_ai.domain.runs import RunStatus
 from solution_architect_ai.infrastructure.extraction_graph import LangGraphExtraction
-from solution_architect_ai.persistence.extractions.extraction_factory import (
-    SqlAlchemyExtractionStoreFactory,
-)
 from solution_architect_ai.persistence.extractions.extraction_models import (
     ExtractionPartRow,
     ExtractionRow,
     RequirementRow,
 )
+from solution_architect_ai.persistence.extractions.extraction_store import SqlAlchemyExtractionStore
 
 pytestmark: Final[list[pytest.MarkDecorator]] = [pytest.mark.anyio, pytest.mark.integration]
 ORIGINAL: Final[str] = "\n".join(
@@ -82,7 +83,7 @@ class ExtractionResources:
     container: AsyncContainer
     settings: Settings
     documents: DocumentService
-    stores: ExtractionStoreFactory
+    stores: StoreContext[ExtractionStore]
     service: RequirementsExtractionService
     runs: list[UUID]
 
@@ -127,7 +128,7 @@ async def extraction_resources(tmp_path: Path) -> AsyncIterator[ExtractionResour
         container,
         settings,
         await container.get(DocumentService),
-        await container.get(ExtractionStoreFactory),
+        await container.get(StoreContext[ExtractionStore]),
         await container.get(RequirementsExtractionService),
         [],
     )
@@ -223,7 +224,7 @@ async def test_worker_dispatches_up_to_configured_capacity(
             both_started.set()
         await release.wait()
 
-    monkeypatch.setattr(worker.graph, "run", blocked)
+    monkeypatch.setattr(worker.extraction_graph, "run", blocked)
     group: asyncio.TaskGroup
     async with asyncio.TaskGroup() as group:
         await worker.dispatch_run(group, first)
@@ -243,7 +244,7 @@ async def test_insufficient_part_budget_does_not_persist_a_prepared_plan(
     run: ExtractionView = await resources.start([first.version_id, second.version_id])
     await resources.running(run.id)
     steps: ExtractionSteps = await resources.container.get(ExtractionSteps)
-    steps.policy = replace(steps.policy, requests=1)
+    steps.extraction_policy = replace(steps.extraction_policy, requests=1)
     with pytest.raises(StructuredGenerationFailure) as error:
         await steps.prepare(run.id)
     assert error.value.reason == StructuredErrorCode.BUDGET_EXHAUSTED
@@ -259,7 +260,7 @@ async def test_concurrent_save_is_idempotent_when_verification_finishes_late(
     steps: ExtractionSteps = await resources.container.get(ExtractionSteps)
     await steps.prepare(run.id)
     await steps.extract(run.id, 0)
-    original: Callable[[UUID], Awaitable[None]] = steps.finalizer.verify
+    original: Callable[[UUID], Awaitable[None]] = steps.extraction_finalizer.verify
     entered: int = 0
     both_entered: asyncio.Event = asyncio.Event()
     first_saved: asyncio.Event = asyncio.Event()
@@ -280,7 +281,7 @@ async def test_concurrent_save_is_idempotent_when_verification_finishes_late(
         finally:
             first_saved.set()
 
-    monkeypatch.setattr(steps.finalizer, "verify", ordered_verify)
+    monkeypatch.setattr(steps.extraction_finalizer, "verify", ordered_verify)
     async with asyncio.timeout(5):
         await asyncio.gather(first_save(), steps.save(run.id))
     saved: ExtractionView = await resources.view(run.id)
@@ -432,7 +433,7 @@ async def test_postgres_checkpoint_survives_resource_restart_after_saved_extract
     saved: list[PartResult] = await part_records(resources, run.id)
     assert saved
     config: RunnableConfig = {"configurable": {"thread_id": str(run.id)}}
-    checkpoint: object = await graph.graph.aget_state(config)
+    checkpoint: object = await graph.state_graph.aget_state(config)
     assert isinstance(checkpoint, StateSnapshot)
     assert checkpoint.next == ("merge",)
     assert set(checkpoint.values) == {"run_id", "index", "cycle", "clarification_only"}
@@ -445,7 +446,7 @@ async def test_postgres_checkpoint_survives_resource_restart_after_saved_extract
         context={Settings: resources.settings},
     )
     resources.container = restored
-    resources.stores = await restored.get(ExtractionStoreFactory)
+    resources.stores = await restored.get(StoreContext[ExtractionStore])
     resources.service = await restored.get(RequirementsExtractionService)
     worker: ExtractionWorker = await restored.get(ExtractionWorker)
     await worker.execute(run.id)
@@ -472,11 +473,11 @@ async def test_shared_budget_across_parts_preserves_completed_candidates_on_fail
     await resources.running(run.id)
     original: ExtractionSteps = await resources.container.get(ExtractionSteps)
     limited: ExtractionSteps = ExtractionSteps(
-        original.stores,
-        original.documents,
-        original.builder,
+        original.extraction_store_context,
+        original.documents_service,
+        original.extraction_context_builder,
         original.requirements_extraction_agent,
-        replace(original.policy, requests=1),
+        replace(original.extraction_policy, requests=1),
     )
     pack: ContextPack = await limited.context(run.id)
     assert len(pack.parts) > 1
@@ -564,7 +565,11 @@ async def test_changed_model_profile_fails_with_saved_provenance(
     version: DocumentVersionView = await upload(resources)
     run: ExtractionView = await resources.start([version.version_id])
     steps: ExtractionSteps = await resources.container.get(ExtractionSteps)
-    monkeypatch.setattr(steps, "policy", replace(steps.policy, config_digest="different-profile"))
+    monkeypatch.setattr(
+        steps,
+        "extraction_policy",
+        replace(steps.extraction_policy, config_digest="different-profile"),
+    )
     worker: ExtractionWorker = await resources.container.get(ExtractionWorker)
     await worker.execute(run.id)
     failed: ExtractionView = await resources.view(run.id)
@@ -596,11 +601,11 @@ async def test_other_task_cannot_read_extraction_or_candidates(
 ) -> None:
     version: DocumentVersionView = await upload(resources)
     run: ExtractionView = await resources.start([version.version_id])
-    original: SqlAlchemyExtractionStoreFactory
-    assert isinstance(resources.stores, SqlAlchemyExtractionStoreFactory)
-    original = resources.stores
-    foreign: SqlAlchemyExtractionStoreFactory = SqlAlchemyExtractionStoreFactory(
-        original.sessions, task_id=uuid4()
+    sessions: async_sessionmaker[AsyncSession] = await resources.container.get(
+        async_sessionmaker[AsyncSession]
+    )
+    foreign: SqlStoreSetup[SqlAlchemyExtractionStore] = extraction_store_setup(
+        sessions, task_id=uuid4()
     )
     store: ExtractionStore
     async with foreign.open() as store:
@@ -651,7 +656,9 @@ async def test_resume_rejects_changed_context_manifest_without_a_new_request(
     await steps.prepare(run.id)
     await steps.extract(run.id, 0)
     previous: int = (await resources.view(run.id)).requests
-    monkeypatch.setattr(steps.builder, "schema", steps.builder.schema + " ")
+    monkeypatch.setattr(
+        steps.extraction_context_builder, "schema", steps.extraction_context_builder.schema + " "
+    )
     worker: ExtractionWorker = await resources.container.get(ExtractionWorker)
     await worker.execute(run.id)
     failed: ExtractionView = await resources.view(run.id)

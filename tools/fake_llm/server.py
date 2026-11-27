@@ -127,6 +127,29 @@ def clarification_payload(body: object) -> dict[str, object] | None:
     )
 
 
+def structured_answer(body: object) -> str:
+    if any(payload.get("role") == "clarification_review" for payload in request_payloads(body)):
+        evidence: list[dict[str, str]] = [
+            {"fragment_id": fragment["fragment_id"], "quote": fragment["text"]}
+            for fragment in document_fragments(body)
+            if "Запрос даты вне окна отклоняется" in fragment["text"]
+        ]
+        return json.dumps(
+            {
+                "resolved": bool(evidence),
+                "reason": "Проверены выбранные источники",
+                "evidence": evidence,
+            },
+            ensure_ascii=False,
+        )
+    payload: dict[str, object] | None = clarification_payload(body)
+    return (
+        clarification_questions(body, payload)
+        if payload is not None
+        else extracted_requirements(body)
+    )
+
+
 def clarification_questions(body: object, payload: dict[str, object]) -> str:
     fragments: list[dict[str, str]] = document_fragments(body)
     source_text: str = " ".join(fragment["text"] for fragment in fragments)
@@ -269,12 +292,7 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True
 
     def structured(self, body: dict[str, object], prompt: str) -> None:
-        payload_input: dict[str, object] | None = clarification_payload(body)
-        answer: str = (
-            clarification_questions(body, payload_input)
-            if payload_input is not None
-            else extracted_requirements(body)
-        )
+        answer: str = structured_answer(body)
         if "[slow]" in prompt:
             time.sleep(2)
         if "[invalid-json]" in prompt:

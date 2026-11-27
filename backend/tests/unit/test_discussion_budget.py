@@ -3,12 +3,15 @@ from uuid import uuid4
 import pytest
 
 from solution_architect_ai.application.context.chat_context_builder import select_context
-from solution_architect_ai.application.context.discussion_context_builder import context_message
 from solution_architect_ai.application.errors.chat_errors import GenerationFailure
 from solution_architect_ai.application.models.chat_dto import MessageView
 from solution_architect_ai.domain.messages import MessageRole
 from solution_architect_ai.domain.runs import RunErrorCode
 from solution_architect_ai.infrastructure.context import LangChainTokenCounter
+
+
+def context_message(role: MessageRole, content: str) -> MessageView:
+    return MessageView(id=uuid4(), role=role, content=content, position=0, incomplete=False)
 
 
 def test_discussion_source_and_complete_turns_share_one_budget() -> None:

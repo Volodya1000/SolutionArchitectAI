@@ -4,6 +4,7 @@ from dishka.integrations.fastapi import DishkaRoute, FromDishka
 from fastapi import APIRouter
 
 from solution_architect_ai.application.models.chat_dto import ChatView
+from solution_architect_ai.application.models.clarification_models import ClarificationView
 from solution_architect_ai.application.models.discussion_models import (
     CreateDiscussion,
     DiscussionView,
@@ -21,6 +22,13 @@ async def create(body: CreateDiscussion, service: FromDishka[DiscussionService])
 @router.get("/chats/{chat_id}/discussion")
 async def subject(chat_id: UUID, service: FromDishka[DiscussionService]) -> DiscussionView | None:
     return await service.get(chat_id)
+
+
+@router.get("/chats/{chat_id}/discussion/clarifications")
+async def clarifications(
+    chat_id: UUID, service: FromDishka[DiscussionService]
+) -> ClarificationView | None:
+    return await service.get_clarifications(chat_id)
 
 
 @router.get("/discussion-operations/{operation_id}")

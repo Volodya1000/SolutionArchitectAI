@@ -75,7 +75,7 @@ export function AnalysisForm({
         />
         Начать с новой историей уточнений
       </label>
-      <AnalysisContextStatus context={context} />
+      <AnalysisContextStatus context={context} newHistory={newHistory} />
       <AnalysisRecovery state={state} />
       <AnalysisCommandActions
         state={state}

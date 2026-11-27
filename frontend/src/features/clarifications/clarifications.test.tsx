@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
@@ -10,6 +10,7 @@ import { sessionStore } from '../../shared/ui/session-storage';
 import { Clarifications, DiscussionHeader } from './index';
 import { answerSchema, clarificationSchema, type Decision } from '../../shared/api/clarifications';
 import { savedValue } from './saved-command';
+import { HumanDecision } from './decision';
 
 const question = {
   id: 'q1',
@@ -77,7 +78,11 @@ it('retains a draft on a stale revision and refreshes the shared cards', async (
   await userEvent.type(input, 'Хранить 90 дней');
   await userEvent.type(screen.getAllByLabelText('Основание ответа')[0]!, 'Решение команды');
   await userEvent.click(screen.getAllByRole('button', { name: 'Сохранить ответ' })[0]!);
-  expect(await screen.findByText('Новое основание')).toBeVisible();
+  expect(
+    within(await screen.findByRole('region', { name: 'Черновик прежней ревизии' })).getByText(
+      'Новое основание',
+    ),
+  ).toBeVisible();
   expect(input).toHaveValue('Хранить 90 дней');
   expect(screen.getByRole('alert')).toHaveTextContent(/ревизия/i);
 });
@@ -147,6 +152,38 @@ const acceptedAssumption: Decision = {
   resolution_reason: null,
   revision: 1,
 };
+
+it('keeps a legacy resolution actor identifier inside technical disclosure', () => {
+  render(
+    <MemoryRouter>
+      <HumanDecision
+        decision={{
+          ...acceptedAssumption,
+          resolution: 'confirmed',
+          resolved_by: 'legacy-actor-id',
+          resolved_at: '2026-11-27T12:00:00Z',
+        }}
+      />
+    </MemoryRouter>,
+  );
+  expect(screen.getByText('legacy-actor-id', { exact: false })).not.toBeVisible();
+});
+
+it('shows the immutable question revision attached to a saved decision', () => {
+  render(
+    <MemoryRouter>
+      <HumanDecision
+        decision={{
+          ...acceptedAssumption,
+          resolution: 'confirmed',
+          question_revision: 1,
+          revision: 3,
+        }}
+      />
+    </MemoryRouter>,
+  );
+  expect(screen.getByText('Ревизия вопроса').nextElementSibling).toHaveTextContent('1');
+});
 
 it.each(['confirm', 'reject'] as const)(
   'saves an assumption and synchronizes its risk on %s',
@@ -224,15 +261,16 @@ it.each(['confirm', 'reject'] as const)(
     await userEvent.click(screen.getByRole('button', { name: 'Принять допущение' }));
     expect(await screen.findByRole('link', { name: 'Риск A-07' })).toHaveAttribute(
       'href',
-      '#risk-risk',
+      '/#risk-risk',
     );
-    expect(screen.getByText(/Архитектор ·/)).toBeVisible();
+    expect(screen.getByText('Архитектор', { exact: true })).toBeVisible();
+    expect(screen.getAllByText('Подлежит верификации', { exact: true })).toHaveLength(1);
     expect(screen.getByText('Завершённые циклы: 1')).toBeVisible();
     await userEvent.selectOptions(screen.getByLabelText('Решение по допущению'), resolution);
     await userEvent.type(screen.getByLabelText('Причина решения'), 'Проверено');
     await userEvent.click(screen.getByRole('button', { name: 'Сохранить решение' }));
     expect(
-      await screen.findByText(resolution === 'confirm' ? 'Статус: Закрыт' : 'Статус: Реализовался'),
+      await screen.findByText(resolution === 'confirm' ? 'Закрыт' : 'Реализовался'),
     ).toBeVisible();
     expect(screen.getByText(/Решение: Проверяющий/)).toBeVisible();
     expect(
@@ -298,6 +336,7 @@ it('keeps the new revision draft when recovering a committed answer to an older 
 
 it('renders the pinned discussion subject and the same analysis question cards', async () => {
   server.use(
+    http.get('/api/chats/chat/discussion/clarifications', () => HttpResponse.json(current)),
     http.get('/api/chats/chat/discussion', () =>
       HttpResponse.json({
         chat_id: 'chat',

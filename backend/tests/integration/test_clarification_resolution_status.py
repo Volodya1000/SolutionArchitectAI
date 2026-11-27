@@ -17,6 +17,10 @@ from backend.tests.integration.test_clarification_http import (  # pylint: disab
 from backend.tests.integration.test_extraction_lifecycle import (  # pylint: disable=unused-import,useless-import-alias
     extraction_resources as extraction_resources,
 )
+from backend.tests.sql_store_setup import (
+    SqlStoreSetup,
+    extraction_store_setup,
+)
 from solution_architect_ai.application.errors.chat_errors import Conflict
 from solution_architect_ai.application.models.clarification_models import (
     AnswerClarification,
@@ -33,9 +37,6 @@ from solution_architect_ai.application.models.extraction_models import (
 from solution_architect_ai.application.protocols.extraction_protocols import ExtractionStore
 from solution_architect_ai.application.workflows.extraction_worker import ExtractionWorker
 from solution_architect_ai.domain.runs import RunStatus
-from solution_architect_ai.persistence.clarifications.clarification_factory import (
-    SqlAlchemyClarificationStoreFactory,
-)
 from solution_architect_ai.persistence.clarifications.clarification_models import (
     ClarificationOperationRow,
     QuestionRevisionRow,
@@ -43,22 +44,20 @@ from solution_architect_ai.persistence.clarifications.clarification_models impor
 from solution_architect_ai.persistence.clarifications.clarification_store import (
     SqlAlchemyClarificationStore,
 )
-from solution_architect_ai.persistence.extractions.extraction_factory import (
-    SqlAlchemyExtractionStoreFactory,
-)
 from solution_architect_ai.persistence.extractions.extraction_models import ExtractionRow
+from solution_architect_ai.persistence.extractions.extraction_store import SqlAlchemyExtractionStore
 
 pytestmark: Final[list[pytest.MarkDecorator]] = [pytest.mark.anyio, pytest.mark.integration]
 
 
 @dataclass(frozen=True)
 class ResolutionCase:
-    stores: SqlAlchemyClarificationStoreFactory
+    stores: SqlStoreSetup[SqlAlchemyClarificationStore]
     run_id: UUID
     decision: DecisionResult
 
     async def stop(self, status: RunStatus) -> None:
-        extraction_stores: SqlAlchemyExtractionStoreFactory = SqlAlchemyExtractionStoreFactory(
+        extraction_stores: SqlStoreSetup[SqlAlchemyExtractionStore] = extraction_store_setup(
             self.stores.sessions, task_id=self.stores.actor.task_id
         )
         store: ExtractionStore
@@ -77,7 +76,7 @@ class ResolutionSnapshot:
 
 @pytest.fixture(name="resolution_case")
 async def resolution_case_fixture(
-    decision_stores: SqlAlchemyClarificationStoreFactory,
+    decision_stores: SqlStoreSetup[SqlAlchemyClarificationStore],
 ) -> ResolutionCase:
     run_id: UUID = uuid4()
     question: ClarificationQuestion = ClarificationQuestion(

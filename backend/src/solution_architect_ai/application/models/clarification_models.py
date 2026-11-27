@@ -11,6 +11,8 @@ from solution_architect_ai.application.models.chat_dto import DTO, Text
 from solution_architect_ai.application.models.extraction_models import RequirementView, SourceRef
 from solution_architect_ai.application.models.structured_models import ModelProfile
 
+type QuestionStatus = Literal["open", "answered", "assumed"]
+
 
 @dataclass(frozen=True)
 class ActorContext:
@@ -52,10 +54,19 @@ class ClarificationQuestion(DTO):
     blocking: bool
     requirement_ids: Annotated[list[UUID], Field(min_length=1)]
     sources: list[SourceRef]
-    status: Literal["open", "answered", "assumed"] = "open"
+    status: QuestionStatus = "open"
     previous_basis: str | None = None
+    previous_sources: list[SourceRef] = Field(default_factory=list)
+    mandatory_conflict: str | None = None
     source_fingerprints: dict[str, str] = Field(default_factory=dict)
     requirement_fingerprints: dict[UUID, str] = Field(default_factory=dict)
+    requirement_basis_fingerprints: dict[UUID, str] = Field(default_factory=dict)
+
+    @property
+    def blocks_completion(self) -> bool:
+        return (self.blocking and self.status == "open") or (
+            self.status in {"open", "assumed"} and self.mandatory_conflict is not None
+        )
 
 
 class AnswerClarification(DTO):
@@ -133,11 +144,23 @@ class CompletedCycle(DTO):
     requirements: list[RequirementView] = Field(default_factory=list)
 
 
+class ClarificationReviewCoverage(DTO):
+    total_fragments: int = 0
+    reviewed_fragments: int = 0
+    total_history: int = 0
+    reviewed_history: int = 0
+    model_requests: int = 0
+    complete: bool = False
+    unreviewed_fragment_ids: list[str] = Field(default_factory=list)
+    unreviewed_question_ids: list[UUID] = Field(default_factory=list)
+
+
 class ClarificationMetadata(DTO):
     prompt_version: str
     contract_version: str = "clarification-1"
     context_digest: str
     model_profile: ModelProfile
+    coverage: ClarificationReviewCoverage | None = None
 
 
 class ClarificationView(DTO):

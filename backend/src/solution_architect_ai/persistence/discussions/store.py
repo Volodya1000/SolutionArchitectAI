@@ -79,7 +79,7 @@ class SqlAlchemyDiscussionStore:
         if replay is not None:
             return replay
         chat: ChatRow = ChatRow(
-            id=binding.view.chat_id, task_id=self.actor.task_id, title=binding.view.title
+            id=binding.view.chat_id, task_id=self.actor.task_id, title=binding.view.title[:120]
         )
         self.session.add(chat)
         await self.session.flush()

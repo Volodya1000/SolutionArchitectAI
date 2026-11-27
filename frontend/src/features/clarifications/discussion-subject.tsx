@@ -2,47 +2,19 @@ import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import { scopeKey } from '../../shared/api/client';
 import { locatorText, parsedVersion } from '../../shared/api/documents';
-import { readExtraction, type SourceRef } from '../../shared/api/extractions';
-import { useClarifications } from '../../shared/api/use-clarifications';
+import { type Requirement, type SourceRef } from '../../shared/api/extractions';
 import { QueryError } from '../../shared/ui/query-error';
-
-function useDiscussionRequirement(runId: string, requirementId: string) {
-  const clarification = useClarifications(runId);
-  const extraction = useQuery({
-    queryKey: [...scopeKey, 'extraction', runId],
-    queryFn: () => readExtraction(runId),
-    enabled: clarification.isSuccess && !clarification.data.initialized,
-  });
-  const requirements = clarification.data?.initialized
-    ? clarification.data.requirements
-    : extraction.data?.requirements;
-  const requirement = requirements?.find((item) => item.id === requirementId);
-  const error = clarification.error ?? extraction.error;
-  return { clarification, extraction, requirements, requirement, error };
-}
 
 export function RequirementSubject({
   runId,
   requirementId,
+  requirements,
 }: {
   runId: string;
   requirementId: string;
+  requirements: Requirement[];
 }) {
-  const { clarification, extraction, requirements, requirement, error } = useDiscussionRequirement(
-    runId,
-    requirementId,
-  );
-  if (error && !requirement)
-    return (
-      <QueryError
-        error={error}
-        retry={() => {
-          void clarification.refetch();
-          void extraction.refetch();
-        }}
-      />
-    );
-  if (!requirements) return <p role="status">Загружаем требование обсуждения…</p>;
+  const requirement = requirements.find((item) => item.id === requirementId);
   if (!requirement)
     return (
       <p className="notice error-text" role="alert">
@@ -51,14 +23,6 @@ export function RequirementSubject({
     );
   return (
     <section className="discussion-requirement" aria-label="Требование обсуждения">
-      {error && (
-        <QueryError
-          error={error}
-          retry={() => {
-            void clarification.refetch();
-          }}
-        />
-      )}
       <h2>Требование</h2>
       <p className="requirement-text">{requirement.normalized_text}</p>
       <h3>Исходные цитаты</h3>
@@ -129,7 +93,7 @@ export function SourceSubject({
   );
 }
 
-function PinnedSource({ source, runId }: { source: SourceRef; runId: string | null }) {
+export function PinnedSource({ source, runId }: { source: SourceRef; runId: string | null }) {
   const query = new URLSearchParams({
     version: source.version_id ?? '',
     fragment: source.fragment_id,
@@ -145,11 +109,14 @@ function PinnedSource({ source, runId }: { source: SourceRef; runId: string | nu
       ) : (
         <p className="notice">Адресуемый источник недоступен.</p>
       )}
-      <p className="version-meta">
-        Версия {source.version_id} · Фрагмент {source.fragment_id}
-        <br />
-        SHA-256: {source.sha256}
-      </p>
+      <details>
+        <summary>Технические сведения источника</summary>
+        <p className="version-meta">
+          Версия {source.version_id} · Фрагмент {source.fragment_id}
+          <br />
+          SHA-256: {source.sha256}
+        </p>
+      </details>
       {source.status !== 'verified' && (
         <p className="notice evidence-warning">Цитата не подтверждена исходным текстом.</p>
       )}

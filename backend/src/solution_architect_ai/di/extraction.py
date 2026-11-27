@@ -11,7 +11,7 @@ from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from psycopg import AsyncConnection
 from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
-from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from solution_architect_ai.application.agents.clarification_agent import ClarificationAgent
 from solution_architect_ai.application.agents.requirements_extraction_agent import (
@@ -25,13 +25,12 @@ from solution_architect_ai.application.context.extraction_context_builder import
 from solution_architect_ai.application.models.extraction_models import StoredModelProfile
 from solution_architect_ai.application.models.extraction_policy import ExtractionPolicy
 from solution_architect_ai.application.models.structured_models import ModelProfile, StructuredMode
-from solution_architect_ai.application.protocols.clarification_protocols import (
-    ClarificationStoreFactory,
-)
+from solution_architect_ai.application.protocols.clarification_protocols import ClarificationStore
 from solution_architect_ai.application.protocols.extraction_protocols import (
     ExtractionGraph,
-    ExtractionStoreFactory,
+    ExtractionStore,
 )
+from solution_architect_ai.application.protocols.store_context_protocols import StoreContext
 from solution_architect_ai.application.retry import GenerationPolicy
 from solution_architect_ai.application.services.document_service import DocumentService
 from solution_architect_ai.application.services.requirements_extraction_service import (
@@ -52,10 +51,12 @@ from solution_architect_ai.di.providers import database_url
 from solution_architect_ai.infrastructure.context import LangChainTokenCounter
 from solution_architect_ai.infrastructure.extraction_graph import LangGraphExtraction
 from solution_architect_ai.infrastructure.structured import LangChainStructuredModel
-from solution_architect_ai.persistence.extractions.extraction_factory import (
-    SqlAlchemyExtractionStoreFactory,
-)
+from solution_architect_ai.persistence.extractions.extraction_store import SqlAlchemyExtractionStore
 from solution_architect_ai.persistence.queries import DEFAULT_TASK_ID
+from solution_architect_ai.persistence.store_context import (
+    SqlAlchemyStoreContext,
+    SqlStoreErrorPolicy,
+)
 
 
 def profile_digest(settings: Settings) -> str:
@@ -65,24 +66,34 @@ def profile_digest(settings: Settings) -> str:
 
 class ExtractionProvider(ClarificationProvider):
     @provide(scope=Scope.APP)
-    def clarification_agent(self, generator: StructuredOutputGenerator) -> ClarificationAgent:
-        return ClarificationAgent(generator)
+    def clarification_agent(
+        self, structured_output_generator: StructuredOutputGenerator
+    ) -> ClarificationAgent:
+        return ClarificationAgent(structured_output_generator)
 
     @provide(scope=Scope.APP)
     def clarification_workflow(
-        self, stores: ClarificationStoreFactory, steps: ExtractionSteps, agent: ClarificationAgent
+        self,
+        clarification_store_context: StoreContext[ClarificationStore],
+        extraction_steps: ExtractionSteps,
+        clarification_agent: ClarificationAgent,
     ) -> ClarificationWorkflow:
-        return ClarificationWorkflow(stores, steps, agent)
-
-    @provide(scope=Scope.APP)
-    def extraction_stores(self, engine: AsyncEngine) -> ExtractionStoreFactory:
-        sessions: async_sessionmaker[AsyncSession] = async_sessionmaker[AsyncSession](
-            engine, expire_on_commit=False
+        return ClarificationWorkflow(
+            clarification_store_context, extraction_steps, clarification_agent
         )
-        return SqlAlchemyExtractionStoreFactory(sessions)
 
     @provide(scope=Scope.APP)
-    async def generator(self, settings: Settings) -> AsyncGenerator[StructuredOutputGenerator]:
+    def extraction_store_context(
+        self, database_sessions: async_sessionmaker[AsyncSession]
+    ) -> StoreContext[ExtractionStore]:
+        return SqlAlchemyStoreContext(
+            database_sessions, SqlAlchemyExtractionStore, SqlStoreErrorPolicy.EXTRACTION
+        )
+
+    @provide(scope=Scope.APP)
+    async def structured_output_generator(
+        self, settings: Settings
+    ) -> AsyncGenerator[StructuredOutputGenerator]:
         profile: LLMSettings = settings.llm
         stack: AsyncExitStack
         async with AsyncExitStack() as stack:
@@ -104,7 +115,7 @@ class ExtractionProvider(ClarificationProvider):
                 streaming=False,
                 stream_usage=False,
             )
-            policy: GenerationPolicy = GenerationPolicy(
+            generation_policy: GenerationPolicy = GenerationPolicy(
                 profile.concurrency,
                 profile.retry.deadline_seconds,
                 profile.retry.network_retries,
@@ -116,12 +127,12 @@ class ExtractionProvider(ClarificationProvider):
             )
             yield StructuredOutputGenerator(
                 LangChainStructuredModel(model),
-                policy,
+                generation_policy,
                 LangChainTokenCounter(profile.approximate_chars_per_token, chat_prompt=False),
             )
 
     @provide(scope=Scope.APP)
-    def context_builder(self, settings: Settings) -> ExtractionContextBuilder:
+    def extraction_context_builder(self, settings: Settings) -> ExtractionContextBuilder:
         profile: LLMSettings = settings.llm
         return ExtractionContextBuilder(
             LangChainTokenCounter(profile.approximate_chars_per_token, chat_prompt=False),
@@ -136,9 +147,9 @@ class ExtractionProvider(ClarificationProvider):
 
     @provide(scope=Scope.APP)
     def requirements_extraction_agent(
-        self, generator: StructuredOutputGenerator
+        self, structured_output_generator: StructuredOutputGenerator
     ) -> RequirementsExtractionAgent:
-        return RequirementsExtractionAgent(generator)
+        return RequirementsExtractionAgent(structured_output_generator)
 
     @provide(scope=Scope.APP)
     def extraction_policy(self, settings: Settings) -> ExtractionPolicy:
@@ -161,19 +172,28 @@ class ExtractionProvider(ClarificationProvider):
         )
 
     @provide(scope=Scope.APP)
-    def steps(
+    def extraction_steps(
         self,
-        stores: ExtractionStoreFactory,
-        documents: DocumentService,
-        builder: ExtractionContextBuilder,
+        extraction_store_context: StoreContext[ExtractionStore],
+        documents_service: DocumentService,
+        extraction_context_builder: ExtractionContextBuilder,
         requirements_extraction_agent: RequirementsExtractionAgent,
-        policy: ExtractionPolicy,
+        extraction_policy: ExtractionPolicy,
     ) -> ExtractionSteps:
-        return ExtractionSteps(stores, documents, builder, requirements_extraction_agent, policy)
+        return ExtractionSteps(
+            extraction_store_context,
+            documents_service,
+            extraction_context_builder,
+            requirements_extraction_agent,
+            extraction_policy,
+        )
 
     @provide(scope=Scope.APP)
-    async def graph(
-        self, steps: ExtractionSteps, settings: Settings, workflow: ClarificationWorkflow
+    async def extraction_graph(
+        self,
+        extraction_steps: ExtractionSteps,
+        settings: Settings,
+        clarification_workflow: ClarificationWorkflow,
     ) -> AsyncGenerator[ExtractionGraph]:
         dsn: str = (
             database_url(settings)
@@ -199,26 +219,35 @@ class ExtractionProvider(ClarificationProvider):
                 )
             )
             saver: AsyncPostgresSaver = AsyncPostgresSaver(pool, serde=serde)
-            yield LangGraphExtraction(steps, saver, workflow)
+            yield LangGraphExtraction(extraction_steps, saver, clarification_workflow)
 
     @provide(scope=Scope.APP)
     def extraction_service(
-        self, stores: ExtractionStoreFactory, documents: DocumentService, settings: Settings
+        self,
+        extraction_store_context: StoreContext[ExtractionStore],
+        documents_service: DocumentService,
+        settings: Settings,
     ) -> RequirementsExtractionService:
-        profile: StoredModelProfile = StoredModelProfile.model_validate(
+        model_profile: StoredModelProfile = StoredModelProfile.model_validate(
             settings.llm.model_dump(mode="json", exclude={"api_key"})
         )
-        return RequirementsExtractionService(stores, documents, profile, profile_digest(settings))
+        return RequirementsExtractionService(
+            extraction_store_context, documents_service, model_profile, profile_digest(settings)
+        )
 
     @provide(scope=Scope.APP)
     def extraction_worker(
         self,
-        stores: ExtractionStoreFactory,
-        graph: ExtractionGraph,
+        extraction_store_context: StoreContext[ExtractionStore],
+        extraction_graph: ExtractionGraph,
         capacity: GenerationCapacity,
         settings: Settings,
-        clarifications: ClarificationStoreFactory,
+        clarification_store_context: StoreContext[ClarificationStore],
     ) -> ExtractionWorker:
         return ExtractionWorker(
-            stores, graph, capacity, settings.llm.retry.deadline_seconds, clarifications
+            extraction_store_context,
+            extraction_graph,
+            capacity,
+            settings.llm.retry.deadline_seconds,
+            clarification_store_context,
         )

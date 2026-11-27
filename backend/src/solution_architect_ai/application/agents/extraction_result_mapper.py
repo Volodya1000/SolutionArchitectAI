@@ -75,7 +75,11 @@ def issue_view(
 
 def verify_result(result: RequirementsExtraction, part: ContextPart) -> PartResult:
     requirements: list[RequirementView] = [
-        requirement_view(item, part) for item in result.requirements
+        requirement_view(item, part)
+        for item in result.requirements
+        if not all(
+            evidence.fragment_id in part.structural_fragment_ids for evidence in item.evidence
+        )
     ]
     requirements.extend(issue_view(item, part) for item in result.gaps)
     requirements.extend(issue_view(item, part) for item in result.contradictions)

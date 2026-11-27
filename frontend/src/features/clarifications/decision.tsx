@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router';
 import {
   recoverDecision,
   resolutionSchema,
@@ -10,7 +11,13 @@ import { Button } from '../../shared/ui/button';
 import { usePersistedCommand } from './use-persisted-command';
 import { savedValue } from './saved-command';
 
-export function HumanDecision({ decision }: { decision: Decision }) {
+export function HumanDecision({
+  decision,
+  tabbed = false,
+}: {
+  decision: Decision;
+  tabbed?: boolean;
+}) {
   return (
     <article className="human-decision" id={`decision-${decision.decision_id}`}>
       <strong>
@@ -19,19 +26,44 @@ export function HumanDecision({ decision }: { decision: Decision }) {
           : 'Добавил архитектор'}
       </strong>
       <p>{decision.text}</p>
-      <p className="notice">
-        {decision.author} · {new Date(decision.created_at).toLocaleString('ru-RU')}
-      </p>
-      <p>Основание: {decision.basis}</p>
+      <dl className="metadata-grid">
+        <dt>Автор</dt>
+        <dd>{decision.author}</dd>
+        <dt>Сохранено</dt>
+        <dd>
+          <time dateTime={decision.created_at}>
+            {new Date(decision.created_at).toLocaleString('ru-RU')}
+          </time>
+        </dd>
+        <dt>Основание</dt>
+        <dd>{decision.basis}</dd>
+        <dt>Ревизия вопроса</dt>
+        <dd>{decision.question_revision}</dd>
+        {decision.assumption && (
+          <>
+            <dt>Ответственный</dt>
+            <dd>{decision.assumption.responsible}</dd>
+            <dt>Условие проверки</dt>
+            <dd>{decision.assumption.verification_condition}</dd>
+            <dt>Статус</dt>
+            <dd>{resolutionText[decision.resolution]}</dd>
+            {decision.resolution_reason && (
+              <>
+                <dt>Причина решения</dt>
+                <dd>{decision.resolution_reason}</dd>
+              </>
+            )}
+          </>
+        )}
+      </dl>
       {decision.assumption && (
         <>
-          <p>Ответственный: {decision.assumption.responsible}</p>
-          <p>Условие проверки: {decision.assumption.verification_condition}</p>
-          <a className="text-link" href={`#risk-${decision.risk_id ?? ''}`}>
+          <Link
+            className="text-link"
+            to={`${tabbed ? `/requirements?run=${encodeURIComponent(decision.run_id)}&tab=risks` : ''}#risk-${decision.risk_id ?? ''}`}
+          >
             Риск A-07
-          </a>
-          <p>Статус: {resolutionText[decision.resolution]}</p>
-          {decision.resolution_reason && <p>{decision.resolution_reason}</p>}
+          </Link>
           <ResolutionProvenance decision={decision} />
           {decision.resolution === 'pending' && <ResolveDecision decision={decision} />}
         </>
@@ -42,18 +74,26 @@ export function HumanDecision({ decision }: { decision: Decision }) {
 function ResolutionProvenance({ decision }: { decision: Decision }) {
   if (!decision.resolved_author && !decision.resolved_at && !decision.resolved_by) return null;
   return (
-    <p className="notice">
-      Решение: {decision.resolved_author ?? decision.resolved_by}
-      {decision.resolved_at && (
-        <>
-          {' '}
-          ·{' '}
-          <time dateTime={decision.resolved_at}>
-            {new Date(decision.resolved_at).toLocaleString('ru-RU')}
-          </time>
-        </>
+    <>
+      <p className="notice">
+        Решение: {decision.resolved_author ?? 'Архитектор'}
+        {decision.resolved_at && (
+          <>
+            {' '}
+            ·{' '}
+            <time dateTime={decision.resolved_at}>
+              {new Date(decision.resolved_at).toLocaleString('ru-RU')}
+            </time>
+          </>
+        )}
+      </p>
+      {decision.resolved_by && (
+        <details>
+          <summary>Технические сведения решения</summary>
+          <p className="version-meta">Автор решения: {decision.resolved_by}</p>
+        </details>
       )}
-    </p>
+    </>
   );
 }
 const resolutionText = {
@@ -62,7 +102,7 @@ const resolutionText = {
   rejected: 'Отклонено — требуется пересмотр',
 } as const;
 const assumptionHeadline = {
-  pending: 'Подлежит верификации',
+  pending: 'Принято допущение',
   confirmed: 'Допущение подтверждено',
   rejected: 'Допущение отклонено — требуется пересмотр',
 } as const;

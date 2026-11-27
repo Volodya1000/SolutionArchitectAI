@@ -64,7 +64,7 @@ class CycleCase:
 
     async def pending_nodes(self) -> tuple[str, ...]:
         config: RunnableConfig = {"configurable": {"thread_id": str(self.run_id)}}
-        snapshot: object = await self.graph.graph.aget_state(config)
+        snapshot: object = await self.graph.state_graph.aget_state(config)
         assert isinstance(snapshot, StateSnapshot)
         return snapshot.next
 
@@ -83,16 +83,16 @@ async def cycle_case_fixture(
     decision: DecisionResult = await service.answer(
         run.id, view.questions[0].id, answer(view.questions[0], assumption=True)
     )
-    graph: object = worker.graph
+    graph: object = worker.extraction_graph
     assert isinstance(graph, LangGraphExtraction)
-    assert graph.workflow is not None
+    assert graph.clarification_workflow is not None
     return CycleCase(
         resources,
         run.id,
         worker,
         service,
         graph,
-        graph.workflow,
+        graph.clarification_workflow,
         decision,
         (await resources.view(run.id)).requests,
     )
@@ -136,10 +136,10 @@ async def test_rejection_supersedes_old_complete_checkpoint_after_sql_commit(
     assert await cycle_case.pending_nodes() == ("complete",)
     await cycle_case.reject()
     monkeypatch.setattr(cycle_case.workflow, "complete", original)
-    checkpointer: object = cycle_case.graph.graph.checkpointer
+    checkpointer: object = cycle_case.graph.state_graph.checkpointer
     assert isinstance(checkpointer, AsyncPostgresSaver)
-    cycle_case.worker.graph = LangGraphExtraction(
-        cycle_case.graph.steps, checkpointer, cycle_case.workflow
+    cycle_case.worker.extraction_graph = LangGraphExtraction(
+        cycle_case.graph.extraction_steps, checkpointer, cycle_case.workflow
     )
     await assert_new_cycle_waits_and_completes(cycle_case)
 
@@ -213,7 +213,9 @@ async def test_obsolete_cycle_completion_does_not_revalidate_source(
     async def forbidden_read(_version_id: UUID) -> bytes:
         raise AssertionError("Obsolete completion must stop before source access")
 
-    monkeypatch.setattr(cycle_case.workflow.steps.documents, "read", forbidden_read)
+    monkeypatch.setattr(
+        cycle_case.workflow.extraction_steps.documents_service, "read", forbidden_read
+    )
     await cycle_case.workflow.complete(cycle_case.run_id, 0)
     assert await cycle_case.service.get(cycle_case.run_id) == before
     assert (await cycle_case.resources.view(cycle_case.run_id)).status == RunStatus.WAITING_INPUT
@@ -222,10 +224,10 @@ async def test_obsolete_cycle_completion_does_not_revalidate_source(
 async def test_worker_recovery_requeues_waiting_answer_through_clarification_store(
     cycle_case: CycleCase, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    assert cycle_case.worker.clarifications is not None
+    assert cycle_case.worker.clarification_store_context is not None
     view: ClarificationView = await cycle_case.service.get(cycle_case.run_id)
     store: ClarificationStore
-    async with cycle_case.worker.clarifications.open() as store:
+    async with cycle_case.worker.clarification_store_context.open() as store:
         await store.acknowledge(cycle_case.run_id, view.resume_version)
     assert not (await cycle_case.service.get(cycle_case.run_id)).resume_pending
 
@@ -248,10 +250,10 @@ async def test_worker_recovery_requeues_waiting_answer_through_clarification_sto
 async def test_scheduler_resumes_closed_blockers_without_local_resume_marker(
     cycle_case: CycleCase,
 ) -> None:
-    assert cycle_case.worker.clarifications is not None
+    assert cycle_case.worker.clarification_store_context is not None
     view: ClarificationView = await cycle_case.service.get(cycle_case.run_id)
     clarification_store: ClarificationStore
-    async with cycle_case.worker.clarifications.open() as clarification_store:
+    async with cycle_case.worker.clarification_store_context.open() as clarification_store:
         await clarification_store.acknowledge(cycle_case.run_id, view.resume_version)
     assert not (await cycle_case.service.get(cycle_case.run_id)).resume_pending
     extraction_store: ExtractionStore

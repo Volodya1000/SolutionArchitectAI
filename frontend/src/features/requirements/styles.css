@@ -1,6 +1,60 @@
 .requirements-table {
   min-width: 680px;
 }
+.run-result {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+.result-tabs {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--border);
+}
+.result-tabs [role='tab'] {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1rem;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-size: 0.85rem;
+}
+.result-tabs [aria-selected='true'] {
+  border-bottom-color: var(--accent);
+  color: var(--accent);
+}
+.tab-count {
+  border-radius: 1rem;
+  padding: 0.05rem 0.4rem;
+  background: var(--sidebar);
+  font-size: 0.75rem;
+}
+.waiting-notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 1rem;
+  border: 1px solid var(--accent);
+  border-radius: 0.6rem;
+  background: var(--sidebar);
+  font-size: 0.85rem;
+}
+.waiting-notice p {
+  margin-bottom: 0;
+  max-width: 60rem;
+  line-height: 1.5;
+}
+.clarification-card:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
 
 .requirements-table th:first-child {
   width: 22%;

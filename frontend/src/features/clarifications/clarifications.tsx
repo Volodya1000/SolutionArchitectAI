@@ -1,17 +1,12 @@
-import { Link } from 'react-router';
-import { type Question } from '../../shared/api/clarifications';
+import { questionBlocksCompletion, type ClarificationView } from '../../shared/api/clarifications';
 import { useClarifications } from '../../shared/api/use-clarifications';
 import { QueryError } from '../../shared/ui/query-error';
 import { AnswerForm } from './answer-form';
 import { HumanDecision } from './decision';
+import { QuestionDetails } from './question-details';
+import { ClarificationRisks } from './risks';
 
-export function Clarifications({
-  runId,
-  requirementId,
-}: {
-  runId: string;
-  requirementId?: string;
-}) {
+export function Clarifications({ runId }: { runId: string }) {
   const query = useClarifications(runId);
   if (query.isPending) return <p role="status">Загружаем уточнения…</p>;
   if (!query.data)
@@ -23,24 +18,8 @@ export function Clarifications({
         }}
       />
     );
-  const view = query.data;
-  const questions = view.questions.filter(
-    (question) => !requirementId || question.requirement_ids.includes(requirementId),
-  );
   return (
-    <section className="clarifications" aria-label="Уточнения требований">
-      <h2>Уточнения A-01</h2>
-      <p role="status">
-        Блокирующих вопросов:{' '}
-        {
-          view.questions.filter((question) => question.blocking && question.status === 'open')
-            .length
-        }
-      </p>
-      <p className="notice">
-        История {view.history_id} · Цикл {view.cycle + 1}
-        {view.resume_pending ? ' · Продолжение поставлено в очередь' : ''}
-      </p>
+    <>
       {query.isError && (
         <QueryError
           error={query.error}
@@ -49,22 +28,70 @@ export function Clarifications({
           }}
         />
       )}
+      <ClarificationContent view={query.data} />
+    </>
+  );
+}
+
+export function ClarificationContent({ view }: { view: ClarificationView }) {
+  return (
+    <>
+      <ClarificationQuestions view={view} compactSources />
+      <ClarificationRisks view={view} />
+    </>
+  );
+}
+
+export function ClarificationQuestions({
+  view,
+  compactSources = false,
+  openOnly = false,
+  tabbed = false,
+}: {
+  view: ClarificationView;
+  compactSources?: boolean;
+  openOnly?: boolean;
+  tabbed?: boolean;
+}) {
+  const questions = view.questions.filter(
+    (question) => !openOnly || questionBlocksCompletion(question),
+  );
+  const blockers = view.questions.filter(questionBlocksCompletion).length;
+  return (
+    <section className="clarifications" aria-label="Уточнения требований">
+      <div className="section-heading">
+        <h2>Уточнения A-01</h2>
+        <span className="notice" role="status">
+          Блокирующих вопросов: {blockers}
+        </span>
+      </div>
+      <p className="notice">
+        Цикл {view.cycle + 1}
+        {view.resume_pending ? ' · Продолжение поставлено в очередь' : ''}
+      </p>
+      {questions.length === 0 && <p className="notice">Открытых вопросов нет.</p>}
       {questions.map((question) => (
         <section
           className="surface-card clarification-card"
           aria-label={question.text}
+          id={`question-${question.id}`}
+          tabIndex={-1}
           key={question.id}
         >
-          <QuestionDetails question={question} runId={runId} />
+          <QuestionDetails
+            question={question}
+            runId={view.run_id}
+            compactSources={compactSources}
+          />
           {view.decisions
             .filter((decision) => decision.question_id === question.id)
             .map((decision) => (
-              <HumanDecision key={decision.decision_id} decision={decision} />
+              <HumanDecision key={decision.decision_id} decision={decision} tabbed={tabbed} />
             ))}
           {question.status === 'open' && (
             <AnswerForm
               question={question}
-              runId={runId}
+              runId={view.run_id}
               sourceVersions={[
                 ...new Map(
                   question.sources.flatMap((source) =>
@@ -83,74 +110,15 @@ export function Clarifications({
           )}
         </section>
       ))}
-      {view.risks.length > 0 && (
-        <section className="surface-card" aria-label="Риски A-07">
-          <h2>Риски A-07</h2>
-          {view.risks.map((risk) => (
-            <article key={risk.id} id={`risk-${risk.id}`}>
-              <h3>Риск допущения</h3>
-              <p>{risk.consequences}</p>
-              <p>Снижение: {risk.mitigation}</p>
-              <p>
-                Статус:{' '}
-                {risk.status === 'open'
-                  ? 'Открыт'
-                  : risk.status === 'closed'
-                    ? 'Закрыт'
-                    : 'Реализовался'}
-              </p>
-              {risk.resolution_reason && <p>{risk.resolution_reason}</p>}
-              <a className="text-link" href={`#decision-${risk.decision_id}`}>
-                Допущение A-01
-              </a>
-            </article>
-          ))}
-        </section>
-      )}
-      {view.completed_cycles.length > 0 && (
-        <details>
-          <summary>Завершённые циклы: {view.completed_cycles.length}</summary>
-          {view.completed_cycles.map((cycle) => (
-            <p key={cycle.cycle}>
-              Цикл {cycle.cycle + 1} · {new Date(cycle.completed_at).toLocaleString('ru-RU')}
-            </p>
-          ))}
-        </details>
-      )}
+      <details>
+        <summary>Завершённые циклы: {view.completed_cycles.length}</summary>
+        <p className="version-meta">История {view.history_id}</p>
+        {view.completed_cycles.map((cycle) => (
+          <p key={cycle.cycle}>
+            Цикл {cycle.cycle + 1} · {new Date(cycle.completed_at).toLocaleString('ru-RU')}
+          </p>
+        ))}
+      </details>
     </section>
-  );
-}
-function QuestionDetails({ question, runId }: { question: Question; runId: string }) {
-  return (
-    <>
-      <h3>{question.text}</h3>
-      <p className="notice">
-        Ревизия {question.revision} · {question.blocking ? 'Блокирующий' : 'Неблокирующий'} ·{' '}
-        {question.status === 'open' ? 'Открыт' : 'Решение сохранено'}
-      </p>
-      <p>{question.basis}</p>
-      {question.previous_basis && (
-        <details>
-          <summary>Изменение основания</summary>
-          <p>Было: {question.previous_basis}</p>
-          <p>Стало: {question.basis}</p>
-        </details>
-      )}
-      <p>Зависимое решение: {question.dependent_decision}</p>
-      {question.sources.map((source, index) => (
-        <div key={`${source.fragment_id}:${index}`}>
-          <blockquote>{source.quote}</blockquote>
-          {source.version_id && (
-            <Link
-              className="text-link"
-              to={`/documents?version=${encodeURIComponent(source.version_id)}&fragment=${encodeURIComponent(source.fragment_id)}&run=${encodeURIComponent(runId)}`}
-            >
-              Источник · версия {source.version_id}
-            </Link>
-          )}
-          <p className="version-meta">SHA-256: {source.sha256}</p>
-        </div>
-      ))}
-    </>
   );
 }

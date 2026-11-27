@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { chatSchema } from './client';
 import { resourceRequest } from './resource-client';
 import { ApiError } from './api-error';
+import { clarificationSchema } from './clarifications';
 
 const subjectSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('requirement'), run_id: z.string(), requirement_id: z.string() }),
@@ -33,6 +34,11 @@ export const discussionSchema = z.object({
 export type DiscussionBinding = z.infer<typeof discussionSchema>;
 export const readDiscussion = (id: string) =>
   resourceRequest(`/chats/${encodeURIComponent(id)}/discussion`, discussionSchema.nullable());
+export const readDiscussionClarifications = (id: string) =>
+  resourceRequest(
+    `/chats/${encodeURIComponent(id)}/discussion/clarifications`,
+    clarificationSchema.nullable(),
+  );
 export const startDiscussion = (command: DiscussionCommand) =>
   resourceRequest('/discussions', chatSchema, { method: 'POST', body: JSON.stringify(command) });
 export async function recoverDiscussion(id: string) {

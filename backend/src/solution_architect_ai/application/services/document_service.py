@@ -18,10 +18,10 @@ from solution_architect_ai.application.models.document_dto import (
 from solution_architect_ai.application.protocols.document_protocols import (
     DocumentParser,
     DocumentStore,
-    DocumentStoreFactory,
     FileStorage,
     StagedFile,
 )
+from solution_architect_ai.application.protocols.store_context_protocols import StoreContext
 from solution_architect_ai.application.services.document_identity import parse_digest, upload_digest
 from solution_architect_ai.domain.documents import ParsedDocument
 
@@ -29,11 +29,11 @@ from solution_architect_ai.domain.documents import ParsedDocument
 class DocumentService:
     def __init__(
         self,
-        stores: DocumentStoreFactory,
+        document_store_context: StoreContext[DocumentStore],
         files_storage: FileStorage,
         document_parser: DocumentParser,
     ) -> None:
-        self.stores: DocumentStoreFactory = stores
+        self.document_store_context: StoreContext[DocumentStore] = document_store_context
         self.files_storage: FileStorage = files_storage
         self.document_parser: DocumentParser = document_parser
 
@@ -49,29 +49,29 @@ class DocumentService:
             normalized: UploadDocument = command.model_copy(update={"mime_type": mime})
             digest: str = upload_digest(normalized, staged_file)
             store: DocumentStore
-            async with self.stores.open() as store:
+            async with self.document_store_context.open() as store:
                 operation: UploadOperationView = await store.prepare(
                     normalized, staged_file.size, staged_file.sha256, digest
                 )
             await self.files_storage.publish(staged_file, operation.version.storage_key)
-            async with self.stores.open() as store:
+            async with self.document_store_context.open() as store:
                 return await store.complete(command.operation_id)
         finally:
             await self.files_storage.discard(staged_file)
 
     async def list_documents(self) -> list[DocumentView]:
         store: DocumentStore
-        async with self.stores.open() as store:
+        async with self.document_store_context.open() as store:
             return await store.list_documents()
 
     async def list_versions(self, file_id: UUID) -> list[DocumentVersionView]:
         store: DocumentStore
-        async with self.stores.open() as store:
+        async with self.document_store_context.open() as store:
             return await store.list_versions(file_id)
 
     async def get_version(self, version_id: UUID) -> DocumentVersionView:
         store: DocumentStore
-        async with self.stores.open() as store:
+        async with self.document_store_context.open() as store:
             return await store.get_version(version_id)
 
     async def read(self, version_id: UUID) -> bytes:
@@ -92,7 +92,7 @@ class DocumentService:
         content: bytes
         version, content = await self._load_version_content(version_id)
         store: DocumentStore
-        async with self.stores.open() as store:
+        async with self.document_store_context.open() as store:
             saved: StoredParse | None = await store.get_parse(version_id)
         if saved is None:
             parsed: ParsedDocument = await asyncio.to_thread(
@@ -103,7 +103,7 @@ class DocumentService:
                 version.original_name,
                 version.mime_type,
             )
-            async with self.stores.open() as store:
+            async with self.document_store_context.open() as store:
                 saved = await store.save_parse(
                     StoredParse(document=parsed, digest=parse_digest(parsed))
                 )
@@ -118,12 +118,12 @@ class DocumentService:
 
     async def get_upload_operation(self, operation_id: UUID) -> UploadOperationView:
         store: DocumentStore
-        async with self.stores.open() as store:
+        async with self.document_store_context.open() as store:
             return await store.get_upload_operation(operation_id)
 
     async def recover_uploads(self) -> list[UploadOperationView]:
         store: DocumentStore
-        async with self.stores.open() as store:
+        async with self.document_store_context.open() as store:
             pending: list[UploadOperationView] = await store.pending()
         results: list[UploadOperationView] = []
         operation: UploadOperationView
@@ -131,7 +131,7 @@ class DocumentService:
             try:
                 version: DocumentVersionView = operation.version
                 await self.files_storage.read(version.storage_key, version.size, version.sha256)
-                async with self.stores.open() as store:
+                async with self.document_store_context.open() as store:
                     completed: DocumentVersionView = await store.complete(operation.operation_id)
                 results.append(
                     operation.model_copy(
@@ -155,10 +155,10 @@ class DocumentService:
     async def attach_document(self, message_id: UUID, version_id: UUID) -> DocumentVersionView:
         await self.read(version_id)
         store: DocumentStore
-        async with self.stores.open() as store:
+        async with self.document_store_context.open() as store:
             return await store.attach_document(message_id, version_id)
 
     async def list_attachments(self, message_id: UUID) -> list[DocumentVersionView]:
         store: DocumentStore
-        async with self.stores.open() as store:
+        async with self.document_store_context.open() as store:
             return await store.list_attachments(message_id)

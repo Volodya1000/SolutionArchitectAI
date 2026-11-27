@@ -1,9 +1,14 @@
 import { useQuery } from '@tanstack/react-query';
 import { Link } from 'react-router';
 import { scopeKey } from '../../shared/api/client';
-import { readDiscussion, type DiscussionBinding } from '../../shared/api/discussions';
+import {
+  readDiscussion,
+  readDiscussionClarifications,
+  type DiscussionBinding,
+} from '../../shared/api/discussions';
+import { type ClarificationView } from '../../shared/api/clarifications';
 import { QueryError } from '../../shared/ui/query-error';
-import { Clarifications } from './clarifications';
+import { ClarificationContent } from './clarifications';
 import { RequirementSubject, SourceSubject } from './discussion-subject';
 
 export function DiscussionHeader({ chatId }: { chatId: string }) {
@@ -27,7 +32,20 @@ export function DiscussionHeader({ chatId }: { chatId: string }) {
     <aside className="discussion-context" aria-label="Предмет и источники обсуждения">
       <header className="surface-card discussion-subject">
         <strong>{subject.title}</strong>
-        <p className="notice">Закреплённые версии: {subject.version_ids.join(', ')}</p>
+        <p className="notice">Закреплено версий: {subject.version_ids.length}</p>
+        <details>
+          <summary>Технические сведения обсуждения</summary>
+          <dl className="metadata-grid version-meta">
+            <dt>Версии</dt>
+            <dd>{subject.version_ids.join(', ')}</dd>
+            {subject.history_id && (
+              <>
+                <dt>История</dt>
+                <dd>{subject.history_id}</dd>
+              </>
+            )}
+          </dl>
+        </details>
         <Link className="text-link" to={subject.backlink}>
           Вернуться к {subject.kind === 'requirement' ? 'требованию' : 'источнику'}
         </Link>
@@ -38,27 +56,53 @@ export function DiscussionHeader({ chatId }: { chatId: string }) {
           <p className="notice">
             Переписка не сохраняет ответ на вопрос. Используйте явную команду в карточке.
           </p>
-          <BoundSubject subject={subject} />
-          {subject.analysis_id && (
-            <Clarifications
-              key={subject.analysis_id}
-              runId={subject.analysis_id}
-              {...(subject.requirement_id ? { requirementId: subject.requirement_id } : {})}
-            />
-          )}
+          <ScopedDiscussion subject={subject} />
         </div>
       </details>
     </aside>
   );
 }
 
-function BoundSubject({ subject }: { subject: DiscussionBinding }) {
+function ScopedDiscussion({ subject }: { subject: DiscussionBinding }) {
+  const query = useQuery({
+    queryKey: [...scopeKey, 'discussion-clarifications', subject.chat_id],
+    queryFn: () => readDiscussionClarifications(subject.chat_id),
+    retry: false,
+    refetchInterval: 2000,
+  });
+  return (
+    <>
+      {query.isPending && <p role="status">Загружаем контекст обсуждения…</p>}
+      {query.isError && (
+        <QueryError
+          error={query.error}
+          retry={() => {
+            void query.refetch();
+          }}
+        />
+      )}
+      {(subject.kind === 'source' || query.isSuccess) && (
+        <BoundSubject subject={subject} view={query.data ?? null} />
+      )}
+      {query.data && <ClarificationContent view={query.data} />}
+    </>
+  );
+}
+
+function BoundSubject({
+  subject,
+  view,
+}: {
+  subject: DiscussionBinding;
+  view: ClarificationView | null;
+}) {
   if (subject.kind === 'requirement')
     return subject.analysis_id && subject.requirement_id ? (
       <RequirementSubject
         key={`${subject.analysis_id}:${subject.requirement_id}`}
         runId={subject.analysis_id}
         requirementId={subject.requirement_id}
+        requirements={view?.requirements ?? []}
       />
     ) : (
       <p role="alert">Привязка требования недоступна.</p>

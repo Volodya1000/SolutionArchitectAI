@@ -31,8 +31,17 @@ export const questionSchema = z.object({
   sources: z.array(sourceSchema),
   status: z.enum(['open', 'answered', 'assumed']),
   previous_basis: z.string().nullable().default(null),
+  previous_sources: z.array(sourceSchema).default([]),
+  mandatory_conflict: z.string().nullable().default(null),
 });
 export type Question = z.infer<typeof questionSchema>;
+export function questionBlocksCompletion(question: Question): boolean {
+  return (
+    (question.blocking && question.status === 'open') ||
+    (question.mandatory_conflict !== null &&
+      (question.status === 'open' || question.status === 'assumed'))
+  );
+}
 export const decisionSchema = z.object({
   operation_id: z.string(),
   run_id: z.string(),
@@ -64,12 +73,27 @@ const riskSchema = z.object({
   status: z.enum(['open', 'closed', 'realized']),
   resolution_reason: z.string().nullable().default(null),
 });
+const reviewCoverageSchema = z.object({
+  total_fragments: z.number(),
+  reviewed_fragments: z.number(),
+  total_history: z.number(),
+  reviewed_history: z.number(),
+  model_requests: z.number(),
+  complete: z.boolean(),
+  unreviewed_fragment_ids: z.array(z.string()),
+  unreviewed_question_ids: z.array(z.string()),
+});
+export type ClarificationReviewCoverage = z.infer<typeof reviewCoverageSchema>;
 export const clarificationSchema = z.object({
   run_id: z.string(),
   history_id: z.string(),
   cycle: z.number(),
   initialized: z.boolean(),
   resume_pending: z.boolean(),
+  metadata: z
+    .object({ coverage: reviewCoverageSchema.nullable().default(null) })
+    .nullable()
+    .default(null),
   questions: z.array(questionSchema),
   decisions: z.array(decisionSchema),
   risks: z.array(riskSchema),
@@ -80,6 +104,7 @@ export const clarificationSchema = z.object({
 });
 export const readClarifications = (id: string) =>
   resourceRequest(`/extractions/${encodeURIComponent(id)}/clarifications`, clarificationSchema);
+export type ClarificationView = z.infer<typeof clarificationSchema>;
 export const answerQuestion = (run: string, question: string, command: AnswerCommand) =>
   resourceRequest(
     `/extractions/${encodeURIComponent(run)}/questions/${encodeURIComponent(question)}/answers`,

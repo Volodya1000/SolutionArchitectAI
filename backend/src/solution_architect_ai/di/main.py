@@ -102,7 +102,7 @@ def create_app() -> FastAPI:
 @asynccontextmanager
 async def workers(container: AsyncContainer) -> AsyncGenerator[None]:
     worker: RunWorker = await container.get(RunWorker)
-    worker.discussions = await container.get(DiscussionContext)
+    worker.discussion_context = await container.get(DiscussionContext)
     extraction: ExtractionWorker = await container.get(ExtractionWorker)
     documents: DocumentService = await container.get(DocumentService)
     await worker.recover()

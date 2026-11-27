@@ -337,7 +337,8 @@ it('shows effective requirements while another question still blocks the waiting
   show('/requirements?run=run-1&requirement=req-1');
   expect(await screen.findByText('Ожидает ответа архитектора')).toBeVisible();
   expect(await screen.findByText('Хранить отчёты 90 дней — ответ архитектора.')).toBeVisible();
+  await userEvent.click(screen.getByRole('button', { name: 'Открыть блокирующие вопросы' }));
   expect(screen.getByText('Блокирующих вопросов: 1')).toBeVisible();
-  expect(screen.getByText('Каков объём?')).toBeVisible();
+  expect(screen.getByRole('region', { name: 'Каков объём?' })).toBeVisible();
   expect(screen.getByRole('button', { name: 'Отменить извлечение' })).toBeEnabled();
 });

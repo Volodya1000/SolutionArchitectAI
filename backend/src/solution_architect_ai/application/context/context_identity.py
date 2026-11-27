@@ -54,7 +54,7 @@ def context_digest(
                 [(item.role.value, item.content) for item in rendered], ensure_ascii=False
             ).encode()
         ).hexdigest(),
-        "context-4",
+        "context-6",
         [(str(doc.version_id), doc.parser_version) for doc in documents],
         schema,
         sha256(CORRECTION_PROMPT.encode()).hexdigest(),

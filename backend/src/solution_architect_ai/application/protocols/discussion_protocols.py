@@ -1,4 +1,3 @@
-from contextlib import AbstractAsyncContextManager
 from typing import Protocol
 from uuid import UUID
 
@@ -17,10 +16,6 @@ class DiscussionStore(Protocol):
     async def replay(self, command: CreateDiscussion) -> ChatView | None: ...
     async def operation(self, operation_id: UUID) -> ChatView: ...
     async def get(self, chat_id: UUID) -> DiscussionBinding | None: ...
-
-
-class DiscussionStoreFactory(Protocol):
-    def open(self) -> AbstractAsyncContextManager[DiscussionStore]: ...
 
 
 class DiscussionContext(Protocol):

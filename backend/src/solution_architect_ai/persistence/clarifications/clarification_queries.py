@@ -5,7 +5,10 @@ from pydantic import TypeAdapter
 from sqlalchemy import ScalarResult, Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from solution_architect_ai.application.context.clarification_history import has_changed_source_basis
+from solution_architect_ai.application.context.source_fingerprints import (
+    has_changed_clarification_basis,
+    requirement_basis_fingerprint,
+)
 from solution_architect_ai.application.errors.chat_errors import Missing
 from solution_architect_ai.application.errors.clarification_errors import PermissionDenied
 from solution_architect_ai.application.models.clarification_models import (
@@ -15,6 +18,7 @@ from solution_architect_ai.application.models.clarification_models import (
     ClarificationView,
     CompletedCycle,
     DecisionResult,
+    QuestionStatus,
     RiskView,
 )
 from solution_architect_ai.application.models.extraction_models import (
@@ -23,6 +27,7 @@ from solution_architect_ai.application.models.extraction_models import (
     RequirementView,
     SourceRef,
 )
+from solution_architect_ai.domain.requirements import RequirementCategory
 from solution_architect_ai.persistence.clarifications.clarification_models import (
     ClarificationRunRow,
     DecisionRow,
@@ -60,7 +65,13 @@ class ClarificationQueries:
             row = await self.session.get(ClarificationRunRow, run_id, populate_existing=True)
         if row is None:
             history_id: UUID = await self.resolve_history(extraction)
-            row = ClarificationRunRow(run_id=run_id, history_id=history_id)
+            row = ClarificationRunRow(
+                run_id=run_id,
+                history_id=history_id,
+                active_seconds=ExtractionView.model_validate_json(
+                    extraction.snapshot_json
+                ).elapsed_seconds,
+            )
             self.session.add(row)
             await self.session.flush()
         return row
@@ -92,6 +103,10 @@ class ClarificationQueries:
                 )
             ).all()
         )
+
+    async def set_review_metadata(self, run_id: UUID, metadata: ClarificationMetadata) -> None:
+        state: ClarificationRunRow = await self.run(run_id, lock=True)
+        state.metadata_json = metadata.model_dump_json()
 
     async def question(
         self, run_id: UUID, question_id: UUID, *, lock: bool = False
@@ -197,6 +212,22 @@ class ClarificationQueries:
     async def save_question(
         self, state: ClarificationRunRow, question: ClarificationQuestion
     ) -> None:
+        extraction: ExtractionRow = await self.extraction(state.run_id)
+        snapshot: ExtractionView = ExtractionView.model_validate_json(extraction.snapshot_json)
+        conflicts: list[str] = [
+            requirement.normalized_text
+            for requirement in snapshot.requirements
+            if requirement.id in question.requirement_ids
+            and requirement.category == RequirementCategory.CONTRADICTION
+        ]
+        if conflicts:
+            question.mandatory_conflict = "\n".join(conflicts)
+            question.blocking = True
+        question.requirement_basis_fingerprints = {
+            requirement.id: requirement_basis_fingerprint(requirement)
+            for requirement in snapshot.requirements
+            if requirement.id in question.requirement_ids
+        }
         identity: QuestionRow | None = await self.session.scalar(
             select(QuestionRow)
             .where(
@@ -224,8 +255,17 @@ class ClarificationQueries:
                     snapshot_json=question.model_dump_json(),
                 )
             )
-        elif question.previous_basis is not None:
-            await self.revise_question(identity, question)
+        else:
+            current_revision: QuestionRevisionRow = await self.question_revision(
+                identity.id, identity.revision
+            )
+            current_question: ClarificationQuestion = ClarificationQuestion.model_validate_json(
+                current_revision.snapshot_json
+            )
+            if has_changed_clarification_basis(current_question, question):
+                question.previous_basis = current_question.basis
+                question.previous_sources = current_question.sources
+                await self.revise_question(identity, question)
         link: QuestionLinkRow | None = await self.session.get(
             QuestionLinkRow, (state.run_id, identity.id)
         )
@@ -258,6 +298,14 @@ class ClarificationQueries:
             question.sources = TypeAdapter(list[SourceRef]).validate_json(link.sources_json)
         return question
 
+    async def question_revision(self, question_id: UUID, revision: int) -> QuestionRevisionRow:
+        row: QuestionRevisionRow | None = await self.session.get(
+            QuestionRevisionRow, (question_id, revision)
+        )
+        if row is None:
+            raise Missing("question_revision")
+        return row
+
     async def revise_question(self, identity: QuestionRow, question: ClarificationQuestion) -> None:
         previous: QuestionRevisionRow | None = await self.session.get(
             QuestionRevisionRow, (identity.id, identity.revision)
@@ -269,11 +317,7 @@ class ClarificationQueries:
         )
         if question.previous_basis != old.basis:
             return
-        if not has_changed_source_basis(old, question):
-            return
-        if {(source.version_id, source.sha256) for source in question.sources} == {
-            (source.version_id, source.sha256) for source in old.sources
-        }:
+        if not has_changed_clarification_basis(old, question):
             return
         identity.revision += 1
         question.id, question.revision, question.status = identity.id, identity.revision, "open"
@@ -297,12 +341,15 @@ class ClarificationQueries:
                 QuestionRevisionRow.revision == QuestionRow.revision,
             )
         )
-        return [
-            ClarificationQuestion.model_validate_json(row.snapshot_json).model_copy(
-                update={"status": row.status}
+        questions: list[ClarificationQuestion] = []
+        row: QuestionRevisionRow
+        for row in rows:
+            question: ClarificationQuestion = ClarificationQuestion.model_validate_json(
+                row.snapshot_json
             )
-            for row in rows
-        ]
+            question.status = TypeAdapter(QuestionStatus).validate_python(row.status, strict=True)
+            questions.append(question)
+        return questions
 
     def require_writer(self) -> None:
         if not self.actor.can_write:

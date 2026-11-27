@@ -20,6 +20,13 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from backend.tests.sql_store_setup import (
+    SqlStoreSetup,
+    chat_store_setup,
+    clarification_store_setup,
+    discussion_store_setup,
+    document_store_setup,
+)
 from solution_architect_ai.application.context.discussion_context_builder import (
     DiscussionContextBuilder,
 )
@@ -80,21 +87,14 @@ from solution_architect_ai.domain.runs import RunErrorCode, RunStatus
 from solution_architect_ai.infrastructure.context import LangChainTokenCounter
 from solution_architect_ai.infrastructure.parsers.document_parser import DocumentParser
 from solution_architect_ai.infrastructure.storage.local_files_storage import LocalFileStorage
-from solution_architect_ai.persistence.clarifications.clarification_factory import (
-    SqlAlchemyClarificationStoreFactory,
-)
 from solution_architect_ai.persistence.clarifications.clarification_store import (
     SqlAlchemyClarificationStore,
 )
-from solution_architect_ai.persistence.discussions.factory import SqlAlchemyDiscussionStoreFactory
 from solution_architect_ai.persistence.discussions.store import SqlAlchemyDiscussionStore
-from solution_architect_ai.persistence.documents.document_factory import (
-    SqlAlchemyDocumentStoreFactory,
-)
 from solution_architect_ai.persistence.extractions.extraction_models import ExtractionRow
-from solution_architect_ai.persistence.factory import SqlAlchemyStoreFactory
 from solution_architect_ai.persistence.models import ChatRow
 from solution_architect_ai.persistence.queries import DEFAULT_TASK_ID
+from solution_architect_ai.persistence.store import SqlAlchemyStore
 from solution_architect_ai.presentation.clarification_routes import router as clarification_router
 from solution_architect_ai.presentation.discussion_routes import router as discussion_router
 from solution_architect_ai.presentation.document_routes import document_error
@@ -105,8 +105,8 @@ pytestmark: Final[list[pytest.MarkDecorator]] = [pytest.mark.anyio, pytest.mark.
 @dataclass(frozen=True)
 class Resources:
     discussions: DiscussionService
-    stores: SqlAlchemyDiscussionStoreFactory
-    clarifications: SqlAlchemyClarificationStoreFactory
+    stores: SqlStoreSetup[SqlAlchemyDiscussionStore]
+    clarifications: SqlStoreSetup[SqlAlchemyClarificationStore]
     documents: DocumentService
     directory: Path
 
@@ -119,12 +119,12 @@ async def discussion_resources(tmp_path: Path) -> AsyncGenerator[Resources]:
     sessions: async_sessionmaker[AsyncSession] = async_sessionmaker(engine, expire_on_commit=False)
     actor: ActorContext = ActorContext.local(DEFAULT_TASK_ID)
     documents: DocumentService = DocumentService(
-        SqlAlchemyDocumentStoreFactory(sessions), LocalFileStorage(tmp_path), DocumentParser()
+        document_store_setup(sessions), LocalFileStorage(tmp_path), DocumentParser()
     )
-    clarifications: SqlAlchemyClarificationStoreFactory = SqlAlchemyClarificationStoreFactory(
+    clarifications: SqlStoreSetup[SqlAlchemyClarificationStore] = clarification_store_setup(
         sessions, actor
     )
-    stores: SqlAlchemyDiscussionStoreFactory = SqlAlchemyDiscussionStoreFactory(sessions, actor)
+    stores: SqlStoreSetup[SqlAlchemyDiscussionStore] = discussion_store_setup(sessions, actor)
     try:
         yield Resources(
             DiscussionService(stores, documents, ClarificationService(clarifications, documents)),
@@ -357,7 +357,7 @@ async def test_foreign_scope_version_and_readonly_creation_are_rejected(
         ),
     )
     chat: ChatView = await resources.discussions.create(command)
-    foreign: SqlAlchemyDiscussionStoreFactory = SqlAlchemyDiscussionStoreFactory(
+    foreign: SqlStoreSetup[SqlAlchemyDiscussionStore] = discussion_store_setup(
         resources.stores.sessions,
         replace(resources.stores.actor, task_id=uuid4()),
     )
@@ -369,14 +369,14 @@ async def test_foreign_scope_version_and_readonly_creation_are_rejected(
             await store.check_version(version.version_id)
         with pytest.raises(Missing):
             await store.operation(command.operation_id)
-    readonly: SqlAlchemyDiscussionStoreFactory = SqlAlchemyDiscussionStoreFactory(
+    readonly: SqlStoreSetup[SqlAlchemyDiscussionStore] = discussion_store_setup(
         resources.stores.sessions,
         replace(resources.stores.actor, can_write=False),
     )
     service: DiscussionService = DiscussionService(
         readonly,
         resources.documents,
-        resources.discussions.clarifications,
+        resources.discussions.clarification_service,
     )
     with pytest.raises(PermissionDenied):
         await service.create(command.model_copy(update={"operation_id": uuid4()}))
@@ -455,7 +455,7 @@ async def test_http_discussion_roundtrip_and_rejects_forged_author(resources: Re
         provider,
         context={
             DiscussionService: resources.discussions,
-            ClarificationService: resources.discussions.clarifications,
+            ClarificationService: resources.discussions.clarification_service,
         },
     )
     app: FastAPI = FastAPI()
@@ -539,14 +539,18 @@ async def test_worker_supplies_pinned_source_and_fails_visibly_if_it_disappears(
             ),
         )
     )
-    stores: SqlAlchemyStoreFactory = SqlAlchemyStoreFactory(resources.stores.sessions)
+    stores: SqlStoreSetup[SqlAlchemyStore] = chat_store_setup(resources.stores.sessions)
     llm: RecordingLLM = RecordingLLM()
     tokens: LangChainTokenCounter = LangChainTokenCounter(2)
     policy: GenerationPolicy = GenerationPolicy(
         concurrency=1, deadline=30, retries=0, requests=1, backoff=0, input_budget=12000
     )
     worker: RunWorker = RunWorker(
-        stores, llm, policy, tokens, discussions=DiscussionContextBuilder(resources.discussions)
+        stores,
+        llm,
+        policy,
+        tokens,
+        discussion_context=DiscussionContextBuilder(resources.discussions),
     )
     store: ChatStore
     async with stores.open() as store:

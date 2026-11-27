@@ -10,7 +10,8 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, a
 
 from solution_architect_ai.application.errors.chat_errors import Missing
 from solution_architect_ai.application.models.chat_dto import ChatView, RunView, StartRun
-from solution_architect_ai.application.protocols.chat_protocols import ChatStore, StoreFactory
+from solution_architect_ai.application.protocols.chat_protocols import ChatStore
+from solution_architect_ai.application.protocols.store_context_protocols import StoreContext
 from solution_architect_ai.config.settings import Settings
 from solution_architect_ai.di.main import bootstrap
 from solution_architect_ai.di.providers import AppProvider
@@ -23,7 +24,7 @@ pytestmark: list[pytest.MarkDecorator] = [pytest.mark.anyio, pytest.mark.integra
 @dataclass(frozen=True)
 class Running:
     run_id: UUID
-    stores: StoreFactory
+    stores: StoreContext[ChatStore]
     engine: AsyncEngine
 
 
@@ -33,7 +34,7 @@ async def running_store() -> AsyncIterator[Running]:
     assert settings.database.database.endswith("_test")
     container: AsyncContainer = make_async_container(AppProvider(), context={Settings: settings})
     try:
-        stores: StoreFactory = await container.get(StoreFactory)
+        stores: StoreContext[ChatStore] = await container.get(StoreContext[ChatStore])
         engine: AsyncEngine = await container.get(AsyncEngine)
         store: ChatStore
         async with stores.open() as store:

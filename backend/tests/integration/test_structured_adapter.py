@@ -117,6 +117,56 @@ async def test_explicit_modes_use_schema_or_json_text_and_never_tools(mode: Stru
 
 
 @pytest.mark.anyio
+@pytest.mark.parametrize("mode", list(StructuredMode))
+async def test_cyrillic_source_guidance_reaches_actual_adapter_messages(
+    mode: StructuredMode,
+) -> None:
+    source: str = "Система должна сохранять журнал аудита."
+    received: list[dict[str, object]] = []
+
+    def respond(incoming: httpx.Request) -> httpx.Response:
+        received.append(json.loads(incoming.content))
+        return httpx.Response(200, json=completion('{"count":2}'))
+
+    current: StructuredRequest = StructuredRequest(
+        (
+            StructuredMessage(MessageRole.SYSTEM, "Extract facts."),
+            StructuredMessage(
+                MessageRole.USER,
+                json.dumps({"fragments": [{"fragment_id": "f1", "text": source}]}),
+            ),
+        ),
+        ModelProfile("test", mode, 4096, 512),
+    )
+    client: httpx.AsyncClient
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        model: ChatOpenAI = ChatOpenAI(
+            model="test",
+            api_key="local-test",
+            base_url="http://local.test/v1",
+            http_async_client=client,
+            max_retries=0,
+            streaming=False,
+            stream_usage=False,
+            http_socket_options=(),
+        )
+        assert (await validated(LangChainStructuredModel(model), current)).count == 2
+
+    transmitted: object = received[0]["messages"]
+    assert isinstance(transmitted, list)
+    guidance: object = transmitted[-1]
+    assert isinstance(guidance, dict)
+    assert guidance["role"] == "system"
+    assert "normalized_text" in str(guidance["content"])
+    assert "evidence.quote" in str(guidance["content"])
+    assert source not in str(guidance["content"])
+    source_message: object = transmitted[-2]
+    assert isinstance(source_message, dict)
+    assert source_message["role"] == "user"
+    assert source_message["content"] == current.messages[-1].content
+
+
+@pytest.mark.anyio
 async def test_rate_limit_does_not_retry_in_sdk_and_preserves_server_delay() -> None:
     requests: list[httpx.Request] = []
 

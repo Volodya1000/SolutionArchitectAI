@@ -42,20 +42,20 @@ from solution_architect_ai.persistence.extractions.extraction_models import Extr
 
 
 class ClarificationCommands:
-    def __init__(self, queries: ClarificationQueries) -> None:
-        self.queries: ClarificationQueries = queries
+    def __init__(self, clarification_queries: ClarificationQueries) -> None:
+        self.clarification_queries: ClarificationQueries = clarification_queries
 
     async def replay(
         self, operation_id: UUID, kind: str, target: UUID, command: BaseModel
     ) -> str | None:
-        self.queries.require_writer()
+        self.clarification_queries.require_writer()
         digest: str = self.digest(kind, target, command)
-        await self.queries.session.execute(
+        await self.clarification_queries.session.execute(
             text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
-            {"key": f"{self.queries.actor.task_id}:{operation_id}"},
+            {"key": f"{self.clarification_queries.actor.task_id}:{operation_id}"},
         )
-        row: ClarificationOperationRow | None = await self.queries.session.get(
-            ClarificationOperationRow, (self.queries.actor.task_id, operation_id)
+        row: ClarificationOperationRow | None = await self.clarification_queries.session.get(
+            ClarificationOperationRow, (self.clarification_queries.actor.task_id, operation_id)
         )
         if row is not None:
             if row.digest != digest:
@@ -75,9 +75,9 @@ class ClarificationCommands:
     def record(
         self, kind: str, target: UUID, command: BaseModel, result: DecisionResult | CommandResult
     ) -> None:
-        self.queries.session.add(
+        self.clarification_queries.session.add(
             ClarificationOperationRow(
-                task_id=self.queries.actor.task_id,
+                task_id=self.clarification_queries.actor.task_id,
                 operation_id=result.operation_id,
                 digest=self.digest(kind, target, command),
                 kind=kind,
@@ -88,24 +88,26 @@ class ClarificationCommands:
     async def answer(
         self, run_id: UUID, question_id: UUID, command: AnswerClarification
     ) -> DecisionResult:
-        await self.queries.extraction(run_id)
+        await self.clarification_queries.extraction(run_id)
         operation_kind: str = f"answer:{run_id}"
         previous: str | None = await self.replay(
             command.operation_id, operation_kind, question_id, command
         )
         if previous is not None:
             return DecisionResult.model_validate_json(previous)
-        state: ClarificationRunRow = await self.queries.run(run_id, lock=True)
-        revision: QuestionRevisionRow = await self.queries.question(run_id, question_id, lock=True)
+        state: ClarificationRunRow = await self.clarification_queries.run(run_id, lock=True)
+        revision: QuestionRevisionRow = await self.clarification_queries.question(
+            run_id, question_id, lock=True
+        )
         if revision.revision != command.expected_question_revision or revision.status != "open":
             raise Conflict("stale_question_revision")
-        extraction: ExtractionRow = await self.queries.extraction(run_id)
+        extraction: ExtractionRow = await self.clarification_queries.extraction(run_id)
         if extraction.status in {RunStatus.CANCELLED, RunStatus.CANCELLING, RunStatus.FAILED}:
             raise Conflict("extraction_not_resumable")
         question: ClarificationQuestion = ClarificationQuestion.model_validate_json(
             revision.snapshot_json
         )
-        bound_question: ClarificationQuestion = await self.queries.bound_question(
+        bound_question: ClarificationQuestion = await self.clarification_queries.bound_question(
             run_id, question_id
         )
         self.check_sources(bound_question, command.source_versions)
@@ -118,15 +120,15 @@ class ClarificationCommands:
             kind=command.kind,
             text=command.text,
             basis=command.basis,
-            author_id=self.queries.actor.id,
-            author=self.queries.actor.name,
+            author_id=self.clarification_queries.actor.id,
+            author=self.clarification_queries.actor.name,
             created_at=datetime.now(UTC),
             requirement_ids=bound_question.requirement_ids,
             source_versions=command.source_versions,
             assumption=command.assumption,
             risk_id=uuid4() if command.assumption is not None else None,
         )
-        self.queries.session.add(
+        self.clarification_queries.session.add(
             DecisionRow(
                 id=decision.decision_id,
                 question_id=question_id,
@@ -135,7 +137,7 @@ class ClarificationCommands:
                 snapshot_json=decision.model_dump_json(),
             )
         )
-        await self.queries.session.flush()
+        await self.clarification_queries.session.flush()
         self.save_risk(decision)
         question.status = "assumed" if command.kind == "assumption" else "answered"
         revision.status, revision.snapshot_json = question.status, question.model_dump_json()
@@ -147,16 +149,20 @@ class ClarificationCommands:
     async def preflight_answer(
         self, run_id: UUID, question_id: UUID, command: AnswerClarification
     ) -> DecisionResult | None:
-        extraction: ExtractionRow = await self.queries.extraction(run_id)
+        extraction: ExtractionRow = await self.clarification_queries.extraction(run_id)
         previous: str | None = await self.replay(
             command.operation_id, f"answer:{run_id}", question_id, command
         )
         if previous is not None:
             return DecisionResult.model_validate_json(previous)
-        revision: QuestionRevisionRow = await self.queries.question(run_id, question_id)
+        revision: QuestionRevisionRow = await self.clarification_queries.question(
+            run_id, question_id
+        )
         if revision.revision != command.expected_question_revision or revision.status != "open":
             raise Conflict("stale_question_revision")
-        question: ClarificationQuestion = await self.queries.bound_question(run_id, question_id)
+        question: ClarificationQuestion = await self.clarification_queries.bound_question(
+            run_id, question_id
+        )
         self.check_sources(question, command.source_versions)
         selected: ExtractionStart = ExtractionStart.model_validate_json(extraction.command_json)
         if not {source.version_id for source in command.source_versions} <= set(
@@ -166,7 +172,7 @@ class ClarificationCommands:
         return None
 
     async def preflight_resume(self, run_id: UUID, command: ResumeRun) -> CommandResult | None:
-        await self.queries.extraction(run_id)
+        await self.clarification_queries.extraction(run_id)
         previous: str | None = await self.replay(command.operation_id, "resume", run_id, command)
         return CommandResult.model_validate_json(previous) if previous is not None else None
 
@@ -186,7 +192,7 @@ class ClarificationCommands:
                 consequences=decision.assumption.consequences,
                 mitigation=decision.assumption.mitigation,
             )
-            self.queries.session.add(
+            self.clarification_queries.session.add(
                 RiskRow(
                     id=risk.id,
                     decision_id=decision.decision_id,
@@ -195,13 +201,13 @@ class ClarificationCommands:
             )
 
     async def resume(self, run_id: UUID, command: ResumeRun) -> CommandResult:
-        await self.queries.extraction(run_id)
+        await self.clarification_queries.extraction(run_id)
         previous: str | None = await self.replay(command.operation_id, "resume", run_id, command)
         if previous is not None:
             return CommandResult.model_validate_json(previous)
-        state: ClarificationRunRow = await self.queries.run(run_id, lock=True)
-        view: ClarificationView = await self.queries.get(run_id)
-        if any(question.blocking and question.status == "open" for question in view.questions):
+        state: ClarificationRunRow = await self.clarification_queries.run(run_id, lock=True)
+        view: ClarificationView = await self.clarification_queries.get(run_id)
+        if any(question.blocks_completion for question in view.questions):
             raise Conflict("blocking_questions_open")
         if command.question_revisions != {
             question.id: question.revision for question in view.questions
@@ -214,7 +220,7 @@ class ClarificationCommands:
         }
         if expected != {(source.version_id, source.sha256) for source in command.source_versions}:
             raise Conflict("source_versions_changed")
-        extraction: ExtractionRow = await self.queries.extraction(run_id)
+        extraction: ExtractionRow = await self.clarification_queries.extraction(run_id)
         if extraction.status in {RunStatus.FAILED, RunStatus.CANCELLED, RunStatus.CANCELLING}:
             raise Conflict("extraction_not_resumable")
         state.resume_pending = True
@@ -226,18 +232,20 @@ class ClarificationCommands:
         return result
 
     async def resolve(self, decision_id: UUID, command: ResolveAssumption) -> DecisionResult:
-        decision_row: DecisionRow | None = await self.queries.session.get(DecisionRow, decision_id)
+        decision_row: DecisionRow | None = await self.clarification_queries.session.get(
+            DecisionRow, decision_id
+        )
         if decision_row is None:
             raise Missing("assumption")
-        await self.queries.extraction(decision_row.run_id)
+        await self.clarification_queries.extraction(decision_row.run_id)
         previous: str | None = await self.replay(
             command.operation_id, "resolve", decision_id, command
         )
         if previous is not None:
             return DecisionResult.model_validate_json(previous)
         extractions: list[ExtractionRow] = await self._lock_resolution_runs(decision_row)
-        await self.queries.run(decision_row.run_id, lock=True)
-        await self.queries.session.refresh(decision_row, with_for_update=True)
+        await self.clarification_queries.run(decision_row.run_id, lock=True)
+        await self.clarification_queries.session.refresh(decision_row, with_for_update=True)
         decision: DecisionResult = DecisionResult.model_validate_json(decision_row.snapshot_json)
         if (
             decision.kind != "assumption"
@@ -248,12 +256,12 @@ class ClarificationCommands:
         decision.resolution = "confirmed" if command.resolution == "confirm" else "rejected"
         decision.resolution_reason, decision.revision = command.reason, decision.revision + 1
         decision.resolved_by, decision.resolved_author, decision.resolved_at = (
-            self.queries.actor.id,
-            self.queries.actor.name,
+            self.clarification_queries.actor.id,
+            self.clarification_queries.actor.name,
             datetime.now(UTC),
         )
         decision_row.snapshot_json = decision.model_dump_json()
-        risk_row: RiskRow | None = await self.queries.session.scalar(
+        risk_row: RiskRow | None = await self.clarification_queries.session.scalar(
             select(RiskRow).where(RiskRow.decision_id == decision_id).with_for_update()
         )
         if risk_row is None:
@@ -278,7 +286,7 @@ class ClarificationCommands:
         query: Select[ExtractionRow] = (
             select(ExtractionRow)
             .where(
-                ExtractionRow.task_id == self.queries.actor.task_id,
+                ExtractionRow.task_id == self.clarification_queries.actor.task_id,
                 or_(
                     ExtractionRow.id == decision.run_id,
                     and_(
@@ -293,7 +301,9 @@ class ClarificationCommands:
             .with_for_update()
             .execution_options(populate_existing=True)
         )
-        extractions: list[ExtractionRow] = list(await self.queries.session.scalars(query))
+        extractions: list[ExtractionRow] = list(
+            await self.clarification_queries.session.scalars(query)
+        )
         origin: ExtractionRow = next(row for row in extractions if row.id == decision.run_id)
         if origin.status in {RunStatus.CANCELLED, RunStatus.CANCELLING, RunStatus.FAILED}:
             raise Conflict("extraction_not_resumable")
@@ -302,10 +312,10 @@ class ClarificationCommands:
     async def reopen(
         self, decision: DecisionResult, reason: str, extractions: list[ExtractionRow]
     ) -> None:
-        identity: QuestionRow | None = await self.queries.session.get(
+        identity: QuestionRow | None = await self.clarification_queries.session.get(
             QuestionRow, decision.question_id, with_for_update=True
         )
-        old: QuestionRevisionRow = await self.queries.question(
+        old: QuestionRevisionRow = await self.clarification_queries.question(
             decision.run_id, decision.question_id, lock=True
         )
         if identity is None:
@@ -316,7 +326,7 @@ class ClarificationCommands:
         question.previous_basis, question.basis = question.basis, reason
         question.revision, question.status = identity.revision + 1, "open"
         identity.revision = question.revision
-        self.queries.session.add(
+        self.clarification_queries.session.add(
             QuestionRevisionRow(
                 question_id=question.id,
                 revision=question.revision,
@@ -331,14 +341,14 @@ class ClarificationCommands:
     async def _reopen_linked_run(
         self, extraction: ExtractionRow, question: ClarificationQuestion, expected_revision: int
     ) -> None:
-        link: QuestionLinkRow | None = await self.queries.session.get(
+        link: QuestionLinkRow | None = await self.clarification_queries.session.get(
             QuestionLinkRow, (extraction.id, question.id)
         )
         if link is None:
             raise Missing("question_link")
         if link.revision != expected_revision:
             return
-        state: ClarificationRunRow = await self.queries.run(extraction.id, lock=True)
+        state: ClarificationRunRow = await self.clarification_queries.run(extraction.id, lock=True)
         link.revision = question.revision
         state.cycle += 1
         state.resume_pending = True

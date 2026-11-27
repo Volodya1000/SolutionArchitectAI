@@ -44,3 +44,4 @@ class DiscussionView(DTO):
 class DiscussionBinding(DTO):
     view: DiscussionView
     sources: list[SourceRef]
+    candidate_sources: list[SourceRef] = Field(default_factory=list)

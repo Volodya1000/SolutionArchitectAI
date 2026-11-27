@@ -10,11 +10,16 @@ from pydantic import BaseModel
 
 from solution_architect_ai.application.agents.clarification_agent import ClarificationAgent
 from solution_architect_ai.application.context.clarification_context_builder import (
-    ClarificationContext,
     ClarificationContextBuilder,
 )
 from solution_architect_ai.application.errors.structured_errors import StructuredGenerationFailure
+from solution_architect_ai.application.models.clarification_context_models import (
+    ClarificationContext,
+)
 from solution_architect_ai.application.models.clarification_models import ClarificationQuestion
+from solution_architect_ai.application.models.clarification_review_models import (
+    ClarificationReviewResult,
+)
 from solution_architect_ai.application.models.extraction_models import (
     LocatorView,
     RequirementView,
@@ -31,6 +36,7 @@ from solution_architect_ai.application.retry import GenerationPolicy
 from solution_architect_ai.application.services.structured_output_generator import (
     StructuredOutputGenerator,
 )
+from solution_architect_ai.application.workflows.clarification_review import ClarificationReview
 from solution_architect_ai.domain.documents import (
     DocumentFragment,
     LocatorKind,
@@ -170,8 +176,10 @@ async def test_full_reporting_source_and_registry_fit_loaded_model_context_witho
     generator: StructuredOutputGenerator = StructuredOutputGenerator(
         model, GenerationPolicy(1, 10, 0, 1, 0, 5120), LangChainTokenCounter(2, chat_prompt=False)
     )
-    result: list[ClarificationQuestion] = await ClarificationAgent(generator).clarify(
-        context, ExecutionBudget(1, monotonic() + 10, 5, correction_retries=0)
-    )
-    assert result == []
+    result: ClarificationReviewResult = await ClarificationReview(
+        ClarificationAgent(generator)
+    ).run(context, ExecutionBudget(128, monotonic() + 10, 5, correction_retries=0))
+    assert result.questions == []
+    assert result.coverage.complete
+    assert result.coverage.reviewed_fragments == len(document.fragments)
     assert len(context.part.fragments) == len(document.fragments)

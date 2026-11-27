@@ -23,10 +23,10 @@ from solution_architect_ai.application.protocols.chat_protocols import (
     LLM,
     ChatStore,
     Chunk,
-    StoreFactory,
     TokenCounter,
 )
 from solution_architect_ai.application.protocols.discussion_protocols import DiscussionContext
+from solution_architect_ai.application.protocols.store_context_protocols import StoreContext
 from solution_architect_ai.application.retry import GenerationPolicy
 from solution_architect_ai.domain.runs import RunErrorCode, RunStatus
 
@@ -36,25 +36,27 @@ logger: logging.Logger = logging.getLogger(__name__)
 class RunWorker:
     def __init__(
         self,
-        stores: StoreFactory,
+        chat_store_context: StoreContext[ChatStore],
         llm: LLM,
-        policy: GenerationPolicy,
-        tokens: TokenCounter,
+        generation_policy: GenerationPolicy,
+        chat_token_counter: TokenCounter,
         capacity: GenerationCapacity | None = None,
-        discussions: DiscussionContext | None = None,
+        discussion_context: DiscussionContext | None = None,
     ) -> None:
-        self.stores: StoreFactory = stores
+        self.chat_store_context: StoreContext[ChatStore] = chat_store_context
         self.llm: LLM = llm
-        self.policy: GenerationPolicy = policy
-        self.tokens: TokenCounter = tokens
-        self.capacity: GenerationCapacity = capacity or GenerationCapacity(policy.concurrency)
+        self.generation_policy: GenerationPolicy = generation_policy
+        self.chat_token_counter: TokenCounter = chat_token_counter
+        self.capacity: GenerationCapacity = capacity or GenerationCapacity(
+            generation_policy.concurrency
+        )
         self.active: dict[UUID, asyncio.Task[None]] = {}
         self.stopping: asyncio.Event = asyncio.Event()
-        self.discussions: DiscussionContext | None = discussions
+        self.discussion_context: DiscussionContext | None = discussion_context
 
     async def recover(self) -> None:
         store: ChatStore
-        async with self.stores.open() as store:
+        async with self.chat_store_context.open() as store:
             run: PendingRun
             for run in await store.queries.pending():
                 await store.set_status(run.id, RunStatus.FAILED, RunErrorCode.PROCESS_INTERRUPTED)
@@ -77,7 +79,7 @@ class RunWorker:
 
     async def dispatch(self, group: asyncio.TaskGroup) -> None:
         store: ChatStore
-        async with self.stores.open() as store:
+        async with self.chat_store_context.open() as store:
             pending: list[PendingRun] = await store.queries.pending()
         run: PendingRun
         for run in pending:
@@ -93,14 +95,14 @@ class RunWorker:
             await self.finish(run.id, RunStatus.CANCELLED)
         elif run.status == RunStatus.RUNNING:
             await self.finish(run.id, RunStatus.FAILED, RunErrorCode.PROCESSING_INTERRUPTED)
-        elif len(self.active) < self.policy.concurrency:
+        elif len(self.active) < self.generation_policy.concurrency:
             self.active[run.id] = group.create_task(self.execute(run))
 
     async def finish(
         self, run_id: UUID, status: RunStatus, error: RunErrorCode | None = None
     ) -> None:
         store: ChatStore
-        async with self.stores.open() as store:
+        async with self.chat_store_context.open() as store:
             run: RunView = await store.set_status(run_id, status, error)
         logger.info(
             "run_status run_id=%s chat_id=%s model=%s status=%s sequence=%s error_code=%s config_digest=%s output_characters=%s",
@@ -118,7 +120,7 @@ class RunWorker:
         run_id: UUID = run.id
         try:
             elapsed: float = (datetime.now(UTC) - run.created_at).total_seconds()
-            async with asyncio.timeout(max(0, self.policy.deadline - elapsed)):
+            async with asyncio.timeout(max(0, self.generation_policy.deadline - elapsed)):
                 async with self.capacity.slots:
                     await self.generate(run_id)
         except asyncio.CancelledError:
@@ -146,7 +148,7 @@ class RunWorker:
 
     async def generate(self, run_id: UUID) -> None:
         store: ChatStore
-        async with self.stores.open() as store:
+        async with self.chat_store_context.open() as store:
             run: RunView = await store.queries.get_run(run_id)
             if run.status != RunStatus.QUEUED:
                 return
@@ -155,12 +157,18 @@ class RunWorker:
                 return
             snapshot: ChatSnapshot = await store.queries.snapshot(run.chat_id)
         prefix: list[MessageView] = (
-            [] if self.discussions is None else await self.discussions.messages(run.chat_id)
+            []
+            if self.discussion_context is None
+            else await self.discussion_context.messages(run.chat_id)
         )
         messages: list[MessageView] = await asyncio.to_thread(
-            select_context, snapshot.messages, self.policy.input_budget, self.tokens, prefix
+            select_context,
+            snapshot.messages,
+            self.generation_policy.input_budget,
+            self.chat_token_counter,
+            prefix,
         )
-        retries: AsyncRetrying = self.policy.retrying(partial(self.can_retry, run_id))
+        retries: AsyncRetrying = self.generation_policy.retrying(partial(self.can_retry, run_id))
         await retries(self.consume, run_id, messages)
         await self.finish(run_id, RunStatus.COMPLETED)
 
@@ -168,7 +176,7 @@ class RunWorker:
         if not isinstance(error, GenerationFailure) or not error.retryable:
             return False
         store: ChatStore
-        async with self.stores.open() as store:
+        async with self.chat_store_context.open() as store:
             current: RunView = await store.queries.get_run(run_id)
         return not current.content
 
@@ -190,6 +198,6 @@ class RunWorker:
 
     async def flush(self, run_id: UUID, text: str) -> None:
         store: ChatStore
-        async with self.stores.open() as store:
+        async with self.chat_store_context.open() as store:
             if not await store.append(run_id, text):
                 raise asyncio.CancelledError

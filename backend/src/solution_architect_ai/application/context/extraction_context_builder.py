@@ -26,21 +26,22 @@ from solution_architect_ai.application.prompts.structured_prompt import (
     token_messages,
 )
 from solution_architect_ai.application.protocols.chat_protocols import TokenCounter
+from solution_architect_ai.application.validation.markdown_structure import structural_fragment_ids
 from solution_architect_ai.domain.documents import DocumentFragment, ParsedDocument
 from solution_architect_ai.domain.messages import MessageRole
 from solution_architect_ai.domain.requirements import CoverageWarning
 
 
 class ExtractionContextBuilder:
-    def __init__(self, tokens: TokenCounter, policy: ContextPolicy) -> None:
-        self.tokens: TokenCounter = tokens
-        self.policy: ContextPolicy = policy
+    def __init__(self, token_counter: TokenCounter, context_policy: ContextPolicy) -> None:
+        self.token_counter: TokenCounter = token_counter
+        self.context_policy: ContextPolicy = context_policy
         self.profile: ModelProfile = ModelProfile(
             "context",
-            policy.mode,
-            policy.context_window,
-            policy.output_limit,
-            policy.service_tokens,
+            context_policy.mode,
+            context_policy.context_window,
+            context_policy.output_limit,
+            context_policy.service_tokens,
         )
         self.schema: str = json.dumps(
             RequirementsExtraction.model_json_schema(), sort_keys=True, separators=(",", ":")
@@ -64,7 +65,7 @@ class ExtractionContextBuilder:
         )
 
     def estimate(self, fragments: tuple[ContextFragment, ...], scope: str) -> int:
-        return self.tokens.count(token_messages(self.rendered(fragments, scope)))
+        return self.token_counter.count(token_messages(self.rendered(fragments, scope)))
 
     def rendered(
         self, fragments: tuple[ContextFragment, ...], scope: str
@@ -73,19 +74,21 @@ class ExtractionContextBuilder:
         return render_messages(
             StructuredRequest(messages, self.profile),
             RequirementsExtraction,
-            reserve_corrections=self.policy.correction_retries,
+            reserve_corrections=self.context_policy.correction_retries,
             include_native_schema=True,
         )
 
     def response_estimate(self, fragments: tuple[ContextFragment, ...]) -> int:
-        return estimate_response_tokens(fragments, self.tokens)
+        return estimate_response_tokens(fragments, self.token_counter)
 
     def fits(self, fragments: tuple[ContextFragment, ...], scope: str) -> bool:
         return (
             self.estimate(fragments, scope)
-            <= self.policy.context_window - self.policy.output_limit - self.policy.service_tokens
-            and self.response_estimate(fragments) + self.policy.service_tokens
-            <= self.policy.output_limit
+            <= self.context_policy.context_window
+            - self.context_policy.output_limit
+            - self.context_policy.service_tokens
+            and self.response_estimate(fragments) + self.context_policy.service_tokens
+            <= self.context_policy.output_limit
         )
 
     def split(self, fragment: ContextFragment, scope: str) -> list[ContextFragment]:
@@ -149,9 +152,14 @@ class ExtractionContextBuilder:
         groups: list[tuple[ContextFragment, ...]] = self.groups(pieces, scope)
         if not groups:
             raise ContextTooLarge("no_text_fragments")
-        parts: tuple[ContextPart, ...] = tuple(self.part(group, scope) for group in groups)
+        structural_ids: frozenset[str] = frozenset(
+            identifier for document in documents for identifier in structural_fragment_ids(document)
+        )
+        parts: tuple[ContextPart, ...] = tuple(
+            self.part(group, scope, structural_ids) for group in groups
+        )
         identity: str = context_digest(
-            documents, parts, scope, self.schema, self.policy, self.rendered((), scope)
+            documents, parts, scope, self.schema, self.context_policy, self.rendered((), scope)
         )
         warnings: tuple[str, ...] = tuple(warning for doc in documents for warning in doc.warnings)
         if len(parts) > 1:
@@ -220,10 +228,16 @@ class ExtractionContextBuilder:
                 high = middle - 1
         return best
 
-    def part(self, fragments: tuple[ContextFragment, ...], scope: str) -> ContextPart:
+    def part(
+        self,
+        fragments: tuple[ContextFragment, ...],
+        scope: str,
+        structural_ids: frozenset[str] = frozenset(),
+    ) -> ContextPart:
         return ContextPart(
             part_digest(fragments),
             fragments,
             self.messages(fragments, scope),
             self.estimate(fragments, scope),
+            structural_ids.intersection(str(fragment.fragment_id) for fragment in fragments),
         )

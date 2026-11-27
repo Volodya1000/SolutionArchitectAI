@@ -1,10 +1,18 @@
-import json
-from collections.abc import Mapping
-from dataclasses import dataclass, replace
 from types import MappingProxyType
 from uuid import UUID
 
 from solution_architect_ai.application.context.context_models import ContextFragment, ContextPart
+from solution_architect_ai.application.models.clarification_context_models import (
+    ClarificationContext,
+    ClarificationPayload,
+    ContextCoverage,
+    ContextSource,
+    DecisionHistoryContext,
+    HistoricalSourceContext,
+    QuestionHistoryContext,
+    RequirementContext,
+    RequirementEvidenceContext,
+)
 from solution_architect_ai.application.models.clarification_models import (
     ClarificationQuestion,
     DecisionResult,
@@ -17,17 +25,6 @@ from solution_architect_ai.application.models.structured_models import (
 from solution_architect_ai.application.prompts.clarification_prompt import SYSTEM_PROMPT
 from solution_architect_ai.domain.documents import ParsedDocument
 from solution_architect_ai.domain.messages import MessageRole
-
-
-@dataclass(frozen=True)
-class ClarificationContext:
-    part: ContextPart
-    requirement_ids: frozenset[str]
-    history: tuple[ClarificationQuestion, ...]
-    profile: ModelProfile
-    source_aliases: Mapping[str, str]
-    requirement_aliases: Mapping[str, str]
-    requirements: tuple[RequirementView, ...]
 
 
 class ClarificationContextBuilder:
@@ -83,45 +80,76 @@ class ClarificationContextBuilder:
         ]
         history_ids: set[UUID] = {question.id for question in history}
         decisions = [decision for decision in decisions if decision.question_id in history_ids]
-        payload: dict[str, object] = {
-            "role": "clarification",
-            "fragments": [
-                {"fragment_id": source_keys[str(fragment.fragment_id)], "text": fragment.text}
+        payload: ClarificationPayload = ClarificationPayload(
+            fragments=[
+                ContextSource(
+                    fragment_id=source_keys[str(fragment.fragment_id)], text=fragment.text
+                )
                 for fragment in fragments
             ],
-            "requirements": [
-                {
-                    "id": requirement_keys[str(requirement.id)],
-                    "fragment_ids": [
+            requirements=[
+                RequirementContext(
+                    id=requirement_keys[str(requirement.id)],
+                    category=requirement.category,
+                    original_text=requirement.original_text,
+                    normalized_text=requirement.normalized_text,
+                    fragment_ids=[
                         source_keys[source.fragment_id]
                         for source in requirement.sources
                         if source.fragment_id in source_keys
                     ],
-                }
+                    evidence=[
+                        RequirementEvidenceContext(
+                            fragment_id=source_keys[source.fragment_id],
+                            candidate_quote=source.quote,
+                            status=source.status,
+                            reason=source.reason,
+                        )
+                        for source in requirement.sources
+                        if source.fragment_id in source_keys
+                    ],
+                )
                 for requirement in requirements
             ],
-            "history": [
-                question.model_dump(
-                    mode="json", exclude={"source_fingerprints", "requirement_fingerprints"}
+            history=[
+                QuestionHistoryContext(
+                    id=question.id,
+                    gap_key=question.gap_key,
+                    revision=question.revision,
+                    text=question.text,
+                    basis=question.basis,
+                    status=question.status,
+                    requirement_ids=question.requirement_ids,
+                    sources=[
+                        HistoricalSourceContext(
+                            fragment_id=source.fragment_id,
+                            version_id=source.version_id,
+                            quote=source.quote,
+                            status=source.status,
+                            reason=source.reason,
+                        )
+                        for source in question.sources
+                    ],
                 )
                 for question in history
             ],
-            "decisions": [decision.model_dump(mode="json") for decision in decisions],
-            "coverage": {
-                "selected_versions": sorted({str(fragment.version_id) for fragment in fragments}),
-                "omitted_fragments": [],
-            },
-        }
+            decisions=[DecisionHistoryContext.from_decision(decision) for decision in decisions],
+            coverage=ContextCoverage(
+                selected_versions=sorted({fragment.version_id for fragment in fragments}, key=str)
+            ),
+        )
         messages: tuple[StructuredMessage, ...] = (
             StructuredMessage(MessageRole.SYSTEM, SYSTEM_PROMPT),
-            StructuredMessage(MessageRole.USER, json.dumps(payload, ensure_ascii=False)),
+            StructuredMessage(MessageRole.USER, payload.model_dump_json()),
         )
         return ClarificationContext(
             ContextPart("clarification", fragments, messages, 0),
             frozenset(str(requirement.id) for requirement in requirements),
             tuple(history),
-            replace(profile, output_limit=min(profile.output_limit, 2048)),
+            profile,
             MappingProxyType(source_aliases),
             MappingProxyType(requirement_aliases),
             tuple(requirements),
+            payload,
+            decisions=tuple(decisions),
         )

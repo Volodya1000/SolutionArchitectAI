@@ -1,5 +1,6 @@
 from uuid import UUID, uuid4
 
+from solution_architect_ai.application.context.discussion_scope import select_discussion_scope
 from solution_architect_ai.application.errors.chat_errors import Missing
 from solution_architect_ai.application.models.chat_dto import ChatView
 from solution_architect_ai.application.models.clarification_models import ClarificationView
@@ -16,10 +17,8 @@ from solution_architect_ai.application.models.extraction_models import (
     RequirementView,
     SourceRef,
 )
-from solution_architect_ai.application.protocols.discussion_protocols import (
-    DiscussionStore,
-    DiscussionStoreFactory,
-)
+from solution_architect_ai.application.protocols.discussion_protocols import DiscussionStore
+from solution_architect_ai.application.protocols.store_context_protocols import StoreContext
 from solution_architect_ai.application.services.clarification_service import ClarificationService
 from solution_architect_ai.application.services.document_service import DocumentService
 from solution_architect_ai.domain.documents import DocumentFragment, ParsedDocument
@@ -29,17 +28,17 @@ from solution_architect_ai.domain.requirements import EvidenceStatus
 class DiscussionService:
     def __init__(
         self,
-        stores: DiscussionStoreFactory,
-        documents: DocumentService,
-        clarifications: ClarificationService,
+        discussion_store_context: StoreContext[DiscussionStore],
+        documents_service: DocumentService,
+        clarification_service: ClarificationService,
     ) -> None:
-        self.stores: DiscussionStoreFactory = stores
-        self.documents: DocumentService = documents
-        self.clarifications: ClarificationService = clarifications
+        self.discussion_store_context: StoreContext[DiscussionStore] = discussion_store_context
+        self.documents_service: DocumentService = documents_service
+        self.clarification_service: ClarificationService = clarification_service
 
     async def create(self, command: CreateDiscussion) -> ChatView:
         store: DiscussionStore
-        async with self.stores.open() as store:
+        async with self.discussion_store_context.open() as store:
             replay: ChatView | None = await store.replay(command)
         if replay is not None:
             return replay
@@ -48,14 +47,14 @@ class DiscussionService:
             if isinstance(command.subject, RequirementSubject)
             else await self.source_binding(command.subject)
         )
-        async with self.stores.open() as store:
+        async with self.discussion_store_context.open() as store:
             return await store.create(command, binding)
 
     async def source_reference(self, version_id: UUID, fragment_id: UUID) -> SourceRef:
         store: DiscussionStore
-        async with self.stores.open() as store:
+        async with self.discussion_store_context.open() as store:
             await store.check_version(version_id)
-        document: ParsedDocument = await self.documents.get_parsed_document(version_id)
+        document: ParsedDocument = await self.documents_service.get_parsed_document(version_id)
         fragment: DocumentFragment | None = next(
             (item for item in document.fragments if item.fragment_id == fragment_id), None
         )
@@ -80,7 +79,7 @@ class DiscussionService:
 
     async def requirement_binding(self, subject: RequirementSubject) -> DiscussionBinding:
         store: DiscussionStore
-        async with self.stores.open() as store:
+        async with self.discussion_store_context.open() as store:
             analysis: ExtractionView = await store.analysis(subject.run_id)
         requirement: RequirementView | None = next(
             (item for item in analysis.requirements if item.id == subject.requirement_id), None
@@ -96,12 +95,12 @@ class DiscussionService:
             sources.append(await self.source_reference(source.version_id, UUID(source.fragment_id)))
         if not sources:
             raise Missing("requirement_source")
-        state: ClarificationView = await self.clarifications.get(subject.run_id)
+        state: ClarificationView = await self.clarification_service.get(subject.run_id)
         return DiscussionBinding(
             view=DiscussionView(
                 chat_id=uuid4(),
                 kind="requirement",
-                title=requirement.normalized_text[:120],
+                title=requirement.normalized_text,
                 analysis_id=subject.run_id,
                 requirement_id=subject.requirement_id,
                 version_id=sources[0].version_id,
@@ -115,6 +114,7 @@ class DiscussionService:
                 backlink=f"/requirements?run={subject.run_id}&requirement={subject.requirement_id}",
             ),
             sources=sources,
+            candidate_sources=requirement.sources,
         )
 
     async def source_binding(self, subject: SourceSubject) -> DiscussionBinding:
@@ -122,11 +122,11 @@ class DiscussionService:
         history_id: UUID | None = None
         if subject.analysis_id is not None:
             store: DiscussionStore
-            async with self.stores.open() as store:
+            async with self.discussion_store_context.open() as store:
                 analysis: ExtractionView = await store.analysis(subject.analysis_id)
             if subject.version_id not in analysis.version_ids:
                 raise Missing("analysis_source_version")
-            state: ClarificationView = await self.clarifications.get(subject.analysis_id)
+            state: ClarificationView = await self.clarification_service.get(subject.analysis_id)
             history_id = state.history_id
         analysis_query: str = (
             f"&run={subject.analysis_id}" if subject.analysis_id is not None else ""
@@ -135,7 +135,7 @@ class DiscussionService:
             view=DiscussionView(
                 chat_id=uuid4(),
                 kind="source",
-                title=source.quote[:120],
+                title=source.quote,
                 analysis_id=subject.analysis_id,
                 requirement_id=None,
                 version_id=subject.version_id,
@@ -150,7 +150,7 @@ class DiscussionService:
 
     async def get_binding(self, chat_id: UUID) -> DiscussionBinding | None:
         store: DiscussionStore
-        async with self.stores.open() as store:
+        async with self.discussion_store_context.open() as store:
             return await store.get(chat_id)
 
     async def get(self, chat_id: UUID) -> DiscussionView | None:
@@ -159,5 +159,15 @@ class DiscussionService:
 
     async def operation(self, operation_id: UUID) -> ChatView:
         store: DiscussionStore
-        async with self.stores.open() as store:
+        async with self.discussion_store_context.open() as store:
             return await store.operation(operation_id)
+
+    async def get_clarifications(self, chat_id: UUID) -> ClarificationView | None:
+        binding: DiscussionBinding | None = await self.get_binding(chat_id)
+        return None if binding is None else await self.clarification_scope(binding)
+
+    async def clarification_scope(self, binding: DiscussionBinding) -> ClarificationView | None:
+        if binding.view.analysis_id is None:
+            return None
+        state: ClarificationView = await self.clarification_service.get(binding.view.analysis_id)
+        return select_discussion_scope(binding, state)

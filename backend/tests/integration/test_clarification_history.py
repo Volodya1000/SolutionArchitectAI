@@ -15,11 +15,14 @@ from backend.tests.integration.test_extraction_lifecycle import ExtractionResour
 from backend.tests.integration.test_extraction_lifecycle import (  # pylint: disable=unused-import,useless-import-alias
     extraction_resources as extraction_resources,
 )
+from backend.tests.sql_store_setup import SqlStoreSetup
 from backend.tests.unit.test_clarification_agent import ClarificationModel, referenced_requirement
 from solution_architect_ai.application.agents.clarification_agent import ClarificationAgent
 from solution_architect_ai.application.context.clarification_context_builder import (
-    ClarificationContext,
     ClarificationContextBuilder,
+)
+from solution_architect_ai.application.models.clarification_context_models import (
+    ClarificationContext,
 )
 from solution_architect_ai.application.models.clarification_models import (
     AnswerClarification,
@@ -58,9 +61,6 @@ from solution_architect_ai.domain.documents import (
 )
 from solution_architect_ai.domain.runs import RunStatus
 from solution_architect_ai.infrastructure.context import LangChainTokenCounter
-from solution_architect_ai.persistence.clarifications.clarification_factory import (
-    SqlAlchemyClarificationStoreFactory,
-)
 from solution_architect_ai.persistence.clarifications.clarification_store import (
     SqlAlchemyClarificationStore,
 )
@@ -78,7 +78,7 @@ def document(file_id: UUID, text: str = ORIGINAL) -> ParsedDocument:
 
 
 async def seed_analysis(
-    stores: SqlAlchemyClarificationStoreFactory,
+    stores: SqlStoreSetup[SqlAlchemyClarificationStore],
     source: ParsedDocument,
     requirement: RequirementView,
     history_id: UUID | None = None,
@@ -126,13 +126,13 @@ async def seed_analysis(
 
 
 async def prepare_questions(
-    stores: SqlAlchemyClarificationStoreFactory,
+    stores: SqlStoreSetup[SqlAlchemyClarificationStore],
     run_id: UUID,
     source: ParsedDocument,
     requirement: RequirementView,
     *,
     candidate: bool = True,
-    changed_basis: bool = False,
+    changed_basis: bool | None = False,
 ) -> None:
     store: SqlAlchemyClarificationStore
     async with stores.open() as store:
@@ -155,7 +155,7 @@ async def prepare_questions(
                 "blocking": True,
                 "requirement_ids": ["r0"],
                 "evidence": [{"fragment_id": "f0", "quote": requirement.sources[0].quote}],
-                "changed_basis": changed_basis,
+                **({"changed_basis": changed_basis} if changed_basis is not None else {}),
             }
         ]
         if candidate
@@ -192,7 +192,7 @@ def answer_command(
 
 
 async def first_analysis(
-    stores: SqlAlchemyClarificationStoreFactory,
+    stores: SqlStoreSetup[SqlAlchemyClarificationStore],
     *,
     answered: bool = True,
 ) -> tuple[UUID, ParsedDocument, RequirementView]:
@@ -209,7 +209,7 @@ async def first_analysis(
 
 
 async def test_reused_open_question_binds_current_version_and_accepts_answer(
-    decision_stores: SqlAlchemyClarificationStoreFactory,
+    decision_stores: SqlStoreSetup[SqlAlchemyClarificationStore],
 ) -> None:
     first_id: UUID
     first_source: ParsedDocument
@@ -243,7 +243,7 @@ async def test_reused_open_question_binds_current_version_and_accepts_answer(
 
 @pytest.mark.parametrize("new_version", [False, True])
 async def test_empty_agent_result_carries_applicable_answer_and_preserves_origin(
-    decision_stores: SqlAlchemyClarificationStoreFactory,
+    decision_stores: SqlStoreSetup[SqlAlchemyClarificationStore],
     new_version: bool,
 ) -> None:
     first_id: UUID
@@ -276,7 +276,7 @@ async def test_empty_agent_result_carries_applicable_answer_and_preserves_origin
 
 
 async def test_reused_decision_keeps_origin_requirement_ids(
-    decision_stores: SqlAlchemyClarificationStoreFactory,
+    decision_stores: SqlStoreSetup[SqlAlchemyClarificationStore],
 ) -> None:
     first_id: UUID
     source: ParsedDocument
@@ -293,7 +293,7 @@ async def test_reused_decision_keeps_origin_requirement_ids(
 
 
 async def test_old_analysis_excludes_future_revision_decisions(
-    decision_stores: SqlAlchemyClarificationStoreFactory,
+    decision_stores: SqlStoreSetup[SqlAlchemyClarificationStore],
 ) -> None:
     first_id: UUID
     source: ParsedDocument
@@ -321,7 +321,7 @@ async def test_old_analysis_excludes_future_revision_decisions(
 
 
 async def test_empty_agent_result_does_not_carry_answer_to_changed_evidence(
-    decision_stores: SqlAlchemyClarificationStoreFactory,
+    decision_stores: SqlStoreSetup[SqlAlchemyClarificationStore],
 ) -> None:
     first_id: UUID
     source: ParsedDocument
@@ -348,7 +348,7 @@ async def test_empty_agent_result_does_not_carry_answer_to_changed_evidence(
 
 @pytest.mark.parametrize("surrounding_changed", [False, True])
 async def test_explicit_changed_basis_checks_full_fragment_even_when_quote_is_unchanged(
-    decision_stores: SqlAlchemyClarificationStoreFactory, surrounding_changed: bool
+    decision_stores: SqlStoreSetup[SqlAlchemyClarificationStore], surrounding_changed: bool
 ) -> None:
     first_id: UUID
     source: ParsedDocument
@@ -376,7 +376,7 @@ async def test_explicit_changed_basis_checks_full_fragment_even_when_quote_is_un
 
 
 async def test_different_quote_of_unchanged_fragment_does_not_reopen_closed_question(
-    decision_stores: SqlAlchemyClarificationStoreFactory,
+    decision_stores: SqlStoreSetup[SqlAlchemyClarificationStore],
 ) -> None:
     source: ParsedDocument = document(uuid4())
     original_requirement: RequirementView = referenced_requirement(source, source.fragments[0])

@@ -39,10 +39,6 @@ class ChatStore(Protocol):
     async def update_preferences(self, value: Preferences) -> Preferences: ...
 
 
-class StoreFactory(Protocol):
-    def open(self) -> AbstractAsyncContextManager[ChatStore]: ...
-
-
 class ResourceProbe(Protocol):
     async def check(self) -> None: ...
 

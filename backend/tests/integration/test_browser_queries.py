@@ -22,6 +22,7 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
+from backend.tests.sql_store_setup import document_store_setup, extraction_store_setup
 from solution_architect_ai.application.errors.chat_errors import ChatError, Missing
 from solution_architect_ai.application.models.document_dto import DocumentView, UploadDocument
 from solution_architect_ai.application.models.extraction_models import (
@@ -46,17 +47,11 @@ from solution_architect_ai.di.providers import database_url
 from solution_architect_ai.domain.runs import RunStatus
 from solution_architect_ai.infrastructure.parsers.document_parser import DocumentParser
 from solution_architect_ai.infrastructure.storage.local_files_storage import LocalFileStorage
-from solution_architect_ai.persistence.documents.document_factory import (
-    SqlAlchemyDocumentStoreFactory,
-)
 from solution_architect_ai.persistence.documents.document_models import (
     DocumentRow,
     DocumentVersionRow,
 )
 from solution_architect_ai.persistence.documents.document_store import SqlAlchemyDocumentStore
-from solution_architect_ai.persistence.extractions.extraction_factory import (
-    SqlAlchemyExtractionStoreFactory,
-)
 from solution_architect_ai.persistence.extractions.extraction_models import ExtractionRow
 from solution_architect_ai.persistence.extractions.extraction_store import SqlAlchemyExtractionStore
 from solution_architect_ai.persistence.models import ProjectRow, TaskRow
@@ -83,12 +78,12 @@ async def browser_client_fixture(
         await session.connection(), expire_on_commit=False, join_transaction_mode="create_savepoint"
     )
     documents: DocumentService = DocumentService(
-        SqlAlchemyDocumentStoreFactory(sessions, task_id=task_id),
+        document_store_setup(sessions, task_id=task_id),
         LocalFileStorage(tmp_path, max_bytes=4096),
         DocumentParser(),
     )
     service: RequirementsExtractionService = RequirementsExtractionService(
-        SqlAlchemyExtractionStoreFactory(sessions, task_id=task_id), documents, PROFILE, "config"
+        extraction_store_setup(sessions, task_id=task_id), documents, PROFILE, "config"
     )
     container: AsyncContainer = make_async_container(
         ServiceProvider(), context={RequirementsExtractionService: service}

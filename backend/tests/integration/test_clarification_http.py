@@ -11,19 +11,21 @@ from dishka import AsyncContainer, Provider, Scope, make_async_container
 from dishka.integrations.fastapi import setup_dishka
 from fastapi import FastAPI
 from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from backend.tests.integration.test_extraction_lifecycle import ExtractionResources, upload
 from backend.tests.integration.test_extraction_lifecycle import (  # pylint: disable=unused-import,useless-import-alias
     extraction_resources as extraction_resources,
 )
+from backend.tests.sql_store_setup import SqlStoreSetup, clarification_store_setup
 from solution_architect_ai.application.agents.clarification_agent import ClarificationAgent
 from solution_architect_ai.application.agents.extraction_sources import verify_evidence
-from solution_architect_ai.application.context.clarification_context_builder import (
-    ClarificationContext,
-)
 from solution_architect_ai.application.context.context_models import ContextFragment
 from solution_architect_ai.application.errors.chat_errors import ChatError
 from solution_architect_ai.application.errors.document_errors import DocumentFailure
+from solution_architect_ai.application.models.clarification_context_models import (
+    ClarificationContext,
+)
 from solution_architect_ai.application.models.clarification_models import (
     ActorContext,
     AnswerClarification,
@@ -42,17 +44,11 @@ from solution_architect_ai.application.models.extraction_models import (
     SourceRef,
 )
 from solution_architect_ai.application.models.structured_models import ExecutionBudget
-from solution_architect_ai.application.protocols.clarification_protocols import (
-    ClarificationStoreFactory,
-)
 from solution_architect_ai.application.services.clarification_service import ClarificationService
 from solution_architect_ai.application.workflows.extraction_worker import ExtractionWorker
 from solution_architect_ai.di.main import chat_error
 from solution_architect_ai.domain.requirements import EvidenceStatus
 from solution_architect_ai.domain.runs import RunStatus
-from solution_architect_ai.persistence.clarifications.clarification_factory import (
-    SqlAlchemyClarificationStoreFactory,
-)
 from solution_architect_ai.persistence.clarifications.clarification_models import (
     ClarificationOperationRow,
     DecisionRow,
@@ -71,7 +67,7 @@ pytestmark: Final[list[pytest.MarkDecorator]] = [pytest.mark.anyio, pytest.mark.
 class HttpCase:
     resources: ExtractionResources
     service: ClarificationService
-    stores: SqlAlchemyClarificationStoreFactory
+    stores: SqlStoreSetup[SqlAlchemyClarificationStore]
     version: DocumentVersionView
     run_id: UUID
     question: ClarificationQuestion
@@ -112,7 +108,7 @@ async def http_case_fixture(
                 basis="Поведение при отказе не определено",
                 dependent_decision="Обработка отказа сохранения",
                 blocking=True,
-                requirement_ids=[UUID(sorted(context.requirement_ids)[0])],
+                requirement_ids=[min(context.requirements, key=lambda item: item.original_text).id],
                 sources=[source],
             )
         ]
@@ -131,8 +127,10 @@ async def http_case_fixture(
     service: ClarificationService = await resources.container.get(ClarificationService)
     view: ClarificationView = await service.get(run.id)
     assert len(view.questions) == 1
-    stores: ClarificationStoreFactory = await resources.container.get(ClarificationStoreFactory)
-    assert isinstance(stores, SqlAlchemyClarificationStoreFactory)
+    stores: SqlStoreSetup[SqlAlchemyClarificationStore] = clarification_store_setup(
+        await resources.container.get(async_sessionmaker[AsyncSession]),
+        await resources.container.get(ActorContext),
+    )
     return HttpCase(resources, service, stores, version, run.id, view.questions[0])
 
 
@@ -171,7 +169,7 @@ async def actor_client(case: HttpCase, actor: ActorContext) -> AsyncGenerator[ht
     provider: Provider = Provider(scope=Scope.APP)
     provider.from_context(ClarificationService)
     service: ClarificationService = ClarificationService(
-        SqlAlchemyClarificationStoreFactory(case.stores.sessions, actor), case.resources.documents
+        clarification_store_setup(case.stores.sessions, actor), case.resources.documents
     )
     container: AsyncContainer = make_async_container(
         provider, context={ClarificationService: service}

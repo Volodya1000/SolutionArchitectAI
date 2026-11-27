@@ -18,7 +18,8 @@ from solution_architect_ai.application.models.chat_dto import (
     RunView,
     StartRun,
 )
-from solution_architect_ai.application.protocols.chat_protocols import LLM, ChatStore, StoreFactory
+from solution_architect_ai.application.protocols.chat_protocols import LLM, ChatStore
+from solution_architect_ai.application.protocols.store_context_protocols import StoreContext
 from solution_architect_ai.application.services.chat_service import ChatService
 
 router: APIRouter = APIRouter(prefix="/api", route_class=DishkaRoute)
@@ -30,21 +31,21 @@ async def model_status(llm: FromDishka[LLM]) -> ModelStatus:
 
 
 @router.get("/chats", responses={503: {"model": APIError}})
-async def chats(stores: FromDishka[StoreFactory]) -> list[ChatView]:
+async def chats(stores: FromDishka[StoreContext[ChatStore]]) -> list[ChatView]:
     store: ChatStore
     async with stores.open() as store:
         return await store.queries.list_chats()
 
 
 @router.post("/chats", status_code=201, responses={503: {"model": APIError}})
-async def create_chat(body: ChatCreate, stores: FromDishka[StoreFactory]) -> ChatView:
+async def create_chat(body: ChatCreate, stores: FromDishka[StoreContext[ChatStore]]) -> ChatView:
     store: ChatStore
     async with stores.open() as store:
         return await store.create_chat(body.title)
 
 
 @router.get("/chats/{chat_id}", responses={404: {"model": APIError}, 503: {"model": APIError}})
-async def snapshot(chat_id: UUID, stores: FromDishka[StoreFactory]) -> ChatSnapshot:
+async def snapshot(chat_id: UUID, stores: FromDishka[StoreContext[ChatStore]]) -> ChatSnapshot:
     store: ChatStore
     async with stores.open() as store:
         return await store.queries.snapshot(chat_id)
@@ -110,14 +111,16 @@ async def stream(
 
 
 @router.get("/preferences", responses={404: {"model": APIError}, 503: {"model": APIError}})
-async def preferences(stores: FromDishka[StoreFactory]) -> Preferences:
+async def preferences(stores: FromDishka[StoreContext[ChatStore]]) -> Preferences:
     store: ChatStore
     async with stores.open() as store:
         return await store.queries.preferences()
 
 
 @router.put("/preferences", responses={404: {"model": APIError}, 503: {"model": APIError}})
-async def save_preferences(body: Preferences, stores: FromDishka[StoreFactory]) -> Preferences:
+async def save_preferences(
+    body: Preferences, stores: FromDishka[StoreContext[ChatStore]]
+) -> Preferences:
     store: ChatStore
     async with stores.open() as store:
         return await store.update_preferences(body)
