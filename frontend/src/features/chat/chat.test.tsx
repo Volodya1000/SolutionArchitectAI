@@ -62,6 +62,19 @@ function show() {
   return { client, ...view };
 }
 
+it('disables sending until the draft contains text', async () => {
+  show();
+  const input = await screen.findByRole('textbox', { name: 'Сообщение' });
+  const send = screen.getByRole('button', { name: 'Отправить сообщение' });
+  expect(send).toBeDisabled();
+  await userEvent.type(input, '   ');
+  expect(send).toBeDisabled();
+  await userEvent.type(input, 'Вопрос');
+  expect(send).toBeEnabled();
+  await userEvent.clear(input);
+  expect(send).toBeDisabled();
+});
+
 it('preserves unsent input when server history is refreshed', async () => {
   const { client } = show();
   const input = await screen.findByRole('textbox', { name: 'Сообщение' });

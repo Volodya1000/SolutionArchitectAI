@@ -161,8 +161,8 @@ function Composer({ state, chatId }: { state: ChatState; chatId: string }) {
               </Button>
             </ComposerPrimitive.Cancel>
           ) : (
-            <ComposerPrimitive.Send asChild>
-              <Button aria-label="Отправить сообщение" disabled={state.send.isPending || tooLong}>
+            <ComposerPrimitive.Send asChild disabled={state.send.isPending || tooLong}>
+              <Button className="composer-send" aria-label="Отправить сообщение">
                 <ArrowUp size={19} />
               </Button>
             </ComposerPrimitive.Send>

@@ -465,6 +465,11 @@ h1 {
   height: 34px;
   padding: 7px;
 }
+.composer-send:disabled {
+  background: var(--border);
+  color: var(--muted);
+  opacity: 1;
+}
 .composer-note {
   text-align: center;
   font-size: 10px;
