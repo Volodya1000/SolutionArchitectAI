@@ -8,19 +8,23 @@ import { AnalysisForm } from './analysis-form';
 import { DocumentCard } from './document-card';
 import { UploadForm } from './upload-form';
 import { VersionViewer } from './version-viewer';
+import { analysisDraft } from './saved-work';
 
 export function Documents() {
   const [search] = useSearchParams();
-  const [selected, setSelected] = useState<ReadonlySet<string>>(new Set());
+  const [draft, setDraft] = useState(analysisDraft.read);
+  const selected: ReadonlySet<string> = new Set(draft.versionIds);
   const documents = useQuery({ queryKey: [...scopeKey, 'documents'], queryFn: documentList });
   const versionId = search.get('version');
   function toggle(id: string) {
-    setSelected((old) => {
-      const next = new Set(old);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
+    const next = new Set(selected);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    updateDraft({ ...draft, versionIds: [...next] });
+  }
+  function updateDraft(next: typeof draft) {
+    analysisDraft.save(next);
+    setDraft(next);
   }
   return (
     <div className="workspace-content">
@@ -29,7 +33,7 @@ export function Documents() {
         <h1>Документы</h1>
         <p>Каждая редакция сохраняет свой оригинал, контрольную сумму и адресуемые фрагменты.</p>
       </div>
-      <section className="document-card" aria-label="Загрузка документа">
+      <section className="surface-card document-card" aria-label="Загрузка документа">
         <UploadForm />
         <p className="notice">Доступные расширения: .txt, .md, .markdown, .pdf, .docx.</p>
       </section>
@@ -55,7 +59,11 @@ export function Documents() {
           />
         ))}
       </div>
-      <AnalysisForm selected={selected} />
+      <AnalysisForm
+        selected={selected}
+        scope={draft.scope}
+        setScope={(scope) => updateDraft({ ...draft, scope })}
+      />
       {versionId && (
         <VersionViewer key={versionId} versionId={versionId} fragmentId={search.get('fragment')} />
       )}

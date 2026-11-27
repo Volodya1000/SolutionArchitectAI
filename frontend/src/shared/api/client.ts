@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { InputValidationError, MESSAGE_LIMIT_HINT } from './validation';
+import { ApiError } from './api-error';
 
 export const scopeKey = [
   'workspace',
@@ -60,11 +61,13 @@ export async function request<T>(
   const response = await sendRequest(path, init);
   if (!response.ok) {
     if (response.status === 422) throw await validationError(response);
-    const message =
-      response.status === 409
-        ? 'В этом чате уже выполняется запрос. Обновите состояние.'
-        : 'Не удалось выполнить запрос. Проверьте подключение и повторите.';
-    throw new Error(message);
+    const body: unknown = await response.json().catch(() => null);
+    const error = z.object({ code: z.string() }).safeParse(body);
+    throw new ApiError(
+      response.status,
+      error.success ? error.data.code : null,
+      'Не удалось выполнить запрос. Проверьте подключение и повторите.',
+    );
   }
   const data: unknown = await response.json();
   return schema.parse(data);

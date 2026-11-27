@@ -4,7 +4,7 @@ import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
-import type { Snapshot } from '../../shared/api/client';
+import { scopeKey, type Snapshot } from '../../shared/api/client';
 import { useChat } from './use-chat';
 
 const active: Snapshot = {
@@ -53,11 +53,12 @@ afterAll(() => server.close());
 function show() {
   vi.stubGlobal('EventSource', TestEventSource);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return renderHook(() => useChat('a'), {
+  const view = renderHook(() => useChat('a'), {
     wrapper: ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     ),
   });
+  return { ...view, client };
 }
 
 it('opens a new stream after a closed connection with the same active run', async () => {
@@ -145,11 +146,60 @@ it('lets slow history recovery finish while repeated stream connections fail', a
 it('does not carry a failed connection warning into the next run', async () => {
   const view = show();
   await waitFor(() => expect(view.result.current.run?.id).toBe('run'));
-  snapshot = { ...active, runs: [{ ...active.runs[0]!, status: 'completed' }] };
+  snapshot = { ...active, runs: [{ ...active.runs[0]!, status: 'completed', sequence: 2 }] };
   act(() => sources[0]!.onerror?.());
   await waitFor(() => expect(view.result.current.run).toBeUndefined());
   snapshot = { ...active, runs: [{ ...active.runs[0]!, id: 'next-run' }] };
   await act(() => view.result.current.query.refetch());
   await waitFor(() => expect(view.result.current.run?.id).toBe('next-run'));
   expect(view.result.current.connectionError).toBe(false);
+});
+
+it('keeps newer SSE text and completion when an older HTTP refresh arrives later', async () => {
+  const { result, client } = show();
+  await waitFor(() => expect(result.current.run?.id).toBe('run'));
+  let release = () => {};
+  const response = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let started = false;
+  server.use(
+    http.get('/api/chats/a', async () => {
+      started = true;
+      await response;
+      return HttpResponse.json(active);
+    }),
+  );
+  let refresh: ReturnType<typeof result.current.query.refetch>;
+  act(() => {
+    refresh = result.current.query.refetch();
+  });
+  await waitFor(() => expect(started).toBe(true));
+  act(() =>
+    sources[0]!.onmessage?.(
+      new MessageEvent('message', {
+        data: JSON.stringify({
+          run_id: 'run',
+          sequence: 2,
+          kind: 'snapshot',
+          payload: {
+            ...active.runs[0],
+            sequence: 2,
+            status: 'completed',
+            content: 'Новый ответ',
+            incomplete: false,
+          },
+        }),
+      }),
+    ),
+  );
+  await waitFor(() => expect(result.current.run).toBeUndefined());
+  release();
+  await act(async () => {
+    await refresh;
+  });
+  expect(client.getQueryData<Snapshot>([...scopeKey, 'chat', 'a'])?.runs[0]?.sequence).toBe(2);
+  expect(result.current.query.data?.messages[0]?.content).toBe('Новый ответ');
+  expect(result.current.query.data?.runs[0]?.sequence).toBe(2);
+  expect(result.current.run).toBeUndefined();
 });

@@ -1,0 +1,326 @@
+.workspace {
+  display: grid;
+  grid-template-columns: 272px minmax(0, 1fr);
+  height: 100dvh;
+}
+
+.sidebar {
+  background: var(--sidebar);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  padding: 27px 18px 17px;
+  min-height: 0;
+}
+
+.brand {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  font-weight: 700;
+  font-size: 16px;
+  line-height: 1.3;
+  padding: 0 8px 32px;
+  letter-spacing: -0.5px;
+}
+
+.brand span {
+  display: block;
+  margin-top: 5px;
+  font-size: 9px;
+  letter-spacing: 2.4px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.brand-icon,
+.project-avatar {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.scope-label,
+.section-label {
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 1.5px;
+  color: var(--muted);
+  padding: 0 10px;
+}
+
+.project-name {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  margin: 15px 8px 24px;
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.project-name small {
+  display: block;
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 2px;
+}
+
+.project-avatar {
+  border-radius: 8px;
+  font-size: 11px;
+  width: 33px;
+  height: 33px;
+  letter-spacing: 1px;
+}
+
+.new-chat {
+  justify-content: flex-start;
+  margin-bottom: 28px;
+}
+
+.section-label {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.section-label span {
+  letter-spacing: 0;
+}
+
+.chat-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.chat-link {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 12px;
+  color: var(--muted);
+  border-radius: 8px;
+  font-size: 13px;
+}
+
+.chat-link span {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chat-link:hover {
+  background: var(--surface);
+}
+
+.chat-link[aria-current='page'] {
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 600;
+}
+
+.sidebar-footer {
+  border-top: 1px solid var(--border);
+  margin-top: 20px;
+  padding: 18px 7px 0;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.sidebar-footer select {
+  margin-left: auto;
+  max-width: 116px;
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 4px;
+}
+
+.workspace > main {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.topbar {
+  min-height: 91px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 17px 36px;
+  background: var(--surface);
+  gap: 16px;
+}
+
+.breadcrumb {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.breadcrumb span {
+  margin: 0 8px;
+  color: var(--border);
+}
+
+.topbar h2 {
+  margin: 3px 0 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.local-badge {
+  font-size: 11px;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.local-badge > span {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  display: inline-block;
+}
+
+.empty-workspace {
+  margin: auto;
+  padding: 50px 30px;
+  text-align: center;
+  max-width: 630px;
+}
+
+.empty-workspace p {
+  color: var(--muted);
+  line-height: 1.9;
+  font-size: 14px;
+  margin-bottom: 25px;
+}
+
+.workspace-navigation {
+  display: grid;
+  gap: 4px;
+  margin: 0 0 20px;
+}
+
+.workspace-content {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 30px clamp(20px, 4vw, 64px) 50px;
+  scroll-behavior: smooth;
+}
+
+.skip-link {
+  position: fixed;
+  left: 15px;
+  top: -100px;
+  z-index: 10;
+  background: var(--surface);
+  padding: 10px;
+}
+
+.skip-link:focus {
+  top: 10px;
+}
+
+@media (max-width: 760px) {
+  .workspace {
+    grid-template-columns: 200px minmax(0, 1fr);
+  }
+  .sidebar {
+    padding: 20px 10px 12px;
+  }
+  .brand {
+    font-size: 12px;
+    gap: 7px;
+  }
+  .brand-icon {
+    width: 30px;
+  }
+  .topbar {
+    padding: 15px 20px;
+  }
+  .local-badge {
+    display: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .workspace {
+    display: flex;
+    flex-direction: column;
+  }
+  .sidebar {
+    max-height: 195px;
+    border-right: 0;
+    border-bottom: 1px solid var(--border);
+    padding: 8px 14px;
+  }
+  .brand {
+    padding: 0;
+  }
+  .brand span,
+  .scope-label,
+  .project-name,
+  .section-label {
+    display: none;
+  }
+  .new-chat {
+    position: absolute;
+    right: 14px;
+    top: 8px;
+    margin: 0;
+    padding: 6px 10px;
+  }
+  .chat-list {
+    flex-direction: row;
+    flex: none;
+    margin-top: 9px;
+    overflow-x: auto;
+  }
+  .workspace-navigation {
+    display: flex;
+    gap: 6px;
+    margin: 7px 0 0;
+  }
+  .workspace-navigation .chat-link {
+    font-size: 11px;
+    padding: 5px 8px;
+  }
+  .workspace-content {
+    padding: 20px 16px 30px;
+  }
+  .chat-link {
+    flex-shrink: 0;
+    padding: 5px 9px;
+  }
+  .sidebar-footer {
+    margin: 5px 0 0;
+    padding: 6px 0 0;
+  }
+  .workspace > main {
+    flex: 1;
+  }
+  .topbar {
+    min-height: 64px;
+    padding: 8px 20px;
+  }
+}

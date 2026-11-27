@@ -1,12 +1,7 @@
 import { z } from 'zod';
 import { resourceRequest } from './resource-client';
+import { ApiError } from './api-error';
 
-export const documentSchema = z.object({
-  file_id: z.string(),
-  task_id: z.string(),
-  name: z.string(),
-  created_at: z.string(),
-});
 export const versionSchema = z.object({
   file_id: z.string(),
   version_id: z.string(),
@@ -16,6 +11,13 @@ export const versionSchema = z.object({
   original_name: z.string(),
   uploaded_at: z.string(),
   task_id: z.string(),
+});
+export const documentSchema = z.object({
+  file_id: z.string(),
+  task_id: z.string(),
+  name: z.string(),
+  created_at: z.string(),
+  latest_version: versionSchema.nullable(),
 });
 export const locatorSchema = z.object({
   kind: z.enum(['lines', 'page', 'paragraph', 'table_cell']),
@@ -43,6 +45,23 @@ export type DocumentVersion = z.infer<typeof versionSchema>;
 export type Locator = z.infer<typeof locatorSchema>;
 export type ParsedDocument = z.infer<typeof parsedSchema>;
 export type UploadCommand = { file: File; fileId: string | null; operationId: string };
+
+const uploadOperationSchema = z.object({
+  operation_id: z.string(),
+  stage: z.enum(['prepared', 'completed']),
+  version: versionSchema,
+});
+export async function readUploadOperation(operationId: string) {
+  try {
+    return await resourceRequest(
+      `/document-uploads/${encodeURIComponent(operationId)}`,
+      uploadOperationSchema,
+    );
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+}
 
 export const documentList = () => resourceRequest('/documents', z.array(documentSchema));
 export const documentVersions = (fileId: string) =>

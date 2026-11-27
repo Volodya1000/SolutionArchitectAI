@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { extractionActive, type Extraction } from '../../shared/api/extractions';
+import { extractionActive, type ExtractionSummary } from '../../shared/api/extractions';
 import { Button } from '../../shared/ui/button';
 
 export function AnalysisActions({
@@ -8,7 +8,7 @@ export function AnalysisActions({
   failed,
   disabled,
 }: {
-  previous: Extraction | undefined;
+  previous: ExtractionSummary | undefined;
   pending: boolean;
   failed: boolean;
   disabled: boolean;
@@ -30,7 +30,7 @@ export function AnalysisActions({
   );
 }
 
-function PreviousAnalysis({ run }: { run: Extraction }) {
+function PreviousAnalysis({ run }: { run: ExtractionSummary }) {
   const active = extractionActive(run);
   return (
     <div>

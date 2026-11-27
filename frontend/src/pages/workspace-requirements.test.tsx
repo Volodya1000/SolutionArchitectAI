@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
@@ -7,6 +7,8 @@ import { MemoryRouter } from 'react-router';
 import { afterAll, afterEach, beforeAll, expect, it } from 'vitest';
 import { ThemeProvider } from '../shared/ui/theme-provider';
 import { Workspace } from './workspace';
+import { mockExtractions } from '../shared/api/extraction-test-fixtures';
+import { sessionStore } from '../shared/ui/session-storage';
 
 const source = {
   file_id: 'file-1',
@@ -49,7 +51,7 @@ const server = setupServer(
   http.get('/api/chats', () => HttpResponse.json([])),
   http.get('/api/model', () => HttpResponse.json({ model: 'fake', available: true })),
   http.get('/api/preferences', () => HttpResponse.json({ theme: 'system' })),
-  http.get('/api/extractions', () => HttpResponse.json([run])),
+  ...mockExtractions([run]),
   http.get('/api/extractions/:id', () => HttpResponse.json(run)),
 );
 beforeAll(() => server.listen({ onUnhandledFrame: 'error' }));
@@ -57,6 +59,7 @@ afterAll(() => server.close());
 afterEach(() => {
   server.resetHandlers();
   localStorage.clear();
+  sessionStore.clear();
 });
 
 function show(path = '/requirements') {
@@ -88,26 +91,24 @@ it.each(['', '   '])(
   'preserves original wording when an unverified source has a blank quote (%j)',
   async (quote) => {
     server.use(
-      http.get('/api/extractions', () =>
-        HttpResponse.json([
-          {
-            ...run,
-            requirements: [
-              {
-                ...run.requirements[0],
-                sources: [
-                  {
-                    ...source,
-                    quote,
-                    status: 'unverified',
-                    reason: 'missing_evidence',
-                  },
-                ],
-              },
-            ],
-          },
-        ]),
-      ),
+      ...mockExtractions([
+        {
+          ...run,
+          requirements: [
+            {
+              ...run.requirements[0],
+              sources: [
+                {
+                  ...source,
+                  quote,
+                  status: 'unverified',
+                  reason: 'missing_evidence',
+                },
+              ],
+            },
+          ],
+        },
+      ]),
     );
     show();
     await screen.findByText('Система сохраняет отчёты.');
@@ -136,20 +137,18 @@ it('filters candidate requirements and links evidence to an exact source version
 
 it('shows unverified sources and incomplete coverage without approving the extraction', async () => {
   server.use(
-    http.get('/api/extractions', () =>
-      HttpResponse.json([
-        {
-          ...run,
-          coverage: { complete: false, total_fragments: 4, processed_fragments: 2 },
-          requirements: [
-            {
-              ...run.requirements[0],
-              sources: [{ ...source, status: 'unverified', reason: 'quote_not_found' }],
-            },
-          ],
-        },
-      ]),
-    ),
+    ...mockExtractions([
+      {
+        ...run,
+        coverage: { complete: false, total_fragments: 4, processed_fragments: 2 },
+        requirements: [
+          {
+            ...run.requirements[0],
+            sources: [{ ...source, status: 'unverified', reason: 'quote_not_found' }],
+          },
+        ],
+      },
+    ]),
   );
   show();
   expect(await screen.findByText(/Неполное покрытие: 2 из 4/)).toBeVisible();
@@ -166,7 +165,7 @@ it('cancels an active extraction and keeps its saved progress visible', async ()
   };
   let cancelled = false;
   server.use(
-    http.get('/api/extractions', () => HttpResponse.json([active])),
+    ...mockExtractions([active]),
     http.get('/api/extractions/:id', () => HttpResponse.json(active)),
     http.post('/api/extractions/:id/cancel', () => {
       cancelled = true;
@@ -190,7 +189,7 @@ it('selects a historical extraction without replacing earlier requirements', asy
     requirements: [{ ...run.requirements[0], normalized_text: 'Старая формулировка сохраняется.' }],
   };
   server.use(
-    http.get('/api/extractions', () => HttpResponse.json([run, old])),
+    ...mockExtractions([run, old]),
     http.get('/api/extractions/:id', ({ params }) =>
       HttpResponse.json(params.id === 'run-old' ? old : run),
     ),
@@ -205,16 +204,34 @@ it('selects a historical extraction without replacing earlier requirements', asy
   expect(screen.queryByText('Система сохраняет отчёты.')).not.toBeInTheDocument();
 });
 
+it('loads another page of compact history without fetching the unselected results', async () => {
+  const history = Array.from({ length: 51 }, (_, index) => ({ ...run, id: `run-${index}` }));
+  let details = 0;
+  server.use(...mockExtractions(history));
+  server.use(
+    http.get('/api/extractions/run-0', () => {
+      details++;
+      return HttpResponse.json({ ...run, id: 'run-0' });
+    }),
+  );
+  show();
+  await screen.findByText('Система сохраняет отчёты.');
+  expect(screen.getByRole('combobox', { name: 'История извлечений' }).children).toHaveLength(50);
+  await userEvent.click(screen.getByRole('button', { name: 'Загрузить ещё анализы' }));
+  await waitFor(() =>
+    expect(screen.getByRole('combobox', { name: 'История извлечений' }).children).toHaveLength(51),
+  );
+  expect(details).toBe(1);
+});
+
 it('keeps errors actionable and displays a typed generation failure', async () => {
-  server.use(http.get('/api/extractions', () => new HttpResponse(null, { status: 503 })));
+  server.use(http.get('/api/extractions/history', () => new HttpResponse(null, { status: 503 })));
   show();
   const error = await screen.findByRole('alert');
   server.use(
-    http.get('/api/extractions', () =>
-      HttpResponse.json([
-        { ...run, status: 'failed', error_code: 'context_too_large', requirements: [] },
-      ]),
-    ),
+    ...mockExtractions([
+      { ...run, status: 'failed', error_code: 'context_too_large', requirements: [] },
+    ]),
   );
   await userEvent.click(within(error).getByRole('button', { name: 'Повторить' }));
   expect(await screen.findByText('Извлечение завершилось ошибкой')).toBeVisible();
@@ -223,30 +240,28 @@ it('keeps errors actionable and displays a typed generation failure', async () =
 
 it('does not invent a document link for a fragment absent from the supplied context', async () => {
   server.use(
-    http.get('/api/extractions', () =>
-      HttpResponse.json([
-        {
-          ...run,
-          requirements: [
-            {
-              ...run.requirements[0],
-              sources: [
-                {
-                  ...source,
-                  file_id: null,
-                  version_id: null,
-                  sha256: null,
-                  locator: null,
-                  fragment_id: 'invented',
-                  status: 'unverified',
-                  reason: 'fragment_not_in_context',
-                },
-              ],
-            },
-          ],
-        },
-      ]),
-    ),
+    ...mockExtractions([
+      {
+        ...run,
+        requirements: [
+          {
+            ...run.requirements[0],
+            sources: [
+              {
+                ...source,
+                file_id: null,
+                version_id: null,
+                sha256: null,
+                locator: null,
+                fragment_id: 'invented',
+                status: 'unverified',
+                reason: 'fragment_not_in_context',
+              },
+            ],
+          },
+        ],
+      },
+    ]),
   );
   show();
   expect(await screen.findByText('Подтверждающий фрагмент недоступен.')).toBeVisible();
@@ -255,14 +270,28 @@ it('does not invent a document link for a fragment absent from the supplied cont
 });
 
 it('refreshes an active extraction until its persisted result is complete', async () => {
+  let reads = 0;
+  let details = 0;
   server.use(
-    http.get('/api/extractions', () =>
-      HttpResponse.json([{ ...run, status: 'running', requirements: [] }]),
+    ...mockExtractions([{ ...run, status: 'running', requirements: [] }]),
+    http.get('/api/extractions/:id', () => {
+      details++;
+      return HttpResponse.json(run);
+    }),
+  );
+  server.use(
+    http.get('/api/extractions/:id/status', () =>
+      HttpResponse.json(++reads < 2 ? { ...run, status: 'running' } : run),
     ),
-    http.get('/api/extractions/:id', () => HttpResponse.json(run)),
+    http.get('/api/extractions/run-1', () => {
+      details++;
+      return HttpResponse.json(run);
+    }),
   );
   show();
   expect(await screen.findByText('Выполняется извлечение…')).toBeVisible();
   expect(await screen.findByText('Извлечение завершено', {}, { timeout: 3000 })).toBeVisible();
-  expect(screen.getByText('Система сохраняет отчёты.')).toBeVisible();
+  expect(await screen.findByText('Система сохраняет отчёты.')).toBeVisible();
+  expect(reads).toBeGreaterThanOrEqual(2);
+  expect(details).toBe(1);
 });

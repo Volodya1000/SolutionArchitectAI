@@ -23,6 +23,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     queryFn: () => request('/preferences', preferencesSchema),
   });
   const save = useMutation({
+    scope: { id: 'theme-preference' },
     mutationFn: (theme: Theme) =>
       request('/preferences', preferencesSchema, {
         method: 'PUT',

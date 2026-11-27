@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { locatorSchema } from './documents';
 import { resourceRequest } from './resource-client';
+import { ApiError } from './api-error';
 
 export const categorySchema = z.enum([
   'functional',
@@ -50,6 +51,16 @@ export const extractionSchema = z.object({
   requirements: z.array(requirementSchema),
 });
 export type Extraction = z.infer<typeof extractionSchema>;
+export const extractionSummarySchema = extractionSchema.omit({
+  coverage: true,
+  requirements: true,
+});
+export type ExtractionSummary = z.infer<typeof extractionSummarySchema>;
+export const extractionPageSchema = z.object({
+  items: z.array(extractionSummarySchema),
+  has_more: z.boolean(),
+});
+export type ExtractionPage = z.infer<typeof extractionPageSchema>;
 export type Requirement = z.infer<typeof requirementSchema>;
 export type SourceRef = z.infer<typeof sourceSchema>;
 export type Category = z.infer<typeof categorySchema>;
@@ -70,9 +81,35 @@ export const categories: Readonly<Record<Category, string>> = {
   gap: 'Информационные пробелы',
   contradiction: 'Противоречия',
 };
-export const extractionList = () => resourceRequest('/extractions', z.array(extractionSchema));
+export const extractionHistory = (offset: number) =>
+  resourceRequest(`/extractions/history?limit=50&offset=${offset}`, extractionPageSchema);
+export const readExtractionStatus = (id: string) =>
+  resourceRequest(`/extractions/${encodeURIComponent(id)}/status`, extractionSummarySchema);
+export const matchingExtractions = (selected: ReadonlySet<string>, scope: string) => {
+  const query = new URLSearchParams({ analysis_scope: scope.trim() });
+  for (const id of [...selected].sort()) query.append('version_ids', id);
+  return resourceRequest(
+    `/extractions/matching?${query.toString()}`,
+    z.object({
+      active: extractionSummarySchema.nullable(),
+      current_completed: extractionSummarySchema.nullable(),
+      latest_completed: extractionSummarySchema.nullable(),
+    }),
+  );
+};
 export const readExtraction = (id: string) =>
   resourceRequest(`/extractions/${encodeURIComponent(id)}`, extractionSchema);
+export async function readExtractionOperation(operationId: string) {
+  try {
+    return await resourceRequest(
+      `/extraction-operations/${encodeURIComponent(operationId)}`,
+      extractionSchema,
+    );
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+}
 export const startExtraction = (command: ExtractionCommand) =>
   resourceRequest('/extractions', extractionSchema, {
     method: 'POST',
@@ -82,6 +119,6 @@ export const cancelExtraction = (id: string) =>
   resourceRequest(`/extractions/${encodeURIComponent(id)}/cancel`, extractionSchema, {
     method: 'POST',
   });
-export function extractionActive(run: Extraction): boolean {
+export function extractionActive(run: Pick<ExtractionSummary, 'status'>): boolean {
   return run.status === 'queued' || run.status === 'running' || run.status === 'cancelling';
 }

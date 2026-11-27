@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { sendRequest } from './client';
+import { ApiError } from './api-error';
 
 const messages: Readonly<Record<string, string>> = {
   not_found: 'Источник недоступен в этой задаче. Указанная версия не заменяется новой.',
@@ -60,7 +61,9 @@ export async function resourceRequest<T>(
   if (!response.ok) {
     const body: unknown = await response.json().catch(() => null);
     const error = z.object({ code: z.string() }).safeParse(body);
-    throw new Error(
+    throw new ApiError(
+      response.status,
+      error.success ? error.data.code : null,
       error.success
         ? errorText(error.data.code)
         : 'Не удалось выполнить запрос. Проверьте подключение и повторите.',

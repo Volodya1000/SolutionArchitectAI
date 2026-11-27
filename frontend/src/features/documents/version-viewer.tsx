@@ -26,7 +26,7 @@ export function VersionViewer({
     queryFn: () => parsedVersion(versionId),
   });
   return (
-    <section className="source-viewer" aria-label={`Версия ${versionId}`}>
+    <section className="surface-card source-viewer" aria-label={`Версия ${versionId}`}>
       <div className="section-heading">
         <h2>Версия {versionId}</h2>
         <a

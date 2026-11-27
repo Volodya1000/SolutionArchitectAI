@@ -1,6 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { scopeKey } from '../../shared/api/client';
-import { cancelExtraction, extractionActive, type Extraction } from '../../shared/api/extractions';
+import {
+  cancelExtraction,
+  extractionActive,
+  type Extraction,
+  type ExtractionSummary,
+} from '../../shared/api/extractions';
+import { recordExtraction } from '../../shared/api/use-extraction-history';
 import { errorText } from '../../shared/api/resource-client';
 import { Button } from '../../shared/ui/button';
 
@@ -13,19 +18,22 @@ const statusText: Readonly<Record<Extraction['status'], string>> = {
   cancelled: 'Извлечение отменено',
 };
 
-export function RunStatus({ run }: { run: Extraction }) {
+export function RunStatus({
+  run,
+  coverage,
+}: {
+  run: ExtractionSummary;
+  coverage: Extraction['coverage'] | undefined;
+}) {
   const client = useQueryClient();
   const cancel = useMutation({
     mutationFn: () => cancelExtraction(run.id),
     onSuccess: (updated) => {
-      client.setQueryData([...scopeKey, 'extraction', run.id], updated);
-      client.setQueryData<Extraction[]>([...scopeKey, 'extractions'], (old = []) =>
-        old.map((item) => (item.id === updated.id ? updated : item)),
-      );
+      recordExtraction(client, updated);
     },
   });
   return (
-    <section className="extraction-status" aria-label="Состояние извлечения">
+    <section className="surface-card extraction-status" aria-label="Состояние извлечения">
       <div className="section-heading">
         <strong role="status">{statusText[run.status]}</strong>
         {extractionActive(run) && (
@@ -46,12 +54,14 @@ export function RunStatus({ run }: { run: Extraction }) {
         value={run.progress.completed_parts}
         max={Math.max(run.progress.total_parts, 1)}
       />
-      <p className={run.coverage.complete ? 'notice' : 'notice evidence-warning'}>
-        {run.coverage.complete
-          ? 'Весь текст документа обработан.'
-          : `Неполное покрытие: ${run.coverage.processed_fragments} из ${run.coverage.total_fragments} фрагментов. Результат может содержать пропуски.`}
-      </p>
-      {(run.coverage.warnings ?? []).map((warning) => (
+      {coverage && (
+        <p className={coverage.complete ? 'notice' : 'notice evidence-warning'}>
+          {coverage.complete
+            ? 'Весь текст документа обработан.'
+            : `Неполное покрытие: ${coverage.processed_fragments} из ${coverage.total_fragments} фрагментов. Результат может содержать пропуски.`}
+        </p>
+      )}
+      {(coverage?.warnings ?? []).map((warning) => (
         <p className="notice evidence-warning" key={warning}>
           {warning === 'cross_part_semantic_review_required'
             ? 'Противоречия между частями документа не проверены.'

@@ -1,0 +1,53 @@
+.requirements-table {
+  min-width: 680px;
+}
+
+.requirements-table th:first-child {
+  width: 22%;
+}
+
+.requirements-table th:nth-child(2) {
+  width: 40%;
+}
+
+.category-label {
+  font-size: 11px;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.extraction-status p {
+  font-size: 12px;
+}
+
+.extraction-status progress {
+  width: 100%;
+  height: 7px;
+  accent-color: var(--accent);
+}
+
+.evidence-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.evidence-list p {
+  margin: 0 0 5px;
+}
+
+.evidence-list li + li {
+  margin-top: 14px;
+}
+
+.candidate-status {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.requirement-text {
+  margin: 0;
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

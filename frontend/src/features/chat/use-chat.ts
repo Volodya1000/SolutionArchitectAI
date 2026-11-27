@@ -1,6 +1,14 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useRef, useState } from 'react';
-import { request, runSchema, scopeKey, snapshotSchema, terminal } from '../../shared/api/client';
+import {
+  request,
+  runSchema,
+  scopeKey,
+  snapshotSchema,
+  terminal,
+  type Snapshot,
+} from '../../shared/api/client';
+import { sessionStore } from '../../shared/ui/session-storage';
 import {
   InputValidationError,
   MESSAGE_LIMIT,
@@ -9,6 +17,7 @@ import {
 } from '../../shared/api/validation';
 import { readPending, savePending } from './pending-command';
 import { subscribeToRun } from './run-events';
+import { reconcileHistory } from './stream';
 
 function useOnline() {
   const [online, setOnline] = useState(navigator.onLine);
@@ -31,6 +40,8 @@ export function useChat(chatId: string) {
   const query = useQuery({
     queryKey: key,
     queryFn: () => request(`/chats/${chatId}`, snapshotSchema),
+    structuralSharing: (current, incoming) =>
+      reconcileHistory(current as Snapshot | undefined, incoming as Snapshot),
   });
   const [failedRunId, setFailedRunId] = useState<string>();
   const pending = useRef(readPending(chatId));
@@ -50,8 +61,7 @@ export function useChat(chatId: string) {
       });
       pending.current = null;
       savePending(chatId, null);
-      if (sessionStorage.getItem(`draft:${chatId}`) === content)
-        sessionStorage.removeItem(`draft:${chatId}`);
+      if (sessionStore.get(`draft:${chatId}`) === content) sessionStore.remove(`draft:${chatId}`);
       return value;
     },
     onError: (error) => {

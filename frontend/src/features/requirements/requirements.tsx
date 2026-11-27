@@ -6,19 +6,21 @@ import {
   categories,
   categorySchema,
   extractionActive,
-  extractionList,
   readExtraction,
   type Category,
-  type Extraction,
+  type ExtractionSummary,
+  type Requirement,
 } from '../../shared/api/extractions';
+import { useExtractionHistory, useExtractionStatus } from '../../shared/api/use-extraction-history';
 import { QueryError } from '../../shared/ui/query-error';
+import { Button } from '../../shared/ui/button';
 import { RequirementTable } from './requirement-table';
 import { RunStatus } from './run-status';
 
 export function Requirements() {
   const [search, setSearch] = useSearchParams();
-  const runs = useQuery({ queryKey: [...scopeKey, 'extractions'], queryFn: extractionList });
-  const selectedId = search.get('run') ?? runs.data?.[0]?.id;
+  const { history, runs } = useExtractionHistory();
+  const selectedId = search.get('run') ?? runs[0]?.id;
   return (
     <div className="workspace-content">
       <div className="page-intro">
@@ -31,27 +33,38 @@ export function Requirements() {
           Выбрать документы для нового анализа
         </Link>
       </div>
-      {runs.isPending && <p role="status">Загружаем историю извлечений…</p>}
-      {runs.isError && (
+      {history.isPending && <p role="status">Загружаем историю извлечений…</p>}
+      {history.isError && (
         <QueryError
-          error={runs.error}
+          error={history.error}
           retry={() => {
-            void runs.refetch();
+            void history.refetch();
           }}
         />
       )}
-      {runs.data && (
+      {history.data && (
         <ExtractionHistory
-          runs={runs.data}
+          runs={runs}
           selectedId={selectedId}
           select={(id) => setSearch({ run: id })}
         />
+      )}
+      {history.hasNextPage && (
+        <Button
+          variant="outline"
+          disabled={history.isFetchingNextPage}
+          onClick={() => {
+            void history.fetchNextPage();
+          }}
+        >
+          Загрузить ещё анализы
+        </Button>
       )}
       {selectedId && (
         <RunPanel
           key={selectedId}
           id={selectedId}
-          initial={runs.data?.find((run) => run.id === selectedId)}
+          initial={runs.find((run) => run.id === selectedId)}
         />
       )}
     </div>
@@ -63,7 +76,7 @@ function ExtractionHistory({
   selectedId,
   select,
 }: {
-  runs: Extraction[];
+  runs: ExtractionSummary[];
   selectedId: string | undefined;
   select: (id: string) => void;
 }) {
@@ -79,6 +92,9 @@ function ExtractionHistory({
         value={selectedId}
         onChange={(event) => select(event.target.value)}
       >
+        {selectedId && !runs.some((run) => run.id === selectedId) && (
+          <option value={selectedId}>Выбранный анализ · {selectedId.slice(0, 8)}</option>
+        )}
         {runs.map((run) => (
           <option key={run.id} value={run.id}>
             {new Date(run.created_at).toLocaleString('ru-RU')} · {run.model}
@@ -89,22 +105,27 @@ function ExtractionHistory({
   );
 }
 
-function RunPanel({ id, initial }: { id: string; initial: Extraction | undefined }) {
-  const [category, setCategory] = useState<Category | 'all'>('all');
+function RunPanel({ id, initial }: { id: string; initial: ExtractionSummary | undefined }) {
+  const status = useExtractionStatus(id, initial);
   const run = useQuery({
     queryKey: [...scopeKey, 'extraction', id],
     queryFn: () => readExtraction(id),
-    initialData: initial,
+    enabled: Boolean(status.data && !extractionActive(status.data)),
     staleTime: Infinity,
-    refetchInterval: (query) =>
-      query.state.data && extractionActive(query.state.data) ? 1000 : false,
   });
-  const requirements = run.data?.requirements.filter(
-    (item) => category === 'all' || item.category === category,
-  );
   return (
     <>
-      {run.isPending && <p role="status">Загружаем результат…</p>}
+      {status.isPending && <p role="status">Загружаем состояние анализа…</p>}
+      {status.isError && (
+        <QueryError
+          error={status.error}
+          retry={() => {
+            void status.refetch();
+          }}
+        />
+      )}
+      {status.data && <RunStatus run={status.data} coverage={run.data?.coverage} />}
+      {run.isFetching && <p role="status">Загружаем результат…</p>}
       {run.isError && (
         <QueryError
           error={run.error}
@@ -113,33 +134,40 @@ function RunPanel({ id, initial }: { id: string; initial: Extraction | undefined
           }}
         />
       )}
-      {run.data && (
-        <>
-          <RunStatus run={run.data} />
-          <div className="section-heading">
-            <label className="field-label">
-              Категория требований
-              <select
-                value={category}
-                onChange={(event) =>
-                  setCategory(
-                    event.target.value === 'all' ? 'all' : categorySchema.parse(event.target.value),
-                  )
-                }
-              >
-                <option value="all">Все категории</option>
-                {Object.entries(categories).map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <span className="notice">Кандидатов: {requirements?.length ?? 0}</span>
-          </div>
-          <RequirementTable requirements={requirements ?? []} />
-        </>
-      )}
+      {run.data && <ExtractionResult candidates={run.data.requirements} />}
+    </>
+  );
+}
+
+function ExtractionResult({ candidates }: { candidates: Requirement[] }) {
+  const [category, setCategory] = useState<Category | 'all'>('all');
+  const requirements = candidates.filter(
+    (item) => category === 'all' || item.category === category,
+  );
+  return (
+    <>
+      <div className="section-heading">
+        <label className="field-label">
+          Категория требований
+          <select
+            value={category}
+            onChange={(event) =>
+              setCategory(
+                event.target.value === 'all' ? 'all' : categorySchema.parse(event.target.value),
+              )
+            }
+          >
+            <option value="all">Все категории</option>
+            {Object.entries(categories).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+        <span className="notice">Кандидатов: {requirements.length}</span>
+      </div>
+      <RequirementTable requirements={requirements} />
     </>
   );
 }

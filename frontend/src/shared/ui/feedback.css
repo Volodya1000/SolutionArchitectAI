@@ -1,0 +1,25 @@
+.notice {
+  font-size: 12px;
+  padding: 8px 0;
+  color: var(--muted);
+}
+
+.error-text {
+  color: #ae3636;
+}
+
+.evidence-warning {
+  color: #9a5b0a;
+}
+
+.dark .evidence-warning {
+  color: #ebbe76;
+}
+
+.evidence-ok {
+  color: var(--accent);
+}
+
+.dark .error-text {
+  color: #ffaaa7;
+}
