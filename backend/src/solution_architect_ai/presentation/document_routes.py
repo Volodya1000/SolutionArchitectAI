@@ -7,7 +7,11 @@ from dishka.integrations.fastapi import DishkaRoute, FromDishka
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse, Response
 
-from solution_architect_ai.application.document_dto import (
+from solution_architect_ai.application.errors.document_errors import (
+    DocumentErrorCode,
+    DocumentFailure,
+)
+from solution_architect_ai.application.models.document_dto import (
     AttachDocument,
     DocumentErrorView,
     DocumentVersionView,
@@ -15,8 +19,7 @@ from solution_architect_ai.application.document_dto import (
     UploadDocument,
     UploadOperationView,
 )
-from solution_architect_ai.application.document_errors import DocumentErrorCode, DocumentFailure
-from solution_architect_ai.application.documents import DocumentService
+from solution_architect_ai.application.services.document_service import DocumentService
 from solution_architect_ai.domain.documents import ParsedDocument
 
 router: APIRouter = APIRouter(prefix="/api", route_class=DishkaRoute)
@@ -79,20 +82,22 @@ async def upload_version(
 
 
 @router.get("/documents/{file_id}/versions")
-async def versions(
+async def list_versions(
     file_id: UUID, service: FromDishka[DocumentService]
 ) -> list[DocumentVersionView]:
-    return await service.versions(file_id)
+    return await service.list_versions(file_id)
 
 
 @router.get("/document-versions/{version_id}")
-async def version(version_id: UUID, service: FromDishka[DocumentService]) -> DocumentVersionView:
-    return await service.version(version_id)
+async def get_version(
+    version_id: UUID, service: FromDishka[DocumentService]
+) -> DocumentVersionView:
+    return await service.get_version(version_id)
 
 
 @router.get("/document-versions/{version_id}/content")
 async def content(version_id: UUID, service: FromDishka[DocumentService]) -> Response:
-    metadata: DocumentVersionView = await service.version(version_id)
+    metadata: DocumentVersionView = await service.get_version(version_id)
     data: bytes = await service.read(version_id)
     return Response(
         data,
@@ -106,31 +111,33 @@ async def content(version_id: UUID, service: FromDishka[DocumentService]) -> Res
 
 
 @router.get("/document-versions/{version_id}/parsed")
-async def parsed(version_id: UUID, service: FromDishka[DocumentService]) -> ParsedDocument:
-    return await service.parsed(version_id)
+async def get_parsed_document(
+    version_id: UUID, service: FromDishka[DocumentService]
+) -> ParsedDocument:
+    return await service.get_parsed_document(version_id)
 
 
 @router.get("/document-uploads/{operation_id}")
-async def operation(
+async def get_upload_operation(
     operation_id: UUID, service: FromDishka[DocumentService]
 ) -> UploadOperationView:
-    return await service.operation(operation_id)
+    return await service.get_upload_operation(operation_id)
 
 
 @router.post("/document-uploads/recover")
 async def recover(service: FromDishka[DocumentService]) -> list[UploadOperationView]:
-    return await service.recover()
+    return await service.recover_uploads()
 
 
 @router.post("/messages/{message_id}/document-versions")
-async def attach(
+async def attach_document(
     message_id: UUID, body: AttachDocument, service: FromDishka[DocumentService]
 ) -> DocumentVersionView:
-    return await service.attach(message_id, body.version_id)
+    return await service.attach_document(message_id, body.version_id)
 
 
 @router.get("/messages/{message_id}/document-versions")
-async def attachments(
+async def list_attachments(
     message_id: UUID, service: FromDishka[DocumentService]
 ) -> list[DocumentVersionView]:
-    return await service.attachments(message_id)
+    return await service.list_attachments(message_id)

@@ -6,9 +6,12 @@ from uuid import uuid4
 
 import pytest
 
-from solution_architect_ai.application.document_errors import DocumentErrorCode, DocumentFailure
-from solution_architect_ai.application.document_ports import StagedFile
-from solution_architect_ai.infrastructure.files import LocalFileStorage
+from solution_architect_ai.application.errors.document_errors import (
+    DocumentErrorCode,
+    DocumentFailure,
+)
+from solution_architect_ai.application.protocols.document_protocols import StagedFile
+from solution_architect_ai.infrastructure.storage.local_files_storage import LocalFileStorage
 
 
 async def chunks(value: bytes) -> AsyncIterator[bytes]:
@@ -18,9 +21,9 @@ async def chunks(value: bytes) -> AsyncIterator[bytes]:
 @pytest.mark.anyio
 async def test_storage_publishes_immutable_verified_content(tmp_path: Path) -> None:
     storage: LocalFileStorage = LocalFileStorage(tmp_path, max_bytes=32)
-    staged: StagedFile = await storage.stage(chunks(b"original"))
+    staged_file: StagedFile = await storage.stage(chunks(b"original"))
     key: str = f"{uuid4()}/{uuid4()}"
-    await storage.publish(staged, key)
+    await storage.publish(staged_file, key)
     assert await storage.read(key, len(b"original"), sha256(b"original").hexdigest()) == b"original"
     replacement: StagedFile = await storage.stage(chunks(b"replacement"))
     with pytest.raises(DocumentFailure):
@@ -35,9 +38,9 @@ async def test_storage_size_traversal_and_corruption_are_rejected(tmp_path: Path
         await storage.stage(chunks(b"too long!"))
     with pytest.raises(DocumentFailure):
         await storage.read("../../private", 1, "0" * 64)
-    staged: StagedFile = await storage.stage(chunks(b"data"))
+    staged_file: StagedFile = await storage.stage(chunks(b"data"))
     key: str = f"{uuid4()}/{uuid4()}"
-    await storage.publish(staged, key)
+    await storage.publish(staged_file, key)
     with pytest.raises(DocumentFailure):
         await storage.read(key, 4, "0" * 64)
     with pytest.raises(DocumentFailure):

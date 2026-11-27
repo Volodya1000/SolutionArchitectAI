@@ -7,13 +7,16 @@ import {
   type Extraction,
   type ExtractionCommand,
 } from '../../shared/api/extractions';
-import { Button } from '../../shared/ui/button';
+import { QueryError } from '../../shared/ui/query-error';
+import { AnalysisActions } from './analysis-actions';
+import { useAnalysisHistory } from './use-analysis-history';
 
 export function AnalysisForm({ selected }: { selected: ReadonlySet<string> }) {
   const [scope, setScope] = useState('');
   const [pending, setPending] = useState<ExtractionCommand | null>(null);
   const navigate = useNavigate();
   const client = useQueryClient();
+  const { history, previous } = useAnalysisHistory(selected, scope);
   const start = useMutation({
     mutationFn: startExtraction,
     onSuccess: async (run) => {
@@ -50,26 +53,49 @@ export function AnalysisForm({ selected }: { selected: ReadonlySet<string> }) {
     >
       <div>
         <h2>Анализ выбранных версий</h2>
-        <p className="notice">
-          Выбрано версий: {selected.size}. Извлечённые кандидаты сохраняются отдельно от чата.
-        </p>
+        <p className="notice">Выбрано версий: {selected.size}.</p>
       </div>
-      <label htmlFor="analysis-scope">Область анализа</label>
-      <textarea
-        id="analysis-scope"
-        value={scope}
-        maxLength={1000}
-        placeholder="Например, требования к сервису отчётности"
-        onChange={(event) => setScope(event.target.value)}
-        disabled={start.isPending}
-      />
+      {selected.size === 0 && (
+        <p className="notice">Выберите документы для анализа с помощью флажков в списке выше.</p>
+      )}
+      <details className="analysis-options">
+        <summary>Уточнить анализ</summary>
+        <p className="notice" id="analysis-scope-help">
+          Это необязательное уточнение для модели. Обычный анализ можно запустить без него.
+        </p>
+        <label className="field-label" htmlFor="analysis-scope">
+          На что обратить внимание (необязательно)
+        </label>
+        <textarea
+          id="analysis-scope"
+          aria-describedby="analysis-scope-help"
+          value={scope}
+          maxLength={1000}
+          placeholder="Например: обратить особое внимание на безопасность и сроки хранения"
+          onChange={(event) => setScope(event.target.value)}
+          disabled={start.isPending}
+        />
+      </details>
       {selected.size > 20 && <p role="alert">Выберите не более 20 версий для одного анализа.</p>}
-      <Button type="submit" disabled={selected.size === 0 || selected.size > 20 || start.isPending}>
-        {start.isPending ? 'Запускаем…' : start.isError ? 'Повторить запуск' : 'Извлечь требования'}
-      </Button>
+      <AnalysisActions
+        previous={previous}
+        pending={start.isPending}
+        failed={start.isError}
+        disabled={
+          selected.size === 0 || selected.size > 20 || start.isPending || !history.isSuccess
+        }
+      />
+      {selected.size > 0 && history.isError && (
+        <QueryError
+          error={history.error}
+          retry={() => {
+            void history.refetch();
+          }}
+        />
+      )}
       {start.isError && (
         <p className="notice error-text" role="alert">
-          {start.error.message} Повтор использует тот же идентификатор операции.
+          {start.error.message} Повтор не создаст дубликат запуска.
         </p>
       )}
     </form>

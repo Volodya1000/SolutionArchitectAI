@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import os
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 from http import HTTPStatus
 from pathlib import Path
@@ -12,13 +12,13 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import TypeAdapter, ValidationError
 
-from solution_architect_ai.application.document_errors import DocumentFailure
-from solution_architect_ai.application.documents import DocumentService
-from solution_architect_ai.application.dto import APIError
-from solution_architect_ai.application.errors import ChatError, Conflict, Missing
-from solution_architect_ai.application.extraction_errors import StoredExtractionCorrupt
-from solution_architect_ai.application.extraction_worker import ExtractionWorker
+from solution_architect_ai.application.errors.chat_errors import ChatError, Conflict, Missing
+from solution_architect_ai.application.errors.document_errors import DocumentFailure
+from solution_architect_ai.application.errors.extraction_errors import StoredExtractionCorrupt
 from solution_architect_ai.application.generation import RunWorker
+from solution_architect_ai.application.models.chat_dto import APIError
+from solution_architect_ai.application.services.document_service import DocumentService
+from solution_architect_ai.application.workflows.extraction_worker import ExtractionWorker
 from solution_architect_ai.config.models import Mode
 from solution_architect_ai.config.settings import Settings, load_settings
 from solution_architect_ai.di.documents import DocumentProvider
@@ -63,7 +63,7 @@ def create_app() -> FastAPI:
     )
 
     @asynccontextmanager
-    async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
+    async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
         try:
             async with workers(container):
                 yield
@@ -82,13 +82,13 @@ def create_app() -> FastAPI:
 
 
 @asynccontextmanager
-async def workers(container: AsyncContainer) -> AsyncIterator[None]:
+async def workers(container: AsyncContainer) -> AsyncGenerator[None]:
     worker: RunWorker = await container.get(RunWorker)
     extraction: ExtractionWorker = await container.get(ExtractionWorker)
     documents: DocumentService = await container.get(DocumentService)
     await worker.recover()
     try:
-        await documents.recover()
+        await documents.recover_uploads()
     except DocumentFailure as error:
         logging.getLogger(__name__).error("document_recovery_pending code=%s", error.code.value)
     group: asyncio.TaskGroup

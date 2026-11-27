@@ -6,8 +6,14 @@ from uuid import uuid4
 
 import pytest
 
-from solution_architect_ai.application.document_errors import DocumentErrorCode, DocumentFailure
-from solution_architect_ai.infrastructure.files import LocalFileStorage, comparison_path
+from solution_architect_ai.application.errors.document_errors import (
+    DocumentErrorCode,
+    DocumentFailure,
+)
+from solution_architect_ai.infrastructure.storage.local_files_storage import (
+    LocalFileStorage,
+    comparison_path,
+)
 
 
 @pytest.mark.skipif(os.name != "nt", reason="Windows extended drive representation")

@@ -8,8 +8,8 @@ from uuid import UUID, uuid4, uuid5
 
 import httpx
 
-from solution_architect_ai.application.document_dto import DocumentVersionView
-from solution_architect_ai.application.extraction_models import ExtractionView
+from solution_architect_ai.application.models.document_dto import DocumentVersionView
+from solution_architect_ai.application.models.extraction_models import ExtractionView
 from solution_architect_ai.domain.runs import RunStatus
 
 MIME_TYPES: Final[dict[str, str]] = {

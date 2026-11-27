@@ -15,16 +15,17 @@ from openai import (
 )
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-from solution_architect_ai.application.structured_errors import (
+from solution_architect_ai.application.errors.structured_errors import (
     StructuredErrorCode,
     StructuredGenerationFailure,
 )
-from solution_architect_ai.application.structured_models import (
+from solution_architect_ai.application.models.structured_models import (
+    StructuredMessage,
     StructuredMode,
     StructuredRequest,
     StructuredResponse,
 )
-from solution_architect_ai.application.structured_prompt import render_messages
+from solution_architect_ai.application.prompts.structured_prompt import render_messages
 from solution_architect_ai.domain.messages import MessageRole
 from solution_architect_ai.infrastructure.llm import retry_after_seconds
 
@@ -60,6 +61,7 @@ def status_failure(error: APIStatusError) -> StructuredGenerationFailure:
 
 def messages_for(request: StructuredRequest, schema: type[BaseModel]) -> list[BaseMessage]:
     messages: list[BaseMessage] = []
+    message: StructuredMessage
     for message in render_messages(request, schema):
         if message.role == MessageRole.SYSTEM:
             messages.append(SystemMessage(message.content))

@@ -4,7 +4,7 @@ import { Link } from 'react-router';
 import { scopeKey } from '../../shared/api/client';
 import { documentVersions, type Document, type DocumentVersion } from '../../shared/api/documents';
 import { Button } from '../../shared/ui/button';
-import { QueryError } from '../../shared/ui/query-error';
+import { LatestVersionChoice } from './latest-version-choice';
 import { UploadForm } from './upload-form';
 
 export function DocumentCard({
@@ -20,7 +20,6 @@ export function DocumentCard({
   const versions = useQuery({
     queryKey: [...scopeKey, 'documents', document.file_id, 'versions'],
     queryFn: () => documentVersions(document.file_id),
-    enabled: expanded,
   });
   return (
     <article className="document-card">
@@ -40,17 +39,14 @@ export function DocumentCard({
           История версий
         </Button>
       </div>
+      <LatestVersionChoice
+        query={versions}
+        selected={selected}
+        toggle={toggle}
+        name={document.name}
+      />
       {expanded && (
         <>
-          {versions.isPending && <p role="status">Загружаем версии…</p>}
-          {versions.isError && (
-            <QueryError
-              error={versions.error}
-              retry={() => {
-                void versions.refetch();
-              }}
-            />
-          )}
           {versions.data && (
             <div className="table-scroll">
               <table className="workspace-table">

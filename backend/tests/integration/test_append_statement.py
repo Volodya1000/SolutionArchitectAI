@@ -8,9 +8,9 @@ from dishka import AsyncContainer, make_async_container
 from sqlalchemy import event, text
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, async_sessionmaker
 
-from solution_architect_ai.application.dto import ChatView, RunView, StartRun
-from solution_architect_ai.application.errors import Missing
-from solution_architect_ai.application.ports import ChatStore, StoreFactory
+from solution_architect_ai.application.errors.chat_errors import Missing
+from solution_architect_ai.application.models.chat_dto import ChatView, RunView, StartRun
+from solution_architect_ai.application.protocols.chat_protocols import ChatStore, StoreFactory
 from solution_architect_ai.config.settings import Settings
 from solution_architect_ai.di.main import bootstrap
 from solution_architect_ai.di.providers import AppProvider

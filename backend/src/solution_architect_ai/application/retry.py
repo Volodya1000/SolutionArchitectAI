@@ -10,7 +10,7 @@ from tenacity import (
 )
 from tenacity.asyncio.retry import retry_if_exception
 
-from solution_architect_ai.application.errors import GenerationFailure
+from solution_architect_ai.application.errors.chat_errors import GenerationFailure
 
 
 @dataclass(frozen=True)

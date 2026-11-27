@@ -14,25 +14,28 @@ from fastapi import FastAPI
 from pydantic import TypeAdapter
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from solution_architect_ai.application.document_dto import (
+from solution_architect_ai.application.errors.chat_errors import ChatError
+from solution_architect_ai.application.errors.document_errors import DocumentFailure
+from solution_architect_ai.application.models.chat_dto import ChatSnapshot, ChatView, StartRun
+from solution_architect_ai.application.models.document_dto import (
     DocumentErrorView,
     DocumentVersionView,
     DocumentView,
     UploadOperationView,
 )
-from solution_architect_ai.application.document_errors import DocumentFailure
-from solution_architect_ai.application.document_ports import DocumentStoreFactory
-from solution_architect_ai.application.documents import PARSED_DOCUMENT, DocumentService
-from solution_architect_ai.application.dto import ChatSnapshot, ChatView, StartRun
-from solution_architect_ai.application.errors import ChatError
-from solution_architect_ai.application.ports import ChatStore
+from solution_architect_ai.application.protocols.chat_protocols import ChatStore
+from solution_architect_ai.application.protocols.document_protocols import DocumentStoreFactory
+from solution_architect_ai.application.services.document_identity import PARSED_DOCUMENT
+from solution_architect_ai.application.services.document_service import DocumentService
 from solution_architect_ai.config.settings import Settings
 from solution_architect_ai.di.main import bootstrap, chat_error
 from solution_architect_ai.di.providers import AppProvider
 from solution_architect_ai.domain.documents import ParsedDocument
-from solution_architect_ai.infrastructure.document_parser import DocumentParser
-from solution_architect_ai.infrastructure.files import LocalFileStorage
-from solution_architect_ai.persistence.document_factory import SqlAlchemyDocumentStoreFactory
+from solution_architect_ai.infrastructure.parsers.document_parser import DocumentParser
+from solution_architect_ai.infrastructure.storage.local_files_storage import LocalFileStorage
+from solution_architect_ai.persistence.documents.document_factory import (
+    SqlAlchemyDocumentStoreFactory,
+)
 from solution_architect_ai.persistence.factory import SqlAlchemyStoreFactory
 from solution_architect_ai.presentation.document_routes import document_error, router
 

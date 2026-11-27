@@ -65,6 +65,150 @@ function show(path = '/documents') {
   );
 }
 
+const completedRun = {
+  id: 'completed-run',
+  status: 'completed',
+  progress: { completed_parts: 1, total_parts: 1 },
+  error_code: null,
+  created_at: '2026-11-26T12:00:00Z',
+  model: 'fake',
+  coverage: { complete: true, total_fragments: 1, processed_fragments: 1 },
+  requirements: [],
+  version_ids: ['v1'],
+  analysis_scope: '',
+  configuration_current: true,
+};
+
+async function selectVersion() {
+  await userEvent.click(await screen.findByRole('button', { name: 'История версий BRD.md' }));
+  await userEvent.click(await screen.findByRole('checkbox', { name: 'Анализировать BRD.md · v1' }));
+}
+
+it('selects the latest version directly without opening history or entering model instructions', async () => {
+  let command: unknown;
+  server.use(
+    http.get('/api/documents/:id/versions', () =>
+      HttpResponse.json([
+        { ...version, version_id: 'v2', uploaded_at: '2026-11-27T12:00:00Z' },
+        version,
+      ]),
+    ),
+    http.post('/api/extractions', async ({ request }) => {
+      command = await request.json();
+      return HttpResponse.json({
+        ...completedRun,
+        id: 'latest-run',
+        status: 'queued',
+        version_ids: ['v2'],
+      });
+    }),
+  );
+  show();
+  const start = screen.getByRole('button', { name: 'Извлечь требования' });
+  expect(start).toBeDisabled();
+  expect(
+    screen.getByText('Выберите документы для анализа с помощью флажков в списке выше.'),
+  ).toBeVisible();
+  expect(
+    screen.getByText('Доступные расширения: .txt, .md, .markdown, .pdf, .docx.'),
+  ).toBeVisible();
+  expect(await screen.findByRole('button', { name: 'История версий BRD.md' })).toHaveAttribute(
+    'aria-expanded',
+    'false',
+  );
+  await userEvent.click(
+    await screen.findByRole('checkbox', { name: 'Выбрать последнюю версию BRD.md' }),
+  );
+  expect(start).toBeEnabled();
+  expect(await screen.findByRole('button', { name: 'История версий BRD.md' })).toHaveAttribute(
+    'aria-expanded',
+    'false',
+  );
+  expect(screen.getByLabelText('На что обратить внимание (необязательно)')).not.toBeVisible();
+  await userEvent.click(start);
+  expect(await screen.findByRole('heading', { name: 'Требования', level: 1 })).toBeVisible();
+  expect(command).toMatchObject({ version_ids: ['v2'], analysis_scope: '' });
+});
+
+it('opens an existing result without generating another extraction', async () => {
+  let requests = 0;
+  server.use(
+    http.get('/api/extractions', () => HttpResponse.json([completedRun])),
+    http.get('/api/extractions/:id', () => HttpResponse.json(completedRun)),
+    http.post('/api/extractions', () => {
+      requests += 1;
+      return HttpResponse.error();
+    }),
+  );
+  show();
+  await selectVersion();
+  expect(
+    await screen.findByText('Документы, область анализа и настройки не изменились.'),
+  ).toBeVisible();
+  await userEvent.click(screen.getByRole('link', { name: 'Открыть результат' }));
+  expect(await screen.findByRole('heading', { name: 'Требования', level: 1 })).toBeVisible();
+  expect(requests).toBe(0);
+});
+
+it('explicitly repeats analysis and preserves the previous result', async () => {
+  let command: unknown;
+  server.use(
+    http.get('/api/extractions', () => HttpResponse.json([completedRun])),
+    http.post('/api/extractions', async ({ request }) => {
+      command = await request.json();
+      return HttpResponse.json({ ...completedRun, id: 'repeat-run', status: 'queued' });
+    }),
+  );
+  show();
+  await selectVersion();
+  await userEvent.click(await screen.findByRole('button', { name: 'Повторить анализ' }));
+  expect(await screen.findByRole('heading', { name: 'Требования', level: 1 })).toBeVisible();
+  expect(command).toMatchObject({ version_ids: ['v1'], analysis_scope: '' });
+  expect(screen.getByRole('combobox', { name: 'История извлечений' }).children).toHaveLength(2);
+});
+
+it('starts a new analysis for a changed scope or server configuration', async () => {
+  server.use(
+    http.get('/api/extractions', () =>
+      HttpResponse.json([{ ...completedRun, configuration_current: false }]),
+    ),
+  );
+  show();
+  await selectVersion();
+  expect(
+    await screen.findByText('Настройки анализа изменились. Можно получить новый результат.'),
+  ).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Извлечь требования' })).toBeEnabled();
+  expect(
+    screen.queryByText('Документы, область анализа и настройки не изменились.'),
+  ).not.toBeInTheDocument();
+  await userEvent.click(screen.getByText('Уточнить анализ'));
+  await userEvent.type(
+    screen.getByRole('textbox', { name: 'На что обратить внимание (необязательно)' }),
+    'Данные',
+  );
+  expect(screen.queryByRole('link', { name: 'Открыть результат' })).not.toBeInTheDocument();
+});
+
+it('opens a matching active analysis without offering a duplicate launch', async () => {
+  server.use(
+    http.get('/api/extractions', () => HttpResponse.json([{ ...completedRun, status: 'running' }])),
+  );
+  show();
+  await selectVersion();
+  expect(await screen.findByRole('link', { name: 'Открыть анализ' })).toBeVisible();
+  expect(screen.queryByRole('button', { name: 'Повторить анализ' })).not.toBeInTheDocument();
+  expect(screen.queryByRole('button', { name: 'Извлечь требования' })).not.toBeInTheDocument();
+});
+
+it('does not silently allow another extraction when history is unavailable', async () => {
+  server.use(http.get('/api/extractions', () => new HttpResponse(null, { status: 503 })));
+  show();
+  await selectVersion();
+  expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось выполнить запрос');
+  expect(screen.getByRole('button', { name: 'Извлечь требования' })).toBeDisabled();
+});
+
 it('uploads a document and retries a lost response with the same operation', async () => {
   const operations: string[] = [];
   const contentTypes: (string | null)[] = [];
@@ -146,14 +290,13 @@ it('selects an exact version and starts extraction without a chat', async () => 
   show();
   await userEvent.click(await screen.findByRole('button', { name: 'История версий BRD.md' }));
   await userEvent.click(await screen.findByRole('checkbox', { name: 'Анализировать BRD.md · v1' }));
+  await userEvent.click(screen.getByText('Уточнить анализ'));
   await userEvent.type(
-    screen.getByRole('textbox', { name: 'Область анализа' }),
+    screen.getByRole('textbox', { name: 'На что обратить внимание (необязательно)' }),
     'Сервис отчётности',
   );
   await userEvent.click(screen.getByRole('button', { name: 'Извлечь требования' }));
-  expect(
-    await screen.findByRole('heading', { name: 'A-01 · Реестр требований', level: 1 }),
-  ).toBeVisible();
+  expect(await screen.findByRole('heading', { name: 'Требования', level: 1 })).toBeVisible();
   expect(command).toMatchObject({
     version_ids: ['v1'],
     analysis_scope: 'Сервис отчётности',
@@ -178,11 +321,11 @@ it('renders document and version load errors with retry controls', async () => {
   show();
   const error = await screen.findByRole('alert');
   expect(error).toHaveTextContent('Не удалось выполнить запрос');
-  server.use(http.get('/api/documents', () => HttpResponse.json([document])));
-  await userEvent.click(within(error).getByRole('button', { name: 'Повторить' }));
   server.use(
+    http.get('/api/documents', () => HttpResponse.json([document])),
     http.get('/api/documents/:id/versions', () => new HttpResponse(null, { status: 503 })),
   );
+  await userEvent.click(within(error).getByRole('button', { name: 'Повторить' }));
   await userEvent.click(await screen.findByRole('button', { name: 'История версий BRD.md' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось выполнить запрос');
 });
@@ -231,13 +374,9 @@ it('retries the same extraction operation after a lost response', async () => {
   await userEvent.click(await screen.findByRole('button', { name: 'История версий BRD.md' }));
   await userEvent.click(await screen.findByRole('checkbox', { name: 'Анализировать BRD.md · v1' }));
   await userEvent.click(screen.getByRole('button', { name: 'Извлечь требования' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent(
-    'Повтор использует тот же идентификатор операции.',
-  );
+  expect(await screen.findByRole('alert')).toHaveTextContent('Повтор не создаст дубликат запуска.');
   await userEvent.click(screen.getByRole('button', { name: 'Повторить запуск' }));
-  expect(await screen.findByRole('alert')).toHaveTextContent(
-    'Повтор использует тот же идентификатор операции.',
-  );
+  expect(await screen.findByRole('alert')).toHaveTextContent('Повтор не создаст дубликат запуска.');
   expect(commands).toHaveLength(2);
   expect(commands[1]).toEqual(commands[0]);
 });

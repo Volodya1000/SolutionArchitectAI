@@ -8,10 +8,18 @@ from uuid import UUID
 from tenacity import AsyncRetrying
 
 from solution_architect_ai.application.capacity import GenerationCapacity
-from solution_architect_ai.application.context import select_context
-from solution_architect_ai.application.dto import ChatSnapshot, MessageView, PendingRun, RunView
-from solution_architect_ai.application.errors import GenerationFailure, StorageUnavailable
-from solution_architect_ai.application.ports import (
+from solution_architect_ai.application.context.chat_context_builder import select_context
+from solution_architect_ai.application.errors.chat_errors import (
+    GenerationFailure,
+    StorageUnavailable,
+)
+from solution_architect_ai.application.models.chat_dto import (
+    ChatSnapshot,
+    MessageView,
+    PendingRun,
+    RunView,
+)
+from solution_architect_ai.application.protocols.chat_protocols import (
     LLM,
     ChatStore,
     Chunk,

@@ -8,9 +8,13 @@ from docx.document import Document as DocxDocument
 from docx.table import Table
 from pypdf import PdfWriter
 
-from solution_architect_ai.application.document_errors import DocumentErrorCode, DocumentFailure
+from solution_architect_ai.application.errors.document_errors import (
+    DocumentErrorCode,
+    DocumentFailure,
+)
 from solution_architect_ai.domain.documents import DocumentFragment, LocatorKind, ParsedDocument
-from solution_architect_ai.infrastructure.document_parser import DOCX_MIME, DocumentParser
+from solution_architect_ai.infrastructure.parsers.document_parser import DocumentParser
+from solution_architect_ai.infrastructure.parsers.document_validator import DOCX_MIME
 
 
 def docx_bytes(document: DocxDocument) -> bytes:

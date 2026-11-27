@@ -87,9 +87,13 @@ const locatorLabels: Readonly<Record<Locator['kind'], string>> = {
   table_cell: 'Ячейка таблицы',
 };
 export function locatorText(locator: Locator): string {
+  const label =
+    locator.kind === 'lines' && locator.start === locator.end
+      ? 'Строка'
+      : locatorLabels[locator.kind];
   const range =
     locator.start === locator.end ? `${locator.start}` : `${locator.start}–${locator.end}`;
-  return `${locatorLabels[locator.kind]} ${range}${locator.section ? ` · ${locator.section}` : ''}${locator.path ? ` · ${locator.path}` : ''}`;
+  return `${label} ${range}${locator.section ? ` · ${locator.section}` : ''}${locator.path ? ` · ${locator.path}` : ''}`;
 }
 
 export function parserWarningText(warning: string): string {

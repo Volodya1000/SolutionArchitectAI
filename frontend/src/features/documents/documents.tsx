@@ -31,10 +31,7 @@ export function Documents() {
       </div>
       <section className="document-card" aria-label="Загрузка документа">
         <UploadForm />
-        <p className="notice">
-          TXT и Markdown. PDF и DOCX доступны только в пределах возможностей парсера; предупреждения
-          показаны при просмотре.
-        </p>
+        <p className="notice">Доступные расширения: .txt, .md, .markdown, .pdf, .docx.</p>
       </section>
       {documents.isPending && <p role="status">Загружаем документы…</p>}
       {documents.isError && (

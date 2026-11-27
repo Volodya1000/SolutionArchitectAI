@@ -8,9 +8,13 @@ from docx.document import Document as DocxDocument
 from docx.oxml import parse_xml
 from docx.section import _Footer, _Header
 
-from solution_architect_ai.application.document_errors import DocumentErrorCode, DocumentFailure
+from solution_architect_ai.application.errors.document_errors import (
+    DocumentErrorCode,
+    DocumentFailure,
+)
 from solution_architect_ai.domain.documents import ParsedDocument
-from solution_architect_ai.infrastructure.document_parser import DOCX_MIME, DocumentParser
+from solution_architect_ai.infrastructure.parsers.document_parser import DocumentParser
+from solution_architect_ai.infrastructure.parsers.document_validator import DOCX_MIME
 
 
 def saved_document(document: DocxDocument) -> bytes:

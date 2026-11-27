@@ -16,19 +16,12 @@ import httpx
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
-from solution_architect_ai.application.extraction_models import RequirementsExtraction
-from solution_architect_ai.application.extraction_prompt import SYSTEM_PROMPT
-from solution_architect_ai.application.ports import TokenCounter
-from solution_architect_ai.application.retry import GenerationPolicy
-from solution_architect_ai.application.structured import (
-    StructuredOutputGenerator,
-    validate_response,
-)
-from solution_architect_ai.application.structured_errors import (
+from solution_architect_ai.application.errors.structured_errors import (
     StructuredErrorCode,
     StructuredGenerationFailure,
 )
-from solution_architect_ai.application.structured_models import (
+from solution_architect_ai.application.models.extraction_models import RequirementsExtraction
+from solution_architect_ai.application.models.structured_models import (
     ExecutionBudget,
     ModelProfile,
     StructuredMessage,
@@ -36,6 +29,15 @@ from solution_architect_ai.application.structured_models import (
     StructuredModel,
     StructuredRequest,
     StructuredResponse,
+)
+from solution_architect_ai.application.prompts.extraction_prompt import SYSTEM_PROMPT
+from solution_architect_ai.application.protocols.chat_protocols import TokenCounter
+from solution_architect_ai.application.retry import GenerationPolicy
+from solution_architect_ai.application.services.structured_output_generator import (
+    StructuredOutputGenerator,
+)
+from solution_architect_ai.application.validation.structured_response_validator import (
+    validate_response,
 )
 from solution_architect_ai.domain.messages import MessageRole
 from solution_architect_ai.infrastructure.context import LangChainTokenCounter

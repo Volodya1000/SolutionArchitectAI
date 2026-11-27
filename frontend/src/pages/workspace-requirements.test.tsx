@@ -72,14 +72,59 @@ function show(path = '/requirements') {
   );
 }
 
+it('shows the original source quote once and keeps technical metadata behind disclosure', async () => {
+  show();
+  const row = (await screen.findByText('Система сохраняет отчёты.')).closest('tr');
+  if (!row) throw new Error('Requirement row is missing');
+  expect(within(row).queryByText('Исходная формулировка')).not.toBeInTheDocument();
+  await userEvent.click(within(row).getByText('Цитата из документа'));
+  expect(within(row).getAllByText(source.quote)).toHaveLength(1);
+  expect(within(row).getByText('SHA-256: abc123')).not.toBeVisible();
+  await userEvent.click(within(row).getByText('Технические сведения'));
+  expect(within(row).getByText('SHA-256: abc123')).toBeVisible();
+});
+
+it.each(['', '   '])(
+  'preserves original wording when an unverified source has a blank quote (%j)',
+  async (quote) => {
+    server.use(
+      http.get('/api/extractions', () =>
+        HttpResponse.json([
+          {
+            ...run,
+            requirements: [
+              {
+                ...run.requirements[0],
+                sources: [
+                  {
+                    ...source,
+                    quote,
+                    status: 'unverified',
+                    reason: 'missing_evidence',
+                  },
+                ],
+              },
+            ],
+          },
+        ]),
+      ),
+    );
+    show();
+    await screen.findByText('Система сохраняет отчёты.');
+    await userEvent.click(screen.getByText('Исходная формулировка'));
+    expect(screen.getByText('Сохранять отчёты')).toBeVisible();
+    expect(screen.queryByText('Цитата из документа')).not.toBeInTheDocument();
+  },
+);
+
 it('filters candidate requirements and links evidence to an exact source version', async () => {
   show();
   expect(await screen.findByText('Система сохраняет отчёты.')).toBeVisible();
   expect(screen.getByText('Срок хранения отчётов не определён.')).toBeVisible();
-  expect(screen.getAllByText('Кандидат · требует проверки человеком')).toHaveLength(2);
-  const evidence = screen.getByRole('link', { name: 'Открыть источник · Строки 2 · Функции' });
+  expect(screen.queryByText('req-1')).not.toBeInTheDocument();
+  const evidence = screen.getByRole('link', { name: 'Источник · Строка 2 · Функции' });
   expect(evidence).toHaveAttribute('href', '/documents?version=v1&fragment=fragment-1');
-  expect(screen.getByText('Ссылка технически проверена')).toBeVisible();
+  expect(screen.queryByText('Ссылка технически проверена')).not.toBeInTheDocument();
   expect(screen.getByText('Источник не подтверждён')).toBeVisible();
   await userEvent.selectOptions(
     screen.getByRole('combobox', { name: 'Категория требований' }),
@@ -108,8 +153,8 @@ it('shows unverified sources and incomplete coverage without approving the extra
   );
   show();
   expect(await screen.findByText(/Неполное покрытие: 2 из 4/)).toBeVisible();
-  expect(screen.getByText('Неподтверждённый источник · quote_not_found')).toBeVisible();
-  expect(screen.getByText('Кандидат · требует проверки человеком')).toBeVisible();
+  expect(screen.getByText('Цитата не подтверждена исходным текстом.')).toBeVisible();
+  expect(screen.getByText(/кандидаты для проверки/)).toBeVisible();
 });
 
 it('cancels an active extraction and keeps its saved progress visible', async () => {
@@ -205,8 +250,8 @@ it('does not invent a document link for a fragment absent from the supplied cont
   );
   show();
   expect(await screen.findByText('Подтверждающий фрагмент недоступен.')).toBeVisible();
-  expect(screen.getByText('Неподтверждённый источник · fragment_not_in_context')).toBeVisible();
-  expect(screen.queryByRole('link', { name: /Открыть источник/ })).not.toBeInTheDocument();
+  expect(screen.getByText('Цитата не подтверждена исходным текстом.')).toBeVisible();
+  expect(screen.queryByRole('link', { name: /Источник/ })).not.toBeInTheDocument();
 });
 
 it('refreshes an active extraction until its persisted result is complete', async () => {

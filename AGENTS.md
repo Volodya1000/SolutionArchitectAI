@@ -26,3 +26,24 @@
 - Use `uv run --locked --project backend python -m tools.quality setup` to install local hooks. `fast` is the pre-commit gate; `full` is the pre-push and CI gate. See the quality plan for scope and prerequisites; do not bypass failed hooks to publish changes.
 - Add explicit types to handwritten backend source, migrations, tests and `tools/`: parameters, returns, assignment targets, attributes and constants (`Final` where appropriate). Keep `Any` and unvalidated boundary values out of application code. Respect syntax limits for Enum members, comprehensions and pattern bindings; use existing Ruff/Mypy gates and review local annotation coverage.
 - Update the root `CHANGELOG.md` under Unreleased for significant user-facing or technical changes. Do not invent a release version before a release.
+
+## Backend naming and structure
+
+- Prefer names that explain the object or action without surrounding context:
+  `files_storage`, `document_parser`, `staged_file`, `requirements_extraction_agent`.
+  Avoid generic dependency names such as `files`, `parser`, `agent` or `parts`
+  when the domain meaning is otherwise unclear.
+- Name classes and modules after their responsibility (`DocumentService`,
+  `ExtractionContextBuilder`, `StructuredOutputGenerator`). Use verb-and-object
+  method names such as `get_parsed_document`, `get_upload_operation`,
+  `recover_uploads` and `attach_document`.
+- Name interface modules `*_protocols.py`, rather than `*_ports.py`. Group related
+  models, errors, prompts, protocols, agents, validation and workflow phases into
+  focused packages as the layer grows. Avoid packages containing only a trivial file.
+- Keep use-case orchestration in application services and database access in
+  persistence stores. A service coordinating storage and parsing is not a repository.
+- Prefer domain enums and typed dataclasses/DTOs over repeated string literals and
+  unstructured dictionaries. Keep framework-required mappings at adapter boundaries.
+- Retain explicit local annotations, including obvious assignment types; the user
+  confirmed this preference during the PR 2 review. Annotate asynchronous generators
+  with `AsyncGenerator`, and iterator inputs/contracts with `AsyncIterator` as appropriate.

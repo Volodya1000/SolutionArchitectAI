@@ -72,7 +72,7 @@ export function Workspace() {
             aria-current={section === 'requirements' ? 'page' : undefined}
           >
             <ListChecks size={16} />
-            A-01 · Требования
+            Требования
           </Link>
         </nav>
         <Button className="new-chat" onClick={() => create.mutate()} disabled={create.isPending}>

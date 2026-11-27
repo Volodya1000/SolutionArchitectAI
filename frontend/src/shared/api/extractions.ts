@@ -38,6 +38,9 @@ export const extractionSchema = z.object({
   error_code: z.string().nullable(),
   created_at: z.string(),
   model: z.string(),
+  version_ids: z.array(z.string()).default([]),
+  analysis_scope: z.string().default(''),
+  configuration_current: z.boolean().default(false),
   coverage: z.object({
     complete: z.boolean(),
     total_fragments: z.number(),

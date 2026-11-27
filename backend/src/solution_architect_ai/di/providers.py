@@ -1,5 +1,5 @@
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncGenerator
 from contextlib import AsyncExitStack
 from hashlib import sha256
 
@@ -16,10 +16,15 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from solution_architect_ai.application.capacity import GenerationCapacity
-from solution_architect_ai.application.chat import ChatService
 from solution_architect_ai.application.generation import RunWorker
-from solution_architect_ai.application.ports import LLM, ResourceProbe, StoreFactory, TokenCounter
+from solution_architect_ai.application.protocols.chat_protocols import (
+    LLM,
+    ResourceProbe,
+    StoreFactory,
+    TokenCounter,
+)
 from solution_architect_ai.application.retry import GenerationPolicy
+from solution_architect_ai.application.services.chat_service import ChatService
 from solution_architect_ai.config.models import DatabaseSettings, LLMSettings
 from solution_architect_ai.config.settings import Settings
 from solution_architect_ai.infrastructure.context import LangChainTokenCounter
@@ -44,7 +49,7 @@ class AppProvider(Provider):
     settings: CompositeDependencySource = from_context(Settings, scope=Scope.APP)
 
     @provide(scope=Scope.APP)
-    async def engine(self, settings: Settings) -> AsyncIterator[AsyncEngine]:
+    async def engine(self, settings: Settings) -> AsyncGenerator[AsyncEngine]:
         engine: AsyncEngine = create_async_engine(
             database_url(settings),
             pool_pre_ping=True,
@@ -66,7 +71,7 @@ class AppProvider(Provider):
         return SqlAlchemyStoreFactory(sessions)
 
     @provide(scope=Scope.APP)
-    async def llm(self, settings: Settings) -> AsyncIterator[LLM]:
+    async def llm(self, settings: Settings) -> AsyncGenerator[LLM]:
         profile: LLMSettings = settings.llm
         stack: AsyncExitStack
         async with AsyncExitStack() as stack:

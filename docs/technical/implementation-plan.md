@@ -18,7 +18,7 @@ Python Domain Model с разрешёнными операциями и инва
 
 ## 3. Первый сквозной граф: извлечение → вопрос → ответ → возобновление
 
-Ввести `StructuredOutputGenerator` на LangChain/Pydantic, `RetryConfig`, раздельные Python-промпты, ContextBuilder, RequirementsExtractionAgent и ClarificationAgent. `StateGraph` и `AsyncPostgresSaver` сохраняют процесс, `interrupt()` ждёт ответа архитектора, `AnswerClarification` проверяет права/ревизию, затем граф возобновляется. GraphState хранит ссылки и версии, Application — предметные операции. Никакой второй машины стадий.
+Ввести `StructuredOutputGenerator` на LangChain/Pydantic, `RetryConfig`, раздельные Python-промпты, ExtractionContextBuilder, RequirementsExtractionAgent и ClarificationAgent. `StateGraph` и `AsyncPostgresSaver` сохраняют процесс, `interrupt()` ждёт ответа архитектора, `AnswerClarification` проверяет права/ревизию, затем граф возобновляется. GraphState хранит ссылки и версии, Application — предметные операции. Никакой второй машины стадий.
 
 Готовность: вопросы и source refs не теряются после restart; закрытые вопросы не дублируются; новая входная ревизия снимает актуальность только с затронутых результатов после Diff требований, неоднозначные соответствия подтверждает архитектор; повтор узла безопасен. Профили выбранных локальных моделей и vLLM проверяются отдельно. Интеграционные испытания с реально выбранными моделями/серверами должны проверить native JSON Schema, невалидный JSON/Pydantic, корректирующую генерацию, отказ от скрытого Tool Calling, общий бюджет retry/deadline, timeout/rate limit/cancel и освобождение async-ресурсов. Эти испытания ещё не выполнены.
 

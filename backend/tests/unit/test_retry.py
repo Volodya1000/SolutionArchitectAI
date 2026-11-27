@@ -4,7 +4,7 @@ from typing import Final
 import pytest
 from tenacity import AsyncRetrying
 
-from solution_architect_ai.application.errors import GenerationFailure
+from solution_architect_ai.application.errors.chat_errors import GenerationFailure
 from solution_architect_ai.application.retry import GenerationPolicy
 from solution_architect_ai.domain.runs import RunErrorCode
 

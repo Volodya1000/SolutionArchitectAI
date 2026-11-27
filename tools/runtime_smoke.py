@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import BinaryIO, Final
 from uuid import UUID, uuid4
 
-from solution_architect_ai.application.dto import (
+from solution_architect_ai.application.models.chat_dto import (
     ChatSnapshot,
     ChatView,
     HealthStatus,

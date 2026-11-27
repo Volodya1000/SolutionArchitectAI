@@ -4,8 +4,8 @@ import httpx
 import pytest
 from langchain_openai import ChatOpenAI
 
-from solution_architect_ai.application.dto import MessageView
-from solution_architect_ai.application.structured_models import (
+from solution_architect_ai.application.models.chat_dto import MessageView
+from solution_architect_ai.application.models.structured_models import (
     ModelProfile,
     StructuredMessage,
     StructuredMode,

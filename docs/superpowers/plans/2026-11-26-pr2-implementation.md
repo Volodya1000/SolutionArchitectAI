@@ -21,7 +21,7 @@ LangGraph, Pydantic, React, pnpm 12, TanStack Query, existing quality runner.
 2. Generic structured generation (`application/structured*`, infrastructure adapter).
    Test explicit native schema/JSON text, strict validation, correction, shared request
    budget, deadline, rate limits, cancellation, empty/truncated/refusal and SDK retries=0.
-3. Context and agent (`application/extraction*`, `domain/requirements.py`). ContextBuilder
+3. Context and agent (`application/extraction*`, `domain/requirements.py`). ExtractionContextBuilder
    accounts for prompt/schema/output/reserve and partitions all immutable fragments;
    oversized input fails explicitly. Test coverage, injection boundaries, invented IDs,
    false quotes, context membership and typed requirement/gap/contradiction candidates.

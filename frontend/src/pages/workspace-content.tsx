@@ -49,13 +49,13 @@ export function WorkspaceHeading({
   const headings: Readonly<Record<WorkspaceSection, string>> = {
     chat: title ?? 'Рабочий чат',
     documents: 'Документы',
-    requirements: 'Реестр A-01',
+    requirements: 'Требования',
   };
   return (
     <div>
       <span className="breadcrumb">
         Локальный проект <span>/</span>
-        {section === 'chat' ? 'Чаты' : 'Источники и требования'}
+        {section === 'chat' ? 'Чаты' : headings[section]}
       </span>
       <h2>{headings[section]}</h2>
     </div>

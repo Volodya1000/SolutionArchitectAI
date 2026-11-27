@@ -13,33 +13,39 @@ from langgraph.types import StateSnapshot
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from solution_architect_ai.application.document_dto import DocumentVersionView, UploadDocument
-from solution_architect_ai.application.documents import DocumentService
-from solution_architect_ai.application.errors import Conflict, Missing
-from solution_architect_ai.application.extraction import ExtractionService
-from solution_architect_ai.application.extraction_agent import (
+from solution_architect_ai.application.agents.requirements_extraction_agent import (
     AgentRequest,
     AgentResult,
     RequirementsExtractionAgent,
 )
-from solution_architect_ai.application.extraction_context import ContextPack
-from solution_architect_ai.application.extraction_models import (
+from solution_architect_ai.application.capacity import GenerationCapacity
+from solution_architect_ai.application.context.context_models import ContextPack
+from solution_architect_ai.application.errors.chat_errors import Conflict, Missing
+from solution_architect_ai.application.errors.structured_errors import (
+    StructuredErrorCode,
+    StructuredGenerationFailure,
+)
+from solution_architect_ai.application.models.document_dto import (
+    DocumentVersionView,
+    UploadDocument,
+)
+from solution_architect_ai.application.models.extraction_models import (
     ExtractionStart,
     ExtractionView,
     PartResult,
 )
-from solution_architect_ai.application.extraction_ports import (
+from solution_architect_ai.application.models.structured_models import BudgetUsage, ExecutionBudget
+from solution_architect_ai.application.protocols.extraction_protocols import (
     ExtractionGraph,
     ExtractionStore,
     ExtractionStoreFactory,
 )
-from solution_architect_ai.application.extraction_steps import ExtractionSteps
-from solution_architect_ai.application.extraction_worker import ExtractionWorker
-from solution_architect_ai.application.structured_errors import (
-    StructuredErrorCode,
-    StructuredGenerationFailure,
+from solution_architect_ai.application.services.document_service import DocumentService
+from solution_architect_ai.application.services.requirements_extraction_service import (
+    RequirementsExtractionService,
 )
-from solution_architect_ai.application.structured_models import BudgetUsage, ExecutionBudget
+from solution_architect_ai.application.workflows.extraction_steps import ExtractionSteps
+from solution_architect_ai.application.workflows.extraction_worker import ExtractionWorker
 from solution_architect_ai.config.models import (
     GitSettings,
     LLMSettings,
@@ -50,11 +56,17 @@ from solution_architect_ai.config.settings import Settings
 from solution_architect_ai.di.documents import DocumentProvider
 from solution_architect_ai.di.extraction import ExtractionProvider
 from solution_architect_ai.di.providers import AppProvider
+from solution_architect_ai.domain.documents import ParsedDocument
 from solution_architect_ai.domain.requirements import EvidenceStatus
 from solution_architect_ai.domain.runs import RunStatus
 from solution_architect_ai.infrastructure.extraction_graph import LangGraphExtraction
-from solution_architect_ai.persistence.extraction_factory import SqlAlchemyExtractionStoreFactory
-from solution_architect_ai.persistence.extraction_models import ExtractionPartRow, RequirementRow
+from solution_architect_ai.persistence.extractions.extraction_factory import (
+    SqlAlchemyExtractionStoreFactory,
+)
+from solution_architect_ai.persistence.extractions.extraction_models import (
+    ExtractionPartRow,
+    RequirementRow,
+)
 
 pytestmark: Final[list[pytest.MarkDecorator]] = [pytest.mark.anyio, pytest.mark.integration]
 ORIGINAL: Final[str] = "\n".join(
@@ -68,7 +80,7 @@ class ExtractionResources:
     settings: Settings
     documents: DocumentService
     stores: ExtractionStoreFactory
-    service: ExtractionService
+    service: RequirementsExtractionService
     runs: list[UUID]
 
     async def start(self, versions: list[UUID], scope: str = "") -> ExtractionView:
@@ -113,7 +125,7 @@ async def extraction_resources(tmp_path: Path) -> AsyncIterator[ExtractionResour
         settings,
         await container.get(DocumentService),
         await container.get(ExtractionStoreFactory),
-        await container.get(ExtractionService),
+        await container.get(RequirementsExtractionService),
         [],
     )
     try:
@@ -141,6 +153,143 @@ async def upload(
     )
 
 
+async def test_one_execution_reuses_context_and_next_execution_revalidates_sources(
+    resources: ExtractionResources, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    version: DocumentVersionView = await upload(resources)
+    run: ExtractionView = await resources.start([version.version_id])
+    loads: int = 0
+    original: Callable[[UUID], Awaitable[ParsedDocument]] = resources.documents.get_parsed_document
+
+    async def measured(version_id: UUID) -> ParsedDocument:
+        nonlocal loads
+        loads += 1
+        return await original(version_id)
+
+    monkeypatch.setattr(resources.documents, "get_parsed_document", measured)
+    worker: ExtractionWorker = await resources.container.get(ExtractionWorker)
+    await worker.execute(run.id)
+    assert (await resources.view(run.id)).status == RunStatus.COMPLETED
+    assert loads == 1
+    second: ExtractionView = await resources.start([version.version_id])
+    await asyncio.to_thread((resources.settings.storage.root / version.storage_key).unlink)
+    await worker.execute(second.id)
+    assert (await resources.view(second.id)).error_code == "document_file_missing"
+
+
+async def test_source_corrupted_during_generation_cannot_publish_a_completed_result(
+    resources: ExtractionResources, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    version: DocumentVersionView = await upload(resources)
+    run: ExtractionView = await resources.start([version.version_id])
+    agent: RequirementsExtractionAgent = await resources.container.get(RequirementsExtractionAgent)
+    original: Callable[[AgentRequest, ExecutionBudget], Awaitable[AgentResult]] = agent.extract
+
+    async def corrupt_after_response(request: AgentRequest, budget: ExecutionBudget) -> AgentResult:
+        result: AgentResult = await original(request, budget)
+        await asyncio.to_thread(
+            (resources.settings.storage.root / version.storage_key).write_bytes,
+            b"Source corrupted during generation",
+        )
+        return result
+
+    monkeypatch.setattr(agent, "extract", corrupt_after_response)
+    worker: ExtractionWorker = await resources.container.get(ExtractionWorker)
+    await worker.execute(run.id)
+    failed: ExtractionView = await resources.view(run.id)
+    assert failed.status == RunStatus.FAILED
+    assert failed.error_code == "document_file_corrupt"
+    assert not failed.coverage.complete
+
+
+async def test_worker_dispatches_up_to_configured_capacity(
+    resources: ExtractionResources, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    version: DocumentVersionView = await upload(resources)
+    first: ExtractionView = await resources.start([version.version_id])
+    second: ExtractionView = await resources.start([version.version_id])
+    worker: ExtractionWorker = await resources.container.get(ExtractionWorker)
+    worker.capacity = GenerationCapacity(2)
+    started: set[UUID] = set()
+    both_started: asyncio.Event = asyncio.Event()
+    release: asyncio.Event = asyncio.Event()
+
+    async def blocked(run_id: UUID) -> None:
+        started.add(run_id)
+        if len(started) == 2:
+            both_started.set()
+        await release.wait()
+
+    monkeypatch.setattr(worker.graph, "run", blocked)
+    group: asyncio.TaskGroup
+    async with asyncio.TaskGroup() as group:
+        await worker.dispatch_run(group, first)
+        await worker.dispatch_run(group, second)
+        try:
+            await asyncio.wait_for(both_started.wait(), timeout=2)
+        finally:
+            release.set()
+    assert started == {first.id, second.id}
+
+
+async def test_insufficient_part_budget_does_not_persist_a_prepared_plan(
+    resources: ExtractionResources,
+) -> None:
+    first: DocumentVersionView = await upload(resources)
+    second: DocumentVersionView = await upload(resources, "The system shall retain records.")
+    run: ExtractionView = await resources.start([first.version_id, second.version_id])
+    await resources.running(run.id)
+    steps: ExtractionSteps = await resources.container.get(ExtractionSteps)
+    steps.policy = replace(steps.policy, requests=1)
+    with pytest.raises(StructuredGenerationFailure) as error:
+        await steps.prepare(run.id)
+    assert error.value.reason == StructuredErrorCode.BUDGET_EXHAUSTED
+    assert (await resources.view(run.id)).progress.total_parts == 0
+
+
+async def test_concurrent_save_is_idempotent_when_verification_finishes_late(
+    resources: ExtractionResources, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    version: DocumentVersionView = await upload(resources)
+    run: ExtractionView = await resources.start([version.version_id])
+    await resources.running(run.id)
+    steps: ExtractionSteps = await resources.container.get(ExtractionSteps)
+    await steps.prepare(run.id)
+    await steps.extract(run.id, 0)
+    original: Callable[[UUID], Awaitable[None]] = steps.finalizer.verify
+    entered: int = 0
+    both_entered: asyncio.Event = asyncio.Event()
+    first_saved: asyncio.Event = asyncio.Event()
+
+    async def ordered_verify(run_id: UUID) -> None:
+        nonlocal entered
+        entered += 1
+        if entered == 1:
+            await both_entered.wait()
+        else:
+            both_entered.set()
+            await first_saved.wait()
+        await original(run_id)
+
+    async def first_save() -> None:
+        try:
+            await steps.save(run.id)
+        finally:
+            first_saved.set()
+
+    monkeypatch.setattr(steps.finalizer, "verify", ordered_verify)
+    async with asyncio.timeout(5):
+        await asyncio.gather(first_save(), steps.save(run.id))
+    saved: ExtractionView = await resources.view(run.id)
+    assert saved.status == RunStatus.COMPLETED
+    engine: AsyncEngine = await resources.container.get(AsyncEngine)
+    connection: AsyncConnection
+    async with engine.connect() as connection:
+        assert await connection.scalar(
+            select(func.count()).select_from(RequirementRow).where(RequirementRow.run_id == run.id)
+        ) == len(saved.requirements)
+
+
 async def part_records(resources: ExtractionResources, run_id: UUID) -> list[PartResult]:
     store: ExtractionStore
     async with resources.stores.open() as store:
@@ -161,6 +310,9 @@ async def test_extraction_replay_new_revision_and_history_are_independent_of_cha
     )
     resources.runs.append(first.id)
     assert first.id == replay.id
+    assert first.version_ids == [version.version_id]
+    assert first.analysis_scope == ""
+    assert first.configuration_current
     worker: ExtractionWorker = await resources.container.get(ExtractionWorker)
     await worker.execute(first.id)
     completed: ExtractionView = await resources.view(first.id)
@@ -238,7 +390,7 @@ async def test_postgres_checkpoint_survives_resource_restart_after_saved_extract
     async def crash_before_merge(_run_id: UUID) -> None:
         raise RuntimeError("simulated process interruption after persisted part")
 
-    monkeypatch.setattr(steps, "merge", crash_before_merge)
+    monkeypatch.setattr(steps, "validate_completed_parts", crash_before_merge)
     graph: ExtractionGraph = await resources.container.get(ExtractionGraph)
     assert isinstance(graph, LangGraphExtraction)
     with pytest.raises(RuntimeError):
@@ -260,7 +412,7 @@ async def test_postgres_checkpoint_survives_resource_restart_after_saved_extract
     )
     resources.container = restored
     resources.stores = await restored.get(ExtractionStoreFactory)
-    resources.service = await restored.get(ExtractionService)
+    resources.service = await restored.get(RequirementsExtractionService)
     worker: ExtractionWorker = await restored.get(ExtractionWorker)
     await worker.execute(run.id)
     completed: ExtractionView = await resources.view(run.id)
@@ -287,7 +439,7 @@ async def test_shared_budget_across_parts_preserves_completed_candidates_on_fail
         original.stores,
         original.documents,
         original.builder,
-        original.agent,
+        original.requirements_extraction_agent,
         replace(original.policy, requests=1),
     )
     pack: ContextPack = await limited.context(run.id)
@@ -391,7 +543,7 @@ async def test_corrupted_original_invalidates_saved_parse_before_generation(
     resources: ExtractionResources,
 ) -> None:
     version: DocumentVersionView = await upload(resources)
-    await resources.documents.parsed(version.version_id)
+    await resources.documents.get_parsed_document(version.version_id)
     run: ExtractionView = await resources.start([version.version_id])
     path: Path = resources.settings.storage.root / version.storage_key
     await asyncio.to_thread(path.write_bytes, b"corrupted original")

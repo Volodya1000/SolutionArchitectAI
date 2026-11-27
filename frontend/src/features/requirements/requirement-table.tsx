@@ -7,10 +7,10 @@ export function RequirementTable({ requirements }: { requirements: Requirement[]
   return (
     <div className="table-scroll">
       <table className="workspace-table requirements-table">
-        <caption className="sr-only">Кандидаты требований A-01</caption>
+        <caption className="sr-only">Кандидаты требований</caption>
         <thead>
           <tr>
-            <th>Категория и ID</th>
+            <th>Категория</th>
             <th>Требование</th>
             <th>Происхождение</th>
           </tr>
@@ -20,18 +20,12 @@ export function RequirementTable({ requirements }: { requirements: Requirement[]
             <tr key={requirement.id}>
               <td>
                 <span className="category-label">{categories[requirement.category]}</span>
-                <div className="version-meta">{requirement.id}</div>
-                <p className="candidate-status">Кандидат · требует проверки человеком</p>
               </td>
               <td>
                 <p className="requirement-text">{requirement.normalized_text}</p>
-                <details>
-                  <summary>Исходная формулировка</summary>
-                  <blockquote>{requirement.original_text}</blockquote>
-                </details>
               </td>
               <td>
-                <Evidence sources={requirement.sources} />
+                <Evidence sources={requirement.sources} originalText={requirement.original_text} />
               </td>
             </tr>
           ))}

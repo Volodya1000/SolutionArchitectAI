@@ -115,8 +115,5 @@ it('exposes documents and requirements as independent workspace sections', () =>
   showWorkspace();
 
   expect(screen.getByRole('link', { name: 'Документы' })).toHaveAttribute('href', '/documents');
-  expect(screen.getByRole('link', { name: 'A-01 · Требования' })).toHaveAttribute(
-    'href',
-    '/requirements',
-  );
+  expect(screen.getByRole('link', { name: 'Требования' })).toHaveAttribute('href', '/requirements');
 });

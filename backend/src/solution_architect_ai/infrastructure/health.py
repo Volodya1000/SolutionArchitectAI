@@ -3,7 +3,7 @@ import tempfile
 from pathlib import Path
 from typing import IO
 
-from solution_architect_ai.application.errors import StorageUnavailable
+from solution_architect_ai.application.errors.chat_errors import StorageUnavailable
 
 
 class LocalResourceProbe:

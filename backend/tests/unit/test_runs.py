@@ -45,3 +45,20 @@ def test_successful_transition_cannot_carry_an_error() -> None:
         runs.resolve_transition(
             RunStatus.RUNNING, RunStatus.COMPLETED, RunErrorCode.LLM_UNAVAILABLE
         )
+
+
+@pytest.mark.parametrize(
+    ("current", "expected"),
+    [
+        (RunStatus.QUEUED, RunStatus.CANCELLED),
+        (RunStatus.RUNNING, RunStatus.CANCELLED),
+        (RunStatus.CANCELLING, RunStatus.CANCELLED),
+        (RunStatus.CANCELLED, RunStatus.CANCELLED),
+        (RunStatus.COMPLETED, RunStatus.COMPLETED),
+        (RunStatus.FAILED, RunStatus.FAILED),
+    ],
+)
+def test_confirmed_worker_cancellation_preserves_terminal_outcomes(
+    current: RunStatus, expected: RunStatus
+) -> None:
+    assert runs.confirm_cancellation(current) == expected

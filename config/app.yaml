@@ -1,7 +1,7 @@
 llm:
-  context_window: 4096
-  output_limit: 768
-  structured_mode: json_text
+  context_window: 12288
+  output_limit: 6912
+  structured_mode: native_json_schema
   service_tokens: 256
   concurrency: 1
   temperature: 0.2
@@ -11,4 +11,4 @@ llm:
     validation_retries: 2
     max_total_requests: 128
     deadline_seconds: 1800
-    request_timeout_seconds: 120
+    request_timeout_seconds: 600

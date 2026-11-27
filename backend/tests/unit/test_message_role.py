@@ -2,7 +2,7 @@ from uuid import uuid4
 
 import pytest
 
-from solution_architect_ai.application.dto import MessageView
+from solution_architect_ai.application.models.chat_dto import MessageView
 from solution_architect_ai.domain.messages import MessageRole
 
 

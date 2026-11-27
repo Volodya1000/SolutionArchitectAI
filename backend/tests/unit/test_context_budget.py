@@ -3,9 +3,9 @@ from uuid import uuid4
 
 import pytest
 
-from solution_architect_ai.application.context import select_context
-from solution_architect_ai.application.dto import MessageView
-from solution_architect_ai.application.errors import GenerationFailure
+from solution_architect_ai.application.context.chat_context_builder import select_context
+from solution_architect_ai.application.errors.chat_errors import GenerationFailure
+from solution_architect_ai.application.models.chat_dto import MessageView
 from solution_architect_ai.domain.messages import MessageRole
 from solution_architect_ai.infrastructure.context import LangChainTokenCounter
 

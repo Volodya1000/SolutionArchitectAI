@@ -48,13 +48,13 @@ export function RunStatus({ run }: { run: Extraction }) {
       />
       <p className={run.coverage.complete ? 'notice' : 'notice evidence-warning'}>
         {run.coverage.complete
-          ? `Полное покрытие: ${run.coverage.processed_fragments} из ${run.coverage.total_fragments} фрагментов.`
+          ? 'Весь текст документа обработан.'
           : `Неполное покрытие: ${run.coverage.processed_fragments} из ${run.coverage.total_fragments} фрагментов. Результат может содержать пропуски.`}
       </p>
       {(run.coverage.warnings ?? []).map((warning) => (
         <p className="notice evidence-warning" key={warning}>
           {warning === 'cross_part_semantic_review_required'
-            ? 'При обработке по частям смысловые связи и противоречия между частями требуют отдельной проверки человеком.'
+            ? 'Противоречия между частями документа не проверены.'
             : `Ограничение обработки источника: ${warning}`}
         </p>
       ))}

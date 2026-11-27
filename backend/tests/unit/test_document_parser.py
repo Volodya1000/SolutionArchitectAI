@@ -2,10 +2,15 @@ from hashlib import sha256
 from uuid import UUID, uuid4
 
 import pytest
+from markdown_it import MarkdownIt
+from markdown_it.token import Token
 
-from solution_architect_ai.application.document_errors import DocumentFailure
+from solution_architect_ai.application.errors.document_errors import (
+    DocumentErrorCode,
+    DocumentFailure,
+)
 from solution_architect_ai.domain.documents import ParsedDocument
-from solution_architect_ai.infrastructure.document_parser import DocumentParser
+from solution_architect_ai.infrastructure.parsers.document_parser import DocumentParser
 
 
 def parse(content: bytes, filename: str, mime: str) -> ParsedDocument:
@@ -51,3 +56,22 @@ def test_fragment_ids_are_bound_to_a_version() -> None:
         uuid4(), uuid4(), content, "brd.txt", "text/plain"
     )
     assert first.fragments[0].fragment_id != second.fragments[0].fragment_id
+
+
+@pytest.mark.parametrize(
+    "signature", [b"GIF89a", b"\xff\xd8\xff", b"\x7fELF", b"SQLite format 3\x00", b"RIFFxxxxWEBP"]
+)
+def test_known_binary_formats_have_a_mime_error(signature: bytes) -> None:
+    with pytest.raises(DocumentFailure) as error:
+        parse(signature, "BRD.txt", "text/plain")
+    assert error.value.code == DocumentErrorCode.INVALID_MIME
+
+
+def test_incomplete_markdown_heading_tokens_are_ignored(monkeypatch: pytest.MonkeyPatch) -> None:
+    def malformed(_parser: MarkdownIt, _text: str) -> list[Token]:
+        heading: Token = Token("heading_open", "h1", 1)
+        heading.map = [0, 1]
+        return [heading]
+
+    monkeypatch.setattr(MarkdownIt, "parse", malformed)
+    assert not DocumentParser().headings("# BRD")

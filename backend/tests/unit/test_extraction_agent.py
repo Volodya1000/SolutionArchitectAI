@@ -1,20 +1,33 @@
+from dataclasses import replace
 from time import monotonic
 from typing import Final
 from uuid import UUID, uuid4
 
 import pytest
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
-from solution_architect_ai.application.extraction_agent import (
-    AgentRequest,
-    AgentResult,
-    RequirementsExtractionAgent,
-    merge_parts,
+from solution_architect_ai.application.agents.extraction_result_mapper import (
     requirement_view,
     verify_result,
 )
-from solution_architect_ai.application.extraction_context import ContextFragment, ContextPart
-from solution_architect_ai.application.extraction_models import (
+from solution_architect_ai.application.agents.extraction_result_merger import (
+    merge_extraction_results,
+)
+from solution_architect_ai.application.agents.extraction_sources import (
+    reverify_part,
+    verify_evidence,
+)
+from solution_architect_ai.application.agents.requirements_extraction_agent import (
+    AgentRequest,
+    AgentResult,
+    RequirementsExtractionAgent,
+)
+from solution_architect_ai.application.context.context_models import ContextFragment, ContextPart
+from solution_architect_ai.application.errors.structured_errors import (
+    StructuredErrorCode,
+    StructuredGenerationFailure,
+)
+from solution_architect_ai.application.models.extraction_models import (
     Evidence,
     ExtractedContradiction,
     ExtractedGap,
@@ -24,20 +37,17 @@ from solution_architect_ai.application.extraction_models import (
     RequirementView,
     SourceRef,
 )
-from solution_architect_ai.application.extraction_sources import reverify_part, verify_evidence
-from solution_architect_ai.application.retry import GenerationPolicy
-from solution_architect_ai.application.structured import StructuredOutputGenerator
-from solution_architect_ai.application.structured_errors import (
-    StructuredErrorCode,
-    StructuredGenerationFailure,
-)
-from solution_architect_ai.application.structured_models import (
+from solution_architect_ai.application.models.structured_models import (
     ExecutionBudget,
     ModelProfile,
     StructuredMessage,
     StructuredMode,
     StructuredRequest,
     StructuredResponse,
+)
+from solution_architect_ai.application.retry import GenerationPolicy
+from solution_architect_ai.application.services.structured_output_generator import (
+    StructuredOutputGenerator,
 )
 from solution_architect_ai.domain.documents import LocatorKind, SourceLocator
 from solution_architect_ai.domain.messages import MessageRole
@@ -149,7 +159,7 @@ async def test_invalid_json_correction_uses_generator_budget_without_agent_retry
     )
     budget: ExecutionBudget = ExecutionBudget(2, monotonic() + 10, 3, correction_retries=1)
     result: AgentResult = await agent.extract(agent_request(part), budget)
-    assert result.payload.requirements[0].category == "functional"
+    assert result.payload.requirements[0].category == RequirementCategory.FUNCTIONAL
     assert (budget.requests, budget.corrections) == (2, 1)
     assert adapter.requests[1].messages[:2] == part.messages
     assert adapter.requests[1].messages[-1].role == MessageRole.USER
@@ -260,9 +270,9 @@ def test_merge_removes_exact_duplicates_and_preserves_distinct_candidates(
             fragment_ids=[str(part.fragments[0].fragment_id)],
         ),
     ]
-    merged: list[RequirementView] = merge_parts(parts)
+    merged: list[RequirementView] = merge_extraction_results(parts)
     assert [item.id for item in merged] == [first.id, distinct.id]
-    assert not merge_parts([])
+    assert not merge_extraction_results([])
 
 
 def test_requirement_ids_are_assigned_by_application_independently_of_document_position(
@@ -287,3 +297,162 @@ def test_saved_source_is_reverified_against_original_context_without_trusting_it
     assert checked.requirements[0].sources[0].status == EvidenceStatus.UNVERIFIED
     assert checked.requirements[0].sources[0].version_id == part.fragments[0].version_id
     assert stored.requirements[0].sources[0].status == EvidenceStatus.VERIFIED
+
+
+@pytest.mark.parametrize("field", ["normalized_text", "original_text"])
+def test_translated_requirement_is_not_accepted_as_a_valid_extraction(
+    part: ContextPart, field: str
+) -> None:
+    payload: RequirementsExtraction = result_payload(part)
+    body: str = payload.model_dump_json()
+    original: str = (
+        payload.requirements[0].normalized_text
+        if field == "normalized_text"
+        else payload.requirements[0].original_text
+    )
+    body = body.replace(original, "The system must store reports.")
+    with pytest.raises(ValidationError, match="source language"):
+        RequirementsExtraction.model_validate_json(body)
+
+
+def test_technical_names_do_not_require_translation(part: ContextPart) -> None:
+    payload: RequirementsExtraction = RequirementsExtraction(
+        requirements=[candidate(part, "Сохранять отчёты в PostgreSQL через HTTP API.")],
+        gaps=[],
+        contradictions=[],
+    )
+    assert RequirementsExtraction.model_validate_json(payload.model_dump_json()) == payload
+
+
+def test_english_source_remains_english(part: ContextPart) -> None:
+    payload: RequirementsExtraction = result_payload(part)
+    payload.requirements[0].original_text = "The system must store reports."
+    payload.requirements[0].normalized_text = "Store reports."
+    payload.requirements[0].evidence[0].quote = "The system must store reports."
+    assert RequirementsExtraction.model_validate_json(payload.model_dump_json()) == payload
+
+
+@pytest.mark.parametrize("issue", ["gap", "contradiction"])
+@pytest.mark.parametrize("translation", ["Unknown.", "The retention period is not specified."])
+def test_translated_issue_is_rejected(part: ContextPart, issue: str, translation: str) -> None:
+    evidence: Evidence = candidate(part).evidence[0]
+    body: str = RequirementsExtraction(
+        requirements=[],
+        gaps=[ExtractedGap(description="Срок хранения не указан.", evidence=[evidence])]
+        if issue == "gap"
+        else [],
+        contradictions=[
+            ExtractedContradiction(
+                description="Сроки хранения противоречат друг другу.", evidence=[evidence, evidence]
+            )
+        ]
+        if issue == "contradiction"
+        else [],
+    ).model_dump_json()
+    body = body.replace("Срок хранения не указан.", translation)
+    body = body.replace("Сроки хранения противоречат друг другу.", translation)
+    with pytest.raises(ValidationError, match="source language"):
+        RequirementsExtraction.model_validate_json(body)
+
+
+async def test_language_correction_uses_existing_shared_request_budget(part: ContextPart) -> None:
+    correct: str = result_payload(part).model_dump_json()
+    translated: str = correct.replace("Сохранять отчёты.", "The system must store reports.")
+    adapter: ScriptedStructuredModel = ScriptedStructuredModel([translated, correct])
+    agent: RequirementsExtractionAgent = RequirementsExtractionAgent(
+        StructuredOutputGenerator(adapter, POLICY, LangChainTokenCounter(1, chat_prompt=False))
+    )
+    budget: ExecutionBudget = ExecutionBudget(2, monotonic() + 10, 3, correction_retries=1)
+    result: AgentResult = await agent.extract(agent_request(part), budget)
+    assert result.payload.requirements[0].normalized_text == "Сохранять отчёты."
+    assert (budget.requests, budget.corrections) == (2, 1)
+
+
+async def test_persistent_translation_fails_after_the_correction_budget(part: ContextPart) -> None:
+    translated: str = (
+        result_payload(part)
+        .model_dump_json()
+        .replace("Сохранять отчёты.", "The system must store reports.")
+    )
+    adapter: ScriptedStructuredModel = ScriptedStructuredModel([translated, translated])
+    agent: RequirementsExtractionAgent = RequirementsExtractionAgent(
+        StructuredOutputGenerator(adapter, POLICY, LangChainTokenCounter(1, chat_prompt=False))
+    )
+    budget: ExecutionBudget = ExecutionBudget(2, monotonic() + 10, 3, correction_retries=1)
+    with pytest.raises(StructuredGenerationFailure) as raised:
+        await agent.extract(agent_request(part), budget)
+    assert raised.value.reason == StructuredErrorCode.SCHEMA_INVALID
+    assert budget.requests == 2
+
+
+async def test_translated_evidence_cannot_override_the_actual_source_language(
+    part: ContextPart,
+) -> None:
+    payload: RequirementsExtraction = result_payload(part)
+    payload.requirements[0].original_text = "The system must store reports."
+    payload.requirements[0].normalized_text = "The system must store reports."
+    payload.requirements[0].evidence[0].quote = "The system must store reports."
+    adapter: ScriptedStructuredModel = ScriptedStructuredModel([payload.model_dump_json()])
+    agent: RequirementsExtractionAgent = RequirementsExtractionAgent(
+        StructuredOutputGenerator(adapter, POLICY, LangChainTokenCounter(1, chat_prompt=False))
+    )
+    budget: ExecutionBudget = ExecutionBudget(1, monotonic() + 10, 3, correction_retries=0)
+    with pytest.raises(StructuredGenerationFailure) as raised:
+        await agent.extract(agent_request(part), budget)
+    assert raised.value.reason == StructuredErrorCode.SCHEMA_INVALID
+    assert budget.requests == 1
+
+
+async def test_translated_evidence_can_be_corrected_within_the_shared_budget(
+    part: ContextPart,
+) -> None:
+    correct: str = result_payload(part).model_dump_json()
+    payload: RequirementsExtraction = result_payload(part)
+    payload.requirements[0].original_text = "The system must store reports."
+    payload.requirements[0].normalized_text = "The system must store reports."
+    payload.requirements[0].evidence[0].quote = "The system must store reports."
+    adapter: ScriptedStructuredModel = ScriptedStructuredModel([payload.model_dump_json(), correct])
+    agent: RequirementsExtractionAgent = RequirementsExtractionAgent(
+        StructuredOutputGenerator(adapter, POLICY, LangChainTokenCounter(1, chat_prompt=False))
+    )
+    budget: ExecutionBudget = ExecutionBudget(2, monotonic() + 10, 3, correction_retries=1)
+    result: AgentResult = await agent.extract(agent_request(part), budget)
+    assert result.payload.requirements[0].normalized_text == "Сохранять отчёты."
+    assert (budget.requests, budget.corrections) == (2, 1)
+
+
+@pytest.mark.parametrize("split_fragments", [False, True])
+async def test_verified_english_quote_inside_russian_paragraph_keeps_its_language(
+    part: ContextPart,
+    split_fragments: bool,
+) -> None:
+    english: str = "The system must store reports."
+    mixed: ContextPart = replace(
+        part,
+        fragments=(
+            replace(
+                part.fragments[0],
+                text=("Описание бизнес-процесса на русском языке. " * 10) + english,
+            ),
+        ),
+    )
+    if split_fragments:
+        mixed = replace(
+            mixed,
+            fragments=(
+                replace(part.fragments[0], text=english),
+                replace(part.fragments[0], text="Описание бизнес-процесса на русском языке. " * 10),
+            ),
+        )
+    payload: RequirementsExtraction = result_payload(part)
+    payload.requirements[0].original_text = english
+    payload.requirements[0].normalized_text = english
+    payload.requirements[0].evidence[0].quote = english
+    adapter: ScriptedStructuredModel = ScriptedStructuredModel([payload.model_dump_json()])
+    agent: RequirementsExtractionAgent = RequirementsExtractionAgent(
+        StructuredOutputGenerator(adapter, POLICY, LangChainTokenCounter(1, chat_prompt=False))
+    )
+    result: AgentResult = await agent.extract(
+        agent_request(mixed), ExecutionBudget(1, monotonic() + 10, 3)
+    )
+    assert result.payload.requirements[0].normalized_text == english

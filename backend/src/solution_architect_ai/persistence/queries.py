@@ -6,7 +6,8 @@ from uuid import UUID
 from sqlalchemy import Nullable, Result, Row, ScalarResult, Select, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from solution_architect_ai.application.dto import (
+from solution_architect_ai.application.errors.chat_errors import Missing, StorageUnavailable
+from solution_architect_ai.application.models.chat_dto import (
     ChatSnapshot,
     ChatView,
     MessageView,
@@ -14,7 +15,6 @@ from solution_architect_ai.application.dto import (
     Preferences,
     RunView,
 )
-from solution_architect_ai.application.errors import Missing, StorageUnavailable
 from solution_architect_ai.domain.runs import ACTIVE_STATUSES
 from solution_architect_ai.persistence.models import ChatRow, MessageRow, PreferenceRow, RunRow
 from solution_architect_ai.persistence.schema import migration_heads

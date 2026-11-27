@@ -6,14 +6,12 @@ from typing import ClassVar
 import pytest
 from pydantic import BaseModel, ConfigDict
 
-from solution_architect_ai.application.dto import MessageView
-from solution_architect_ai.application.retry import GenerationPolicy
-from solution_architect_ai.application.structured import StructuredOutputGenerator
-from solution_architect_ai.application.structured_errors import (
+from solution_architect_ai.application.errors.structured_errors import (
     StructuredErrorCode,
     StructuredGenerationFailure,
 )
-from solution_architect_ai.application.structured_models import (
+from solution_architect_ai.application.models.chat_dto import MessageView
+from solution_architect_ai.application.models.structured_models import (
     ExecutionBudget,
     ModelProfile,
     StructuredMessage,
@@ -21,10 +19,14 @@ from solution_architect_ai.application.structured_models import (
     StructuredRequest,
     StructuredResponse,
 )
-from solution_architect_ai.application.structured_prompt import (
+from solution_architect_ai.application.prompts.structured_prompt import (
     CORRECTION_PROMPT,
     render_messages,
     token_messages,
+)
+from solution_architect_ai.application.retry import GenerationPolicy
+from solution_architect_ai.application.services.structured_output_generator import (
+    StructuredOutputGenerator,
 )
 from solution_architect_ai.domain.messages import MessageRole
 

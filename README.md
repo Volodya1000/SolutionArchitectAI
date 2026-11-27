@@ -50,12 +50,16 @@ docker compose up -d --build --wait
 
 Для LM Studio загрузите существующую модель и задайте профиль:
 
+Если модель уже загружена с другим размером контекста, сначала выгрузите её
+через LM Studio или `lms unload qwen2.5-coder-14b-instruct`.
+
 ```powershell
-lms load qwen2.5-coder-14b-instruct --context-length 4096 --gpu max --parallel 1 --yes
+lms load qwen2.5-coder-14b-instruct --context-length 12288 --gpu max --parallel 1 --yes
 $env:SAA_LLM__BASE_URL = 'http://host.docker.internal:1234/v1'
 $env:SAA_LLM__MODEL = 'qwen2.5-coder-14b-instruct'
 $env:SAA_LLM__STRUCTURED_MODE = 'native_json_schema'
-$env:SAA_LLM__OUTPUT_LIMIT = '1536'
+$env:SAA_LLM__CONTEXT_WINDOW = '12288'
+$env:SAA_LLM__OUTPUT_LIMIT = '6912'
 docker compose up -d --wait
 ```
 
@@ -112,4 +116,4 @@ uv run --project backend pytest backend/tests --disable-socket --allow-hosts=127
 
 Обычный чат имеет неизменяемые терминальные статусы run, `incomplete` отдельно от статуса, UUID команды для идемпотентного запуска и монотонный sequence. SSE передаёт полные сохранённые снимки; reconnect не запускает LLM повторно. После прерывания процесса чат становится failed/incomplete и автоматически не повторяется. Извлечение требований возобновляется по PostgreSQL checkpoints с уже сохранёнными частями и общим бюджетом запросов; смена профиля модели или повреждение источника приводят к явному отказу. Закрытие вкладки не отменяет генерацию; кнопка остановки отправляет отдельную серверную команду. Backend подтверждает остановку локального потока, без гарантии прекращения вычислений внешнего сервера.
 
-Тема применяется из локального сохранения до ответа API, затем используется настройка PostgreSQL; ручной выбор в текущем сеансе имеет приоритет. Light/Dark/System доступны в чатах, документах и A-01. Диаграммы и дальнейшие этапы полного покрытия AC-18/AC-19 остаются в дорожной карте.
+Тема применяется из локального сохранения до ответа API, затем используется настройка PostgreSQL; ручной выбор в текущем сеансе имеет приоритет. Light/Dark/System доступны в чатах, документах и требованиях. Диаграммы и дальнейшие этапы полного покрытия AC-18/AC-19 остаются в дорожной карте.

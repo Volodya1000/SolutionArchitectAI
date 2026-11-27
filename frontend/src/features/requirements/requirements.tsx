@@ -22,11 +22,10 @@ export function Requirements() {
   return (
     <div className="workspace-content">
       <div className="page-intro">
-        <span className="eyebrow">A-01</span>
-        <h1>A-01 · Реестр требований</h1>
+        <h1>Требования</h1>
         <p>
-          Извлечённые кандидаты сохраняются с происхождением. Техническая проверка ссылки не
-          подтверждает смысл требования и не заменяет решение человека.
+          Результаты анализа — кандидаты для проверки. Цитаты сверены с исходным текстом; это не
+          подтверждает правильность формулировок и категорий.
         </p>
         <Link className="text-link" to="/documents">
           Выбрать документы для нового анализа
@@ -82,7 +81,7 @@ function ExtractionHistory({
       >
         {runs.map((run) => (
           <option key={run.id} value={run.id}>
-            {new Date(run.created_at).toLocaleString('ru-RU')} · {run.model} · {run.id.slice(0, 8)}
+            {new Date(run.created_at).toLocaleString('ru-RU')} · {run.model}
           </option>
         ))}
       </select>
