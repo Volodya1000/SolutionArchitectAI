@@ -144,21 +144,44 @@ class StoredModelProfile(DTO):
     retry: StoredRetryProfile
 
 
-class ExtractionView(DTO):
+class ExtractionSummary(DTO):
     id: UUID
     status: RunStatus
     progress: ExtractionProgress
     error_code: str | None
     created_at: datetime
     model: str
-    model_profile: StoredModelProfile
-    coverage: CoverageView
-    requirements: list[RequirementView]
-    contract_version: str
-    prompt_version: str
     version_ids: list[UUID] = Field(default_factory=list)
     analysis_scope: str = ""
     configuration_current: bool = False
+
+
+class StoredExtractionSummary(ExtractionSummary):
+    model_profile: StoredModelProfile
+    contract_version: str
+    prompt_version: str
+
+
+class ExtractionHistory(DTO):
+    items: list[ExtractionSummary]
+    has_more: bool
+
+
+class ExtractionMatches(DTO):
+    active: ExtractionSummary | None
+    current_completed: ExtractionSummary | None
+    latest_completed: ExtractionSummary | None
+
+
+class StoredExtractionMatches(DTO):
+    active: StoredExtractionSummary | None
+    current_completed: StoredExtractionSummary | None
+    latest_completed: StoredExtractionSummary | None
+
+
+class ExtractionView(StoredExtractionSummary):
+    coverage: CoverageView
+    requirements: list[RequirementView]
     requests: int = 0
     network_failures: int = 0
     corrections: int = 0

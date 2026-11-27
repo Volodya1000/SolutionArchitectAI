@@ -3,8 +3,9 @@ from typing import Final
 from uuid import UUID, uuid4
 
 from pydantic import TypeAdapter, ValidationError
-from sqlalchemy import ScalarResult, Select, select
+from sqlalchemy import Result, ScalarResult, Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from solution_architect_ai.application.errors.chat_errors import Conflict, Missing
 from solution_architect_ai.application.errors.document_errors import (
@@ -49,12 +50,35 @@ class SqlAlchemyDocumentStore:
         self.task_id: UUID = task_id
 
     async def list_documents(self) -> list[DocumentView]:
-        rows: ScalarResult[DocumentRow] = await self.session.scalars(
-            select(DocumentRow)
+        latest_version_id: Select[UUID] = (
+            select(DocumentVersionRow.version_id)
+            .where(
+                DocumentVersionRow.file_id == DocumentRow.file_id,
+                DocumentVersionRow.task_id == self.task_id,
+            )
+            .order_by(DocumentVersionRow.uploaded_at.desc(), DocumentVersionRow.version_id)
+            .limit(1)
+            .correlate(DocumentRow)
+        )
+        latest_version: type[DocumentVersionRow] = aliased(DocumentVersionRow)
+        rows: Result[DocumentRow, DocumentVersionRow | None] = await self.session.execute(
+            select(DocumentRow, latest_version)
+            .outerjoin(
+                latest_version, latest_version.version_id == latest_version_id.scalar_subquery()
+            )
             .where(DocumentRow.task_id == self.task_id)
             .order_by(DocumentRow.created_at.desc(), DocumentRow.file_id)
         )
-        return [DocumentView.model_validate(row) for row in rows]
+        return [
+            DocumentView.model_validate(document).model_copy(
+                update={
+                    "latest_version": DocumentVersionView.model_validate(version)
+                    if version
+                    else None
+                }
+            )
+            for document, version in rows
+        ]
 
     async def document_row(self, file_id: UUID) -> DocumentRow:
         row: DocumentRow | None = await self.session.scalar(

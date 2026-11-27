@@ -21,13 +21,6 @@ class UploadDocument(DTO):
     file_id: UUID | None = None
 
 
-class DocumentView(DTO):
-    file_id: UUID
-    task_id: UUID
-    name: str
-    created_at: datetime
-
-
 class DocumentVersionView(DTO):
     file_id: UUID
     version_id: UUID
@@ -38,6 +31,14 @@ class DocumentVersionView(DTO):
     original_name: str
     uploaded_at: datetime
     storage_key: str
+
+
+class DocumentView(DTO):
+    file_id: UUID
+    task_id: UUID
+    name: str
+    created_at: datetime
+    latest_version: DocumentVersionView | None = None
 
 
 class UploadOperationView(DTO):
