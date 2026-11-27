@@ -106,6 +106,13 @@ class ExtractionStart(DTO):
     operation_id: UUID
     version_ids: Annotated[list[UUID], Field(min_length=1, max_length=20)]
     analysis_scope: Annotated[str, StringConstraints(max_length=1000)] = ""
+    answer_history_mode: Literal["reuse", "new"] = "reuse"
+    answer_history_id: UUID | None = None
+
+
+class AnswerHistorySelection(DTO):
+    mode: Literal["reuse", "new"] = "reuse"
+    history_id: UUID | None = None
 
 
 class ExtractionProgress(DTO):
@@ -186,6 +193,7 @@ class ExtractionView(StoredExtractionSummary):
     network_failures: int = 0
     corrections: int = 0
     elapsed_seconds: float = 0
+    candidates_saved: bool = False
 
 
 class PartResult(DTO):

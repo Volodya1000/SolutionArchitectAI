@@ -1,10 +1,11 @@
 from uuid import UUID
 
-from sqlalchemy import JSON, Select, cast, func, select
+from sqlalchemy import JSON, Select, cast, func, or_, select
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from solution_architect_ai.application.models.extraction_models import (
+    AnswerHistorySelection,
     StoredExtractionMatches,
     StoredExtractionSummary,
     StoredModelProfile,
@@ -53,7 +54,10 @@ async def get_matching_extractions(
     version_ids: list[UUID],
     analysis_scope: str,
     profile: StoredModelProfile,
+    history: AnswerHistorySelection | None = None,
 ) -> StoredExtractionMatches:
+    if history is not None and history.mode == "new":
+        return StoredExtractionMatches(active=None, current_completed=None, latest_completed=None)
     identifiers: list[str] = sorted({str(identifier) for identifier in version_ids})
     query: Select[object] = (
         extraction_summary_query()
@@ -66,6 +70,24 @@ async def get_matching_extractions(
         .order_by(ExtractionRow.created_at.desc(), ExtractionRow.id)
         .limit(1)
     )
+    if history is not None and history.history_id is not None:
+        query = query.where(
+            or_(
+                ExtractionRow.id == history.history_id,
+                cast(ExtractionRow.command_json, JSONB)["answer_history_id"].as_string()
+                == str(history.history_id),
+            )
+        )
+    else:
+        query = query.where(
+            cast(ExtractionRow.command_json, JSONB)["answer_history_id"].as_string().is_(None),
+            or_(
+                cast(ExtractionRow.command_json, JSONB)["answer_history_mode"]
+                .as_string()
+                .is_(None),
+                cast(ExtractionRow.command_json, JSONB)["answer_history_mode"].as_string() != "new",
+            ),
+        )
     active: object = await session.scalar(query.where(ExtractionRow.status.in_(ACTIVE_STATUSES)))
     completed: Select[object] = query.where(ExtractionRow.status == RunStatus.COMPLETED.value)
     latest: object = await session.scalar(completed)

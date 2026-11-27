@@ -8,6 +8,8 @@ import {
   readVersion,
   type ParsedDocument,
 } from '../../shared/api/documents';
+import { useSearchParams } from 'react-router';
+import { DiscussButton } from '../clarifications';
 import { QueryError } from '../../shared/ui/query-error';
 
 export function VersionViewer({
@@ -73,6 +75,7 @@ function SourceFragments({
   parsed: ParsedDocument;
   fragmentId: string | null;
 }) {
+  const [search] = useSearchParams();
   const selected = useRef<HTMLElement>(null);
   const hasFragment = parsed.fragments.some((fragment) => fragment.fragment_id === fragmentId);
   useEffect(() => {
@@ -112,6 +115,14 @@ function SourceFragments({
           >
             <div className="fragment-locator">{locatorText(fragment.locator)}</div>
             <p>{fragment.text}</p>
+            <DiscussButton
+              subject={{
+                kind: 'source',
+                version_id: parsed.version_id,
+                fragment_id: fragment.fragment_id,
+                analysis_id: search.get('run'),
+              }}
+            />
           </article>
         ))}
       </div>

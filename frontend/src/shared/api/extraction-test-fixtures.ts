@@ -4,6 +4,20 @@ import { extractionActive, extractionSchema, extractionSummarySchema } from './e
 export function mockExtractions(values: unknown[]) {
   const runs = values.map((value) => extractionSchema.parse(value));
   return [
+    http.get('/api/extractions/:id/clarifications', ({ params }) =>
+      HttpResponse.json({
+        run_id: params.id,
+        history_id: 'legacy',
+        cycle: 0,
+        initialized: false,
+        resume_pending: false,
+        questions: [],
+        decisions: [],
+        risks: [],
+        requirements: [],
+        completed_cycles: [],
+      }),
+    ),
     http.get('/api/extractions/history', ({ request }) => {
       const query = new URL(request.url).searchParams;
       const offset = Number(query.get('offset') ?? 0);

@@ -13,17 +13,25 @@ from fastapi.responses import JSONResponse
 from pydantic import TypeAdapter, ValidationError
 
 from solution_architect_ai.application.errors.chat_errors import ChatError, Conflict, Missing
+from solution_architect_ai.application.errors.clarification_errors import (
+    ClarificationConflict,
+    PermissionDenied,
+)
 from solution_architect_ai.application.errors.document_errors import DocumentFailure
 from solution_architect_ai.application.errors.extraction_errors import StoredExtractionCorrupt
 from solution_architect_ai.application.generation import RunWorker
 from solution_architect_ai.application.models.chat_dto import APIError
+from solution_architect_ai.application.protocols.discussion_protocols import DiscussionContext
 from solution_architect_ai.application.services.document_service import DocumentService
 from solution_architect_ai.application.workflows.extraction_worker import ExtractionWorker
 from solution_architect_ai.config.models import Mode
 from solution_architect_ai.config.settings import Settings, load_settings
+from solution_architect_ai.di.discussions import DiscussionProvider
 from solution_architect_ai.di.documents import DocumentProvider
 from solution_architect_ai.di.extraction import ExtractionProvider
 from solution_architect_ai.di.providers import AppProvider
+from solution_architect_ai.presentation.clarification_routes import router as clarification_router
+from solution_architect_ai.presentation.discussion_routes import router as discussion_router
 from solution_architect_ai.presentation.document_routes import document_error
 from solution_architect_ai.presentation.document_routes import router as document_router
 from solution_architect_ai.presentation.extraction_routes import extraction_error
@@ -32,6 +40,10 @@ from solution_architect_ai.presentation.routes import router
 
 
 async def chat_error(_request: Request, error: Exception) -> JSONResponse:
+    if isinstance(error, PermissionDenied):
+        return JSONResponse(status_code=403, content={"code": "permission_denied"})
+    if isinstance(error, ClarificationConflict):
+        return JSONResponse(status_code=409, content={"code": error.code})
     if isinstance(error, Missing):
         return JSONResponse(
             status_code=HTTPStatus.NOT_FOUND, content=APIError(code="not_found").model_dump()
@@ -59,7 +71,11 @@ def create_app() -> FastAPI:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
     settings: Settings = bootstrap()
     container: AsyncContainer = make_async_container(
-        AppProvider(), DocumentProvider(), ExtractionProvider(), context={Settings: settings}
+        AppProvider(),
+        DocumentProvider(),
+        ExtractionProvider(),
+        DiscussionProvider(),
+        context={Settings: settings},
     )
 
     @asynccontextmanager
@@ -74,6 +90,8 @@ def create_app() -> FastAPI:
     app.include_router(router)
     app.include_router(document_router)
     app.include_router(extraction_router)
+    app.include_router(clarification_router)
+    app.include_router(discussion_router)
     app.add_exception_handler(ChatError, chat_error)
     app.add_exception_handler(DocumentFailure, document_error)
     app.add_exception_handler(StoredExtractionCorrupt, extraction_error)
@@ -84,6 +102,7 @@ def create_app() -> FastAPI:
 @asynccontextmanager
 async def workers(container: AsyncContainer) -> AsyncGenerator[None]:
     worker: RunWorker = await container.get(RunWorker)
+    worker.discussions = await container.get(DiscussionContext)
     extraction: ExtractionWorker = await container.get(ExtractionWorker)
     documents: DocumentService = await container.get(DocumentService)
     await worker.recover()

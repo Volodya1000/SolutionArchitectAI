@@ -1,4 +1,3 @@
-from datetime import UTC, datetime
 from uuid import UUID
 
 from solution_architect_ai.application.agents.extraction_sources import reverify_part
@@ -55,7 +54,7 @@ class ExtractionFinalizer:
             async with self.stores.open() as store:
                 await store.reverify_part(run_id, verified)
 
-    async def save(self, run_id: UUID) -> None:
+    async def save(self, run_id: UUID, *, defer_completion: bool = False) -> None:
         store: ExtractionStore
         async with self.stores.open() as store:
             if (await store.get(run_id)).status.terminal:
@@ -64,5 +63,4 @@ class ExtractionFinalizer:
         async with self.stores.open() as store:
             view: ExtractionView = await store.get(run_id)
             parts: list[PartResult] = await store.parts(run_id)
-            elapsed: float = (datetime.now(UTC) - view.created_at).total_seconds()
-            await store.complete(run_id, parts, elapsed)
+            await store.complete(run_id, parts, view.elapsed_seconds, finalize=not defer_completion)

@@ -6,8 +6,10 @@ from typing import Final
 from uuid import UUID, uuid4
 
 from pydantic import ValidationError
-from sqlalchemy import ScalarResult, Select, select, text
+from sqlalchemy import ScalarResult, Select, and_, cast, or_, select, text
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.selectable import Exists
 
 from solution_architect_ai.application.agents.extraction_result_merger import (
     merge_extraction_results,
@@ -16,6 +18,7 @@ from solution_architect_ai.application.errors.chat_errors import Conflict, Missi
 from solution_architect_ai.application.errors.document_errors import DocumentErrorCode
 from solution_architect_ai.application.errors.extraction_errors import StoredExtractionCorrupt
 from solution_architect_ai.application.models.extraction_models import (
+    AnswerHistorySelection,
     CoverageView,
     ExtractionProgress,
     ExtractionStart,
@@ -38,6 +41,12 @@ from solution_architect_ai.domain.runs import (
     RunStatus,
     confirm_cancellation,
     resolve_transition,
+)
+from solution_architect_ai.persistence.clarifications.clarification_execution import active_elapsed
+from solution_architect_ai.persistence.clarifications.clarification_models import (
+    ClarificationRunRow,
+    QuestionLinkRow,
+    QuestionRevisionRow,
 )
 from solution_architect_ai.persistence.extractions.extraction_models import (
     ExtractionPartRow,
@@ -85,7 +94,12 @@ class SqlAlchemyExtractionStore:
     async def start(
         self, command: ExtractionStart, profile: StoredModelProfile, config_digest: str
     ) -> ExtractionView:
-        payload: str = command.model_dump_json()
+        default_history: bool = (
+            command.answer_history_mode == "reuse" and command.answer_history_id is None
+        )
+        payload: str = command.model_dump_json(
+            exclude={"answer_history_mode", "answer_history_id"} if default_history else set()
+        )
         digest: str = sha256(payload.encode()).hexdigest()
         await self.session.execute(
             text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
@@ -139,7 +153,11 @@ class SqlAlchemyExtractionStore:
         return view
 
     async def get(self, run_id: UUID) -> ExtractionView:
-        return extraction_view(await self._get_extraction_row(run_id))
+        view: ExtractionView = extraction_view(await self._get_extraction_row(run_id))
+        budget: ClarificationRunRow | None = await self.session.get(ClarificationRunRow, run_id)
+        if budget is not None:
+            view.elapsed_seconds = active_elapsed(budget)
+        return view
 
     async def get_operation(self, operation_id: UUID) -> ExtractionView:
         row: ExtractionRow | None = await self.session.scalar(
@@ -163,10 +181,14 @@ class SqlAlchemyExtractionStore:
         return StoredExtractionSummary.model_validate(metadata)
 
     async def get_matching(
-        self, version_ids: list[UUID], analysis_scope: str, profile: StoredModelProfile
+        self,
+        version_ids: list[UUID],
+        analysis_scope: str,
+        profile: StoredModelProfile,
+        history: AnswerHistorySelection | None = None,
     ) -> StoredExtractionMatches:
         return await get_matching_extractions(
-            self.session, self.task_id, version_ids, analysis_scope, profile
+            self.session, self.task_id, version_ids, analysis_scope, profile, history
         )
 
     async def list_history(self, *, limit: int, offset: int) -> list[StoredExtractionSummary]:
@@ -201,9 +223,40 @@ class SqlAlchemyExtractionStore:
         return [extraction_view(row) for row in rows]
 
     async def pending(self) -> list[ExtractionView]:
+        open_blockers: Exists = (
+            select(QuestionLinkRow.run_id)
+            .join(
+                QuestionRevisionRow,
+                and_(
+                    QuestionRevisionRow.question_id == QuestionLinkRow.question_id,
+                    QuestionRevisionRow.revision == QuestionLinkRow.revision,
+                ),
+            )
+            .where(
+                QuestionLinkRow.run_id == ExtractionRow.id,
+                QuestionRevisionRow.status == "open",
+                cast(QuestionRevisionRow.snapshot_json, JSONB)["blocking"].as_boolean().is_(True),
+            )
+            .exists()
+        )
         rows: ScalarResult[ExtractionRow] = await self.session.scalars(
             select(ExtractionRow)
-            .where(ExtractionRow.task_id == self.task_id, ExtractionRow.status.in_(ACTIVE_STATUSES))
+            .outerjoin(ClarificationRunRow, ClarificationRunRow.run_id == ExtractionRow.id)
+            .where(
+                ExtractionRow.task_id == self.task_id,
+                or_(
+                    ExtractionRow.status.in_(ACTIVE_STATUSES),
+                    (
+                        ClarificationRunRow.resume_pending.is_(True)
+                        & ExtractionRow.status.in_((RunStatus.WAITING_INPUT, RunStatus.COMPLETED))
+                    ),
+                    and_(
+                        ExtractionRow.status == RunStatus.WAITING_INPUT,
+                        ClarificationRunRow.initialized.is_(True),
+                        ~open_blockers,
+                    ),
+                ),
+            )
             .order_by(ExtractionRow.created_at)
         )
         pending: list[ExtractionView] = []
@@ -232,10 +285,18 @@ class SqlAlchemyExtractionStore:
             view.error_code = error
             if target.terminal:
                 view = await self._terminal_result(row, view)
-                view.elapsed_seconds = max(0, (datetime.now(UTC) - row.created_at).total_seconds())
+                await self._finish_active_budget(run_id, view)
             row.status = target.value
             row.snapshot_json = view.model_dump_json()
         return view
+
+    async def _finish_active_budget(self, run_id: UUID, view: ExtractionView) -> None:
+        budget: ClarificationRunRow | None = await self.session.get(ClarificationRunRow, run_id)
+        if budget is None:
+            return
+        view.elapsed_seconds = active_elapsed(budget)
+        if view.status in {RunStatus.FAILED, RunStatus.CANCELLED}:
+            budget.resume_pending = False
 
     async def _terminal_result(self, row: ExtractionRow, view: ExtractionView) -> ExtractionView:
         try:
@@ -370,11 +431,13 @@ class SqlAlchemyExtractionStore:
         row.snapshot_json = view.model_dump_json()
 
     async def complete(
-        self, run_id: UUID, result: list[PartResult], elapsed: float
+        self, run_id: UUID, result: list[PartResult], elapsed: float, *, finalize: bool = True
     ) -> ExtractionView:
         row: ExtractionRow = await self._get_extraction_row(run_id, lock=True)
         view: ExtractionView = ExtractionView.model_validate_json(row.snapshot_json)
         if view.status.terminal or view.status == RunStatus.CANCELLING:
+            return view
+        if view.candidates_saved:
             return view
         if view.status != RunStatus.RUNNING:
             raise Conflict("extraction_not_running")
@@ -396,7 +459,8 @@ class SqlAlchemyExtractionStore:
             for item in requirements
         )
         view.requirements = requirements
-        view.status = RunStatus.COMPLETED
+        view.candidates_saved = True
+        view.status = RunStatus.COMPLETED if finalize else RunStatus.RUNNING
         view.coverage.processed_fragments = view.coverage.total_fragments
         view.coverage.complete = all(
             item == CoverageWarning.CROSS_PART_REVIEW.value for item in view.coverage.warnings

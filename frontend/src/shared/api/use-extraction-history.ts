@@ -35,7 +35,10 @@ export function useExtractionStatus(id: string, initial?: ExtractionSummary) {
     queryFn: () => readExtractionStatus(id),
     initialData: initial,
     refetchInterval: (query) =>
-      query.state.data && extractionActive(query.state.data) ? 1000 : false,
+      query.state.data &&
+      (extractionActive(query.state.data) || query.state.data.status === 'waiting_input')
+        ? 1000
+        : false,
   });
 }
 

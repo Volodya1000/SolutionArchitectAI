@@ -15,11 +15,14 @@ class RunErrorCode(StrEnum):
     LLM_REJECTED = "llm_rejected"
     LLM_INVALID_RESPONSE = "llm_invalid_response"
     UNSUPPORTED_STREAM_LIFECYCLE = "unsupported_stream_lifecycle"
+    DISCUSSION_SOURCE_UNAVAILABLE = "discussion_source_unavailable"
+    DISCUSSION_SUBJECT_UNAVAILABLE = "discussion_subject_unavailable"
 
 
 class RunStatus(StrEnum):
     QUEUED = "queued"
     RUNNING = "running"
+    WAITING_INPUT = "waiting_input"
     CANCELLING = "cancelling"
     COMPLETED = "completed"
     FAILED = "failed"
@@ -38,7 +41,13 @@ ACTIVE_STATUSES: Final[tuple[RunStatus, ...]] = (
 
 _TRANSITIONS: Final[dict[RunStatus, set[RunStatus]]] = {
     RunStatus.QUEUED: {RunStatus.RUNNING, RunStatus.CANCELLING, RunStatus.FAILED},
-    RunStatus.RUNNING: {RunStatus.COMPLETED, RunStatus.CANCELLING, RunStatus.FAILED},
+    RunStatus.RUNNING: {
+        RunStatus.COMPLETED,
+        RunStatus.WAITING_INPUT,
+        RunStatus.CANCELLING,
+        RunStatus.FAILED,
+    },
+    RunStatus.WAITING_INPUT: {RunStatus.QUEUED, RunStatus.CANCELLING, RunStatus.FAILED},
     RunStatus.CANCELLING: {RunStatus.CANCELLED, RunStatus.FAILED},
 }
 
@@ -66,6 +75,6 @@ def resolve_transition(
 
 def confirm_cancellation(current: RunStatus) -> RunStatus:
     """Validate both cancellation stages before persisting the confirmed outcome."""
-    if current in {RunStatus.QUEUED, RunStatus.RUNNING}:
+    if current in {RunStatus.QUEUED, RunStatus.RUNNING, RunStatus.WAITING_INPUT}:
         current = resolve_transition(current, RunStatus.CANCELLING)
     return resolve_transition(current, RunStatus.CANCELLED)

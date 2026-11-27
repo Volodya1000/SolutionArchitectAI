@@ -124,7 +124,7 @@ it('filters candidate requirements and links evidence to an exact source version
   expect(screen.getByText('Срок хранения отчётов не определён.')).toBeVisible();
   expect(screen.queryByText('req-1')).not.toBeInTheDocument();
   const evidence = screen.getByRole('link', { name: 'Источник · Строка 2 · Функции' });
-  expect(evidence).toHaveAttribute('href', '/documents?version=v1&fragment=fragment-1');
+  expect(evidence).toHaveAttribute('href', '/documents?version=v1&fragment=fragment-1&run=run-1');
   expect(screen.queryByText('Ссылка технически проверена')).not.toBeInTheDocument();
   expect(screen.getByText('Источник не подтверждён')).toBeVisible();
   await userEvent.selectOptions(
@@ -294,4 +294,50 @@ it('refreshes an active extraction until its persisted result is complete', asyn
   expect(await screen.findByText('Система сохраняет отчёты.')).toBeVisible();
   expect(reads).toBeGreaterThanOrEqual(2);
   expect(details).toBe(1);
+});
+
+it('shows effective requirements while another question still blocks the waiting run', async () => {
+  const waiting = { ...run, status: 'waiting_input' };
+  server.use(...mockExtractions([waiting]));
+  server.use(
+    http.get('/api/extractions/run-1/clarifications', () =>
+      HttpResponse.json({
+        run_id: 'run-1',
+        history_id: 'history',
+        cycle: 0,
+        initialized: true,
+        resume_pending: false,
+        requirements: [
+          {
+            ...run.requirements[0],
+            normalized_text: 'Хранить отчёты 90 дней — ответ архитектора.',
+          },
+        ],
+        questions: [
+          {
+            id: 'q2',
+            gap_key: 'volume',
+            revision: 1,
+            text: 'Каков объём?',
+            basis: 'Объём отсутствует',
+            dependent_decision: 'Размер хранилища',
+            blocking: true,
+            requirement_ids: ['req-1'],
+            sources: [source],
+            status: 'open',
+            previous_basis: null,
+          },
+        ],
+        decisions: [],
+        risks: [],
+        completed_cycles: [],
+      }),
+    ),
+  );
+  show('/requirements?run=run-1&requirement=req-1');
+  expect(await screen.findByText('Ожидает ответа архитектора')).toBeVisible();
+  expect(await screen.findByText('Хранить отчёты 90 дней — ответ архитектора.')).toBeVisible();
+  expect(screen.getByText('Блокирующих вопросов: 1')).toBeVisible();
+  expect(screen.getByText('Каков объём?')).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Отменить извлечение' })).toBeEnabled();
 });

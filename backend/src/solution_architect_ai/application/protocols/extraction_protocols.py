@@ -3,6 +3,7 @@ from typing import Protocol
 from uuid import UUID
 
 from solution_architect_ai.application.models.extraction_models import (
+    AnswerHistorySelection,
     ExtractionStart,
     ExtractionView,
     PartResult,
@@ -22,7 +23,11 @@ class ExtractionStore(Protocol):
     async def get_operation(self, operation_id: UUID) -> ExtractionView: ...
     async def get_status(self, run_id: UUID) -> StoredExtractionSummary: ...
     async def get_matching(
-        self, version_ids: list[UUID], analysis_scope: str, profile: StoredModelProfile
+        self,
+        version_ids: list[UUID],
+        analysis_scope: str,
+        profile: StoredModelProfile,
+        history: AnswerHistorySelection | None = None,
     ) -> StoredExtractionMatches: ...
     async def list_history(self, *, limit: int, offset: int) -> list[StoredExtractionSummary]: ...
     async def command(self, run_id: UUID) -> ExtractionStart: ...
@@ -47,7 +52,7 @@ class ExtractionStore(Protocol):
     async def usage(self, run_id: UUID) -> BudgetUsage: ...
     async def reserve(self, run_id: UUID, usage: BudgetUsage, expected_requests: int) -> None: ...
     async def complete(
-        self, run_id: UUID, result: list[PartResult], elapsed: float
+        self, run_id: UUID, result: list[PartResult], elapsed: float, *, finalize: bool = True
     ) -> ExtractionView: ...
 
 

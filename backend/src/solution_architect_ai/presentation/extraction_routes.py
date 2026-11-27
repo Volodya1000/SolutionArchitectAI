@@ -1,4 +1,4 @@
-from typing import Annotated
+from typing import Annotated, Literal
 from uuid import UUID
 
 from dishka.integrations.fastapi import DishkaRoute, FromDishka
@@ -6,6 +6,7 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 
 from solution_architect_ai.application.models.extraction_models import (
+    AnswerHistorySelection,
     ExtractionHistory,
     ExtractionMatches,
     ExtractionStart,
@@ -51,8 +52,14 @@ async def matching(
     service: FromDishka[RequirementsExtractionService],
     version_ids: Annotated[list[UUID], Query(min_length=1, max_length=20)],
     analysis_scope: Annotated[str, Query(max_length=1000)],
+    answer_history_mode: Literal["reuse", "new"] = "reuse",
+    answer_history_id: UUID | None = None,
 ) -> ExtractionMatches:
-    return await service.get_matching(version_ids, analysis_scope)
+    return await service.get_matching(
+        version_ids,
+        analysis_scope,
+        AnswerHistorySelection(mode=answer_history_mode, history_id=answer_history_id),
+    )
 
 
 @router.get("/extractions/{run_id}/status")

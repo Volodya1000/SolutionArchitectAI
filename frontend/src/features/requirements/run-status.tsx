@@ -12,6 +12,7 @@ import { Button } from '../../shared/ui/button';
 const statusText: Readonly<Record<Extraction['status'], string>> = {
   queued: 'Извлечение в очереди',
   running: 'Выполняется извлечение…',
+  waiting_input: 'Ожидает ответа архитектора',
   cancelling: 'Останавливаем извлечение…',
   completed: 'Извлечение завершено',
   failed: 'Извлечение завершилось ошибкой',
@@ -27,6 +28,7 @@ export function RunStatus({
 }) {
   const client = useQueryClient();
   const cancel = useMutation({
+    retry: false,
     mutationFn: () => cancelExtraction(run.id),
     onSuccess: (updated) => {
       recordExtraction(client, updated);
@@ -36,7 +38,7 @@ export function RunStatus({
     <section className="surface-card extraction-status" aria-label="Состояние извлечения">
       <div className="section-heading">
         <strong role="status">{statusText[run.status]}</strong>
-        {extractionActive(run) && (
+        {canCancel(run) && (
           <Button
             variant="outline"
             disabled={cancel.isPending || run.status === 'cancelling'}
@@ -83,4 +85,8 @@ export function RunStatus({
       )}
     </section>
   );
+}
+
+function canCancel(run: ExtractionSummary): boolean {
+  return extractionActive(run) || run.status === 'waiting_input';
 }

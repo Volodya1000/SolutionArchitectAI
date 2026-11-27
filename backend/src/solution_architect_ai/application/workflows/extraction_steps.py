@@ -88,3 +88,6 @@ class ExtractionSteps:
 
     async def save(self, run_id: UUID) -> None:
         await self.finalizer.save(run_id)
+
+    async def save_candidates(self, run_id: UUID) -> None:
+        await self.finalizer.save(run_id, defer_completion=True)

@@ -105,6 +105,8 @@ def test_resource_construction_stays_in_composition_and_scoped_factories() -> No
         "di/migrate.py",
         "di/documents.py",
         "di/extraction.py",
+        "di/clarifications.py",
+        "di/discussions.py",
         "persistence/factory.py",
     }
     constructors: set[str] = {

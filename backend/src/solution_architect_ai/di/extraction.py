@@ -4,7 +4,7 @@ from contextlib import AsyncExitStack
 from hashlib import sha256
 
 import httpx
-from dishka import Provider, Scope, provide
+from dishka import Scope, provide
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
@@ -13,6 +13,7 @@ from psycopg.rows import dict_row
 from psycopg_pool import AsyncConnectionPool
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from solution_architect_ai.application.agents.clarification_agent import ClarificationAgent
 from solution_architect_ai.application.agents.requirements_extraction_agent import (
     RequirementsExtractionAgent,
 )
@@ -24,6 +25,9 @@ from solution_architect_ai.application.context.extraction_context_builder import
 from solution_architect_ai.application.models.extraction_models import StoredModelProfile
 from solution_architect_ai.application.models.extraction_policy import ExtractionPolicy
 from solution_architect_ai.application.models.structured_models import ModelProfile, StructuredMode
+from solution_architect_ai.application.protocols.clarification_protocols import (
+    ClarificationStoreFactory,
+)
 from solution_architect_ai.application.protocols.extraction_protocols import (
     ExtractionGraph,
     ExtractionStoreFactory,
@@ -36,12 +40,14 @@ from solution_architect_ai.application.services.requirements_extraction_service 
 from solution_architect_ai.application.services.structured_output_generator import (
     StructuredOutputGenerator,
 )
+from solution_architect_ai.application.workflows.clarification_workflow import ClarificationWorkflow
 from solution_architect_ai.application.workflows.extraction_steps import (
     ExtractionSteps,
 )
 from solution_architect_ai.application.workflows.extraction_worker import ExtractionWorker
 from solution_architect_ai.config.models import LLMSettings
 from solution_architect_ai.config.settings import Settings
+from solution_architect_ai.di.clarifications import ClarificationProvider
 from solution_architect_ai.di.providers import database_url
 from solution_architect_ai.infrastructure.context import LangChainTokenCounter
 from solution_architect_ai.infrastructure.extraction_graph import LangGraphExtraction
@@ -57,7 +63,17 @@ def profile_digest(settings: Settings) -> str:
     return sha256(json.dumps(profile, sort_keys=True).encode()).hexdigest()
 
 
-class ExtractionProvider(Provider):
+class ExtractionProvider(ClarificationProvider):
+    @provide(scope=Scope.APP)
+    def clarification_agent(self, generator: StructuredOutputGenerator) -> ClarificationAgent:
+        return ClarificationAgent(generator)
+
+    @provide(scope=Scope.APP)
+    def clarification_workflow(
+        self, stores: ClarificationStoreFactory, steps: ExtractionSteps, agent: ClarificationAgent
+    ) -> ClarificationWorkflow:
+        return ClarificationWorkflow(stores, steps, agent)
+
     @provide(scope=Scope.APP)
     def extraction_stores(self, engine: AsyncEngine) -> ExtractionStoreFactory:
         sessions: async_sessionmaker[AsyncSession] = async_sessionmaker[AsyncSession](
@@ -157,7 +173,7 @@ class ExtractionProvider(Provider):
 
     @provide(scope=Scope.APP)
     async def graph(
-        self, steps: ExtractionSteps, settings: Settings
+        self, steps: ExtractionSteps, settings: Settings, workflow: ClarificationWorkflow
     ) -> AsyncGenerator[ExtractionGraph]:
         dsn: str = (
             database_url(settings)
@@ -183,7 +199,7 @@ class ExtractionProvider(Provider):
                 )
             )
             saver: AsyncPostgresSaver = AsyncPostgresSaver(pool, serde=serde)
-            yield LangGraphExtraction(steps, saver)
+            yield LangGraphExtraction(steps, saver, workflow)
 
     @provide(scope=Scope.APP)
     def extraction_service(
@@ -201,5 +217,8 @@ class ExtractionProvider(Provider):
         graph: ExtractionGraph,
         capacity: GenerationCapacity,
         settings: Settings,
+        clarifications: ClarificationStoreFactory,
     ) -> ExtractionWorker:
-        return ExtractionWorker(stores, graph, capacity, settings.llm.retry.deadline_seconds)
+        return ExtractionWorker(
+            stores, graph, capacity, settings.llm.retry.deadline_seconds, clarifications
+        )

@@ -9,6 +9,7 @@ import {
   readExtraction,
   type Category,
   type ExtractionSummary,
+  type Extraction,
   type Requirement,
 } from '../../shared/api/extractions';
 import { useExtractionHistory, useExtractionStatus } from '../../shared/api/use-extraction-history';
@@ -16,6 +17,8 @@ import { QueryError } from '../../shared/ui/query-error';
 import { Button } from '../../shared/ui/button';
 import { RequirementTable } from './requirement-table';
 import { RunStatus } from './run-status';
+import { Clarifications } from '../clarifications';
+import { useClarifications } from '../../shared/api/use-clarifications';
 
 export function Requirements() {
   const [search, setSearch] = useSearchParams();
@@ -110,8 +113,8 @@ function RunPanel({ id, initial }: { id: string; initial: ExtractionSummary | un
   const run = useQuery({
     queryKey: [...scopeKey, 'extraction', id],
     queryFn: () => readExtraction(id),
-    enabled: Boolean(status.data && !extractionActive(status.data)),
-    staleTime: Infinity,
+    enabled: status.data ? !extractionActive(status.data) : false,
+    staleTime: 0,
   });
   return (
     <>
@@ -134,12 +137,25 @@ function RunPanel({ id, initial }: { id: string; initial: ExtractionSummary | un
           }}
         />
       )}
-      {run.data && <ExtractionResult candidates={run.data.requirements} />}
+      {run.data && <RunResult run={run.data} />}
     </>
   );
 }
 
-function ExtractionResult({ candidates }: { candidates: Requirement[] }) {
+function RunResult({ run }: { run: Extraction }) {
+  const clarifications = useClarifications(run.id);
+  const requirements = clarifications.data?.initialized
+    ? clarifications.data.requirements
+    : run.requirements;
+  return (
+    <>
+      <ExtractionResult runId={run.id} candidates={requirements} />
+      <Clarifications runId={run.id} />
+    </>
+  );
+}
+
+function ExtractionResult({ candidates, runId }: { candidates: Requirement[]; runId: string }) {
   const [category, setCategory] = useState<Category | 'all'>('all');
   const requirements = candidates.filter(
     (item) => category === 'all' || item.category === category,
@@ -167,7 +183,7 @@ function ExtractionResult({ candidates }: { candidates: Requirement[] }) {
         </label>
         <span className="notice">Кандидатов: {requirements.length}</span>
       </div>
-      <RequirementTable requirements={requirements} />
+      <RequirementTable requirements={requirements} runId={runId} />
     </>
   );
 }

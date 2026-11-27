@@ -1,6 +1,6 @@
 {
   "globs": ["**/*.md"],
-  "ignores": ["**/node_modules/**", "**/.venv/**", ".build/**", "frontend/test-results/**", "frontend/playwright-report/**"],
+  "ignores": ["**/node_modules/**", "**/.venv/**", ".build/**", ".superpowers/**", "frontend/test-results/**", "frontend/playwright-report/**"],
   "config": {
     "MD013": false,
     "MD012": { "maximum": 2 },

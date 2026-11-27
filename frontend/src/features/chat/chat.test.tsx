@@ -43,7 +43,10 @@ function acceptQuestion() {
   return run;
 }
 
-const server = setupServer(http.get('/api/chats/a', () => HttpResponse.json(snapshot)));
+const server = setupServer(
+  http.get('/api/chats/a', () => HttpResponse.json(snapshot)),
+  http.get('/api/chats/:id/discussion', () => HttpResponse.json(null)),
+);
 beforeAll(() => server.listen({ onUnhandledFrame: 'error' }));
 afterEach(() => {
   vi.restoreAllMocks();

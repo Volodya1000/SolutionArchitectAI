@@ -1,7 +1,9 @@
 import asyncio
+import json
 import os
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass, replace
+from hashlib import sha256
 from pathlib import Path
 from typing import Final
 from uuid import UUID, uuid4
@@ -65,6 +67,7 @@ from solution_architect_ai.persistence.extractions.extraction_factory import (
 )
 from solution_architect_ai.persistence.extractions.extraction_models import (
     ExtractionPartRow,
+    ExtractionRow,
     RequirementRow,
 )
 
@@ -319,7 +322,7 @@ async def test_extraction_replay_new_revision_and_history_are_independent_of_cha
     assert completed.status == RunStatus.COMPLETED
     assert completed.requirements
     assert completed.coverage.complete
-    assert completed.requests == completed.progress.total_parts
+    assert completed.requests == completed.progress.total_parts + 1  # Clarification role runs once.
     assert all(
         source.status == EvidenceStatus.VERIFIED
         for item in completed.requirements
@@ -349,6 +352,37 @@ async def test_extraction_replay_new_revision_and_history_are_independent_of_cha
     assert version.sha256 != revision.sha256
 
 
+async def test_legacy_extraction_operation_replays_without_history_fields(
+    resources: ExtractionResources,
+) -> None:
+    version: DocumentVersionView = await upload(resources)
+    command: ExtractionStart = ExtractionStart(
+        operation_id=uuid4(), version_ids=[version.version_id]
+    )
+    first: ExtractionView = await resources.service.start(command)
+    resources.runs.append(first.id)
+    legacy_payload: str = json.dumps(
+        {
+            "operation_id": str(command.operation_id),
+            "version_ids": [str(version.version_id)],
+            "analysis_scope": "",
+        },
+        separators=(",", ":"),
+    )
+    engine: AsyncEngine = await resources.container.get(AsyncEngine)
+    connection: AsyncConnection
+    async with engine.begin() as connection:
+        await connection.execute(
+            update(ExtractionRow)
+            .where(ExtractionRow.id == first.id)
+            .values(
+                command_json=legacy_payload,
+                payload_digest=sha256(legacy_payload.encode()).hexdigest(),
+            )
+        )
+    assert (await resources.service.start(command)).id == first.id
+
+
 async def test_graph_replays_saved_part_without_second_generation_or_duplicate_requirements(
     resources: ExtractionResources,
 ) -> None:
@@ -368,7 +402,7 @@ async def test_graph_replays_saved_part_without_second_generation_or_duplicate_r
     await graph.run(run.id)
     completed: ExtractionView = await resources.view(run.id)
     assert completed.status == RunStatus.COMPLETED
-    assert completed.requests == completed.progress.total_parts
+    assert completed.requests == completed.progress.total_parts + 1  # No repeated role on replay.
     assert set(saved_ids).issubset({item.id for item in completed.requirements})
     engine: AsyncEngine = await resources.container.get(AsyncEngine)
     connection: AsyncConnection
@@ -401,7 +435,7 @@ async def test_postgres_checkpoint_survives_resource_restart_after_saved_extract
     checkpoint: object = await graph.graph.aget_state(config)
     assert isinstance(checkpoint, StateSnapshot)
     assert checkpoint.next == ("merge",)
-    assert set(checkpoint.values) == {"run_id", "index"}
+    assert set(checkpoint.values) == {"run_id", "index", "cycle", "clarification_only"}
     requests_before: int = (await resources.view(run.id)).requests
     await resources.container.close()
     restored: AsyncContainer = make_async_container(
@@ -417,7 +451,9 @@ async def test_postgres_checkpoint_survives_resource_restart_after_saved_extract
     await worker.execute(run.id)
     completed: ExtractionView = await resources.view(run.id)
     assert completed.status == RunStatus.COMPLETED
-    assert completed.requests == requests_before
+    assert (
+        completed.requests == requests_before + 1
+    )  # Resume performs clarification, not extraction.
     assert {item.id for item in completed.requirements} == {
         item.id for part in saved for item in part.requirements
     }
@@ -580,18 +616,18 @@ async def test_checkpoint_resume_at_save_revalidates_the_original(
     run: ExtractionView = await resources.start([version.version_id])
     await resources.running(run.id)
     steps: ExtractionSteps = await resources.container.get(ExtractionSteps)
-    original: Callable[[UUID], Awaitable[None]] = steps.save
+    original: Callable[[UUID], Awaitable[None]] = steps.save_candidates
 
     async def interrupted(_run_id: UUID) -> None:
         raise RuntimeError("process stopped after source verification checkpoint")
 
-    monkeypatch.setattr(steps, "save", interrupted)
+    monkeypatch.setattr(steps, "save_candidates", interrupted)
     graph: ExtractionGraph = await resources.container.get(ExtractionGraph)
     with pytest.raises(RuntimeError, match="process stopped"):
         await graph.run(run.id)
     requests_before: int = (await resources.view(run.id)).requests
     await asyncio.to_thread((resources.settings.storage.root / version.storage_key).unlink)
-    monkeypatch.setattr(steps, "save", original)
+    monkeypatch.setattr(steps, "save_candidates", original)
     worker: ExtractionWorker = await resources.container.get(ExtractionWorker)
     await worker.execute(run.id)
     failed: ExtractionView = await resources.view(run.id)

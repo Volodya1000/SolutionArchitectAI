@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router';
 import { recordExtraction } from '../../shared/api/use-extraction-history';
@@ -5,6 +6,8 @@ import { QueryError } from '../../shared/ui/query-error';
 import { AnalysisActions } from './analysis-actions';
 import { useAnalysisHistory } from './use-analysis-history';
 import { useAnalysisCommand } from './use-analysis-command';
+import { AnalysisContextStatus } from './analysis-context';
+import { useAnalysisContext } from './use-analysis-context';
 
 type AnalysisState = ReturnType<typeof useAnalysisCommand>;
 type AnalysisHistory = ReturnType<typeof useAnalysisHistory>;
@@ -18,9 +21,12 @@ export function AnalysisForm({
   scope: string;
   setScope: (scope: string) => void;
 }) {
+  const [newHistory, setNewHistory] = useState(false);
+  const context = useAnalysisContext(newHistory);
+  const historyId = context.historyId;
   const navigate = useNavigate();
   const client = useQueryClient();
-  const { history, previous } = useAnalysisHistory(selected, scope);
+  const { history, previous } = useAnalysisHistory(selected, scope, newHistory, historyId);
   const state = useAnalysisCommand(async (run) => {
     recordExtraction(client, run);
     await navigate(`/requirements?run=${encodeURIComponent(run.id)}`);
@@ -31,7 +37,7 @@ export function AnalysisForm({
       className="surface-card analysis-form"
       onSubmit={(event) => {
         event.preventDefault();
-        submit(selected, scope);
+        submit(selected, scope, newHistory, historyId);
       }}
     >
       <div>
@@ -60,11 +66,21 @@ export function AnalysisForm({
         />
       </details>
       {selected.size > 20 && <p role="alert">Выберите не более 20 версий для одного анализа.</p>}
+      <label className="checkbox-label">
+        <input
+          type="checkbox"
+          checked={newHistory}
+          onChange={(event) => setNewHistory(event.target.checked)}
+          disabled={start.isPending || pending !== null}
+        />
+        Начать с новой историей уточнений
+      </label>
+      <AnalysisContextStatus context={context} />
       <AnalysisRecovery state={state} />
       <AnalysisCommandActions
         state={state}
         historyState={{ history, previous }}
-        selectedCount={selected.size}
+        selectedCount={context.ready ? selected.size : 0}
       />
       <AnalysisErrors state={state} history={history} />
     </form>

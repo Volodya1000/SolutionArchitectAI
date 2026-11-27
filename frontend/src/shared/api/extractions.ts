@@ -34,7 +34,15 @@ export const requirementSchema = z.object({
 });
 export const extractionSchema = z.object({
   id: z.string(),
-  status: z.enum(['queued', 'running', 'cancelling', 'completed', 'failed', 'cancelled']),
+  status: z.enum([
+    'queued',
+    'running',
+    'waiting_input',
+    'cancelling',
+    'completed',
+    'failed',
+    'cancelled',
+  ]),
   progress: z.object({ completed_parts: z.number(), total_parts: z.number() }),
   error_code: z.string().nullable(),
   created_at: z.string(),
@@ -68,6 +76,8 @@ export type ExtractionCommand = {
   operation_id: string;
   version_ids: string[];
   analysis_scope: string;
+  answer_history_mode?: 'reuse' | 'new' | undefined;
+  answer_history_id?: string | null | undefined;
 };
 
 export const categories: Readonly<Record<Category, string>> = {
@@ -85,8 +95,17 @@ export const extractionHistory = (offset: number) =>
   resourceRequest(`/extractions/history?limit=50&offset=${offset}`, extractionPageSchema);
 export const readExtractionStatus = (id: string) =>
   resourceRequest(`/extractions/${encodeURIComponent(id)}/status`, extractionSummarySchema);
-export const matchingExtractions = (selected: ReadonlySet<string>, scope: string) => {
-  const query = new URLSearchParams({ analysis_scope: scope.trim() });
+export const matchingExtractions = (
+  selected: ReadonlySet<string>,
+  scope: string,
+  newHistory = false,
+  historyId: string | null = null,
+) => {
+  const query = new URLSearchParams({
+    analysis_scope: scope.trim(),
+    answer_history_mode: newHistory ? 'new' : 'reuse',
+  });
+  if (historyId && !newHistory) query.set('answer_history_id', historyId);
   for (const id of [...selected].sort()) query.append('version_ids', id);
   return resourceRequest(
     `/extractions/matching?${query.toString()}`,

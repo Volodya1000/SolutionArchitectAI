@@ -58,12 +58,12 @@ afterEach(() => {
   sessionStore.clear();
 });
 
-function show() {
+function show(path = '/documents') {
   return render(
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
-      <MemoryRouter initialEntries={['/documents']}>
+      <MemoryRouter initialEntries={[path]}>
         <Link to="/documents">К документам</Link>
         <Link to="/other">Другой раздел</Link>
         <Routes>
@@ -87,13 +87,17 @@ it('keeps selected versions and analysis instructions after navigation and a fre
   );
   await userEvent.click(screen.getByText('Другой раздел'));
   await userEvent.click(screen.getByText('К документам'));
-  expect(await screen.findByRole('checkbox')).toBeChecked();
+  expect(
+    await screen.findByRole('checkbox', { name: 'Выбрать последнюю версию BRD.md' }),
+  ).toBeChecked();
   expect(screen.getByLabelText('На что обратить внимание (необязательно)')).toHaveValue(
     'Безопасность',
   );
   view.unmount();
   show();
-  expect(await screen.findByRole('checkbox')).toBeChecked();
+  expect(
+    await screen.findByRole('checkbox', { name: 'Выбрать последнюю версию BRD.md' }),
+  ).toBeChecked();
   expect(screen.getByLabelText('На что обратить внимание (необязательно)')).toHaveValue(
     'Безопасность',
   );
@@ -113,6 +117,68 @@ it('loads version history only after its card is expanded', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'История версий BRD.md' }));
   await screen.findByRole('checkbox', { name: 'Анализировать BRD.md · v1' });
   expect(reads).toBe(1);
+});
+
+it('starts a fresh clarification history without opening a previously completed analysis', async () => {
+  const payloads: unknown[] = [];
+  server.use(
+    http.get('/api/extractions/matching', () =>
+      HttpResponse.json({ active: null, current_completed: run, latest_completed: run }),
+    ),
+    http.post('/api/extractions', async ({ request }) => {
+      payloads.push(await request.json());
+      return HttpResponse.json(run);
+    }),
+  );
+  show();
+  await userEvent.click(
+    await screen.findByRole('checkbox', { name: 'Выбрать последнюю версию BRD.md' }),
+  );
+  await screen.findByRole('link', { name: /Открыть/ });
+  await userEvent.click(
+    screen.getByRole('checkbox', { name: 'Начать с новой историей уточнений' }),
+  );
+  await userEvent.click(await screen.findByRole('button', { name: 'Извлечь требования' }));
+  await waitFor(() => expect(payloads).toHaveLength(1));
+  expect(payloads[0]).toMatchObject({
+    answer_history_mode: 'new',
+    answer_history_id: null,
+    version_ids: ['v1'],
+  });
+});
+
+it('reuses the explicitly selected analysis history for a new analysis', async () => {
+  const payloads: unknown[] = [];
+  server.use(
+    http.get('/api/extractions/context/clarifications', () =>
+      HttpResponse.json({
+        run_id: 'context',
+        history_id: 'history-b',
+        cycle: 0,
+        initialized: true,
+        resume_pending: false,
+        requirements: [],
+        questions: [],
+        decisions: [],
+        risks: [],
+        completed_cycles: [],
+      }),
+    ),
+    http.post('/api/extractions', async ({ request }) => {
+      payloads.push(await request.json());
+      return HttpResponse.json(run);
+    }),
+  );
+  show('/documents?run=context');
+  await userEvent.click(
+    await screen.findByRole('checkbox', { name: 'Выбрать последнюю версию BRD.md' }),
+  );
+  await userEvent.click(await screen.findByRole('button', { name: 'Извлечь требования' }));
+  await waitFor(() => expect(payloads).toHaveLength(1));
+  expect(payloads[0]).toMatchObject({
+    answer_history_mode: 'reuse',
+    answer_history_id: 'history-b',
+  });
 });
 
 it('recovers an accepted upload after reopening without uploading the bytes again', async () => {

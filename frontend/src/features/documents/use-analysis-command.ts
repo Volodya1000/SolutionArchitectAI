@@ -20,6 +20,7 @@ export function useAnalysisCommand(onSuccess: (run: Extraction) => Promise<void>
       pending ? readExtractionOperation(pending.operation_id) : Promise.resolve(null),
   });
   const start = useMutation({
+    retry: false,
     mutationFn: async (command: ExtractionCommand) => {
       const saved = extractionCommand.read();
       if (saved?.operation_id === command.operation_id) {
@@ -43,12 +44,19 @@ export function useAnalysisCommand(onSuccess: (run: Extraction) => Promise<void>
       await onSuccess(run);
     },
   });
-  function submit(selected: ReadonlySet<string>, scope: string) {
+  function submit(
+    selected: ReadonlySet<string>,
+    scope: string,
+    newHistory = false,
+    historyId: string | null = null,
+  ) {
     const saved = recovery.data ? null : pending;
     const command = saved ?? {
       operation_id: crypto.randomUUID(),
       version_ids: [...selected].sort(),
       analysis_scope: scope.trim(),
+      answer_history_mode: newHistory ? ('new' as const) : ('reuse' as const),
+      answer_history_id: newHistory ? null : historyId,
     };
     setPending(command);
     start.mutate(command);

@@ -1,4 +1,3 @@
-from datetime import UTC, datetime
 from time import monotonic
 from uuid import UUID, uuid4
 
@@ -76,7 +75,7 @@ class ExtractionPartExtractor:
         return index + 1
 
     def budget(self, run_id: UUID, view: ExtractionView, usage: BudgetUsage) -> ExecutionBudget:
-        elapsed: float = (datetime.now(UTC) - view.created_at).total_seconds()
+        elapsed: float = view.elapsed_seconds
         previous: int = usage.requests
 
         async def observe(updated: BudgetUsage) -> None:

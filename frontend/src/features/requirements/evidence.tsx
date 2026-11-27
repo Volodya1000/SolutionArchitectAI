@@ -5,9 +5,11 @@ import type { SourceRef } from '../../shared/api/extractions';
 export function Evidence({
   sources,
   originalText,
+  runId,
 }: {
   sources: SourceRef[];
   originalText: string;
+  runId: string;
 }) {
   const hasQuote = sources.some((source) => source.quote.trim().length > 0);
   return (
@@ -22,7 +24,7 @@ export function Evidence({
             {source.version_id && source.locator ? (
               <Link
                 className="text-link"
-                to={`/documents?version=${encodeURIComponent(source.version_id)}&fragment=${encodeURIComponent(source.fragment_id)}`}
+                to={`/documents?version=${encodeURIComponent(source.version_id)}&fragment=${encodeURIComponent(source.fragment_id)}&run=${encodeURIComponent(runId)}`}
               >
                 Источник · {locatorText(source.locator)}
               </Link>

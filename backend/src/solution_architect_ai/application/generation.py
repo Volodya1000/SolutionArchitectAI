@@ -26,6 +26,7 @@ from solution_architect_ai.application.protocols.chat_protocols import (
     StoreFactory,
     TokenCounter,
 )
+from solution_architect_ai.application.protocols.discussion_protocols import DiscussionContext
 from solution_architect_ai.application.retry import GenerationPolicy
 from solution_architect_ai.domain.runs import RunErrorCode, RunStatus
 
@@ -40,6 +41,7 @@ class RunWorker:
         policy: GenerationPolicy,
         tokens: TokenCounter,
         capacity: GenerationCapacity | None = None,
+        discussions: DiscussionContext | None = None,
     ) -> None:
         self.stores: StoreFactory = stores
         self.llm: LLM = llm
@@ -48,6 +50,7 @@ class RunWorker:
         self.capacity: GenerationCapacity = capacity or GenerationCapacity(policy.concurrency)
         self.active: dict[UUID, asyncio.Task[None]] = {}
         self.stopping: asyncio.Event = asyncio.Event()
+        self.discussions: DiscussionContext | None = discussions
 
     async def recover(self) -> None:
         store: ChatStore
@@ -151,8 +154,11 @@ class RunWorker:
             if claimed.status != RunStatus.RUNNING:
                 return
             snapshot: ChatSnapshot = await store.queries.snapshot(run.chat_id)
+        prefix: list[MessageView] = (
+            [] if self.discussions is None else await self.discussions.messages(run.chat_id)
+        )
         messages: list[MessageView] = await asyncio.to_thread(
-            select_context, snapshot.messages, self.policy.input_budget, self.tokens
+            select_context, snapshot.messages, self.policy.input_budget, self.tokens, prefix
         )
         retries: AsyncRetrying = self.policy.retrying(partial(self.can_retry, run_id))
         await retries(self.consume, run_id, messages)

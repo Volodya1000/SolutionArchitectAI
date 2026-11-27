@@ -1,6 +1,7 @@
 from uuid import UUID
 
 from solution_architect_ai.application.models.extraction_models import (
+    AnswerHistorySelection,
     ExtractionHistory,
     ExtractionMatches,
     ExtractionStart,
@@ -66,11 +67,16 @@ class RequirementsExtractionService:
         async with self.stores.open() as store:
             return self.summarize(await store.get_status(run_id))
 
-    async def get_matching(self, version_ids: list[UUID], analysis_scope: str) -> ExtractionMatches:
+    async def get_matching(
+        self,
+        version_ids: list[UUID],
+        analysis_scope: str,
+        history: AnswerHistorySelection | None = None,
+    ) -> ExtractionMatches:
         store: ExtractionStore
         async with self.stores.open() as store:
             matches: StoredExtractionMatches = await store.get_matching(
-                version_ids, analysis_scope, self.profile
+                version_ids, analysis_scope, self.profile, history
             )
         return ExtractionMatches(
             active=self.summarize(matches.active) if matches.active is not None else None,
