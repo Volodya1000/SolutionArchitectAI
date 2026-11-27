@@ -11,9 +11,9 @@ from openai import APIConnectionError, APIError, APIStatusError, APITimeoutError
 from openai.pagination import AsyncPage
 from openai.types import Model
 
-from solution_architect_ai.application.dto import MessageView, ModelStatus
-from solution_architect_ai.application.errors import GenerationFailure
-from solution_architect_ai.application.ports import Chunk
+from solution_architect_ai.application.errors.chat_errors import GenerationFailure
+from solution_architect_ai.application.models.chat_dto import MessageView, ModelStatus
+from solution_architect_ai.application.protocols.chat_protocols import Chunk
 from solution_architect_ai.domain.runs import RunErrorCode
 from solution_architect_ai.infrastructure.prompts import build_messages
 
@@ -86,7 +86,7 @@ class LangChainLLM:
             raise failure(error) from None
 
     @asynccontextmanager
-    async def stream(self, messages: list[MessageView]) -> AsyncIterator[AsyncIterator[Chunk]]:
+    async def stream(self, messages: list[MessageView]) -> AsyncGenerator[AsyncIterator[Chunk]]:
         stream: AsyncGenerator[Chunk]
         async with aclosing(self.chunks(messages)) as stream:
             yield stream

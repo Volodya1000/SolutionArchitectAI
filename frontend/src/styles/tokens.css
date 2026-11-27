@@ -1,0 +1,25 @@
+:root {
+  font-family: Inter, 'Segoe UI', sans-serif;
+  font-synthesis: none;
+  color: #202b35;
+  background: #fbfcfd;
+  --surface: #ffffff;
+  --sidebar: #f3f5f7;
+  --muted: #62717d;
+  --border: #dce3e8;
+  --accent: #236f65;
+  --accent-soft: #e4f1ec;
+  --input: #ffffff;
+}
+
+:root.dark {
+  color: #e4eaf0;
+  background: #141a21;
+  --surface: #1a222c;
+  --sidebar: #10161d;
+  --muted: #9cabb9;
+  --border: #33404d;
+  --accent: #79d3b6;
+  --accent-soft: #1c3833;
+  --input: #202a35;
+}

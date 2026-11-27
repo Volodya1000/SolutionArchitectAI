@@ -10,7 +10,9 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from solution_architect_ai.application.dto import (
+from solution_architect_ai.application.errors.chat_errors import GenerationFailure
+from solution_architect_ai.application.generation import RunWorker
+from solution_architect_ai.application.models.chat_dto import (
     ChatSnapshot,
     ChatView,
     MessageView,
@@ -18,9 +20,7 @@ from solution_architect_ai.application.dto import (
     PendingRun,
     RunView,
 )
-from solution_architect_ai.application.errors import GenerationFailure
-from solution_architect_ai.application.generation import RunWorker
-from solution_architect_ai.application.ports import ChatStore, Chunk
+from solution_architect_ai.application.protocols.chat_protocols import ChatStore, Chunk
 from solution_architect_ai.application.retry import GenerationPolicy
 from solution_architect_ai.domain.messages import MessageRole
 from solution_architect_ai.domain.runs import RunErrorCode, RunStatus, resolve_transition

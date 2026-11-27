@@ -3,7 +3,7 @@
 [Навигация](README.md) · [Роли агентов](agents.md)
 
 
-**ContextBuilder** собирает immutable ContextPack: base_commit, selected IDs, source version/hash/locator, rule/decision IDs, coverage/omission manifest, prompt version и token estimate. Структурированный граф и текстовый корпус обрабатываются разными способами.
+**ExtractionContextBuilder** собирает immutable ContextPack: base_commit, selected IDs, source version/hash/locator, rule/decision IDs, coverage/omission manifest, prompt version и token estimate. Структурированный граф и текстовый корпус обрабатываются разными способами.
 
 | Роль | Обязательный контекст | Дополнительный контекст |
 | --- | --- | --- |

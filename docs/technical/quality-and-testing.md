@@ -233,7 +233,7 @@ layers =
 - Разрешённое обновление task branch после смены main, семантический конфликт общего объекта даже при чистом Git merge; checks/approval инвалидируются, фактический merge tree/родители сверяются с разрешением.
 - Один объект на двух видах, отдельный layout/label override; удаление из вида не удаляет каталог. Round-trip/детерминированный JSON, неизвестная версия, broken refs и схема миграции.
 - LangChain local HTTP stub: пустой/обрезанный/refusal, невалидный JSON и Pydantic, повторная генерация, неподдерживаемая JSON Schema capability, запрет скрытого Tool Calling, общий лимит сетевых и validation retries, retries=0, deadline/cancel. Один и тот же агентный контракт для двух endpoint profiles; реальная vLLM/модель совместимость проверяется отдельным smoke, не выводится из stub.
-- Clarification resume после restart, повтор ответа и повторное формирование вопросов не создают дублей; ContextBuilder учитывает closed questions, обязательные источники, budget и revision invalidation.
+- Clarification resume после restart, повтор ответа и повторное формирование вопросов не создают дублей; ExtractionContextBuilder учитывает closed questions, обязательные источники, budget и revision invalidation.
 
 ## Метрики качества ИИ
 

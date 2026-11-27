@@ -10,7 +10,9 @@ class Missing(ChatError):
 
 
 class Conflict(ChatError):
-    pass
+    def __init__(self, code: str) -> None:
+        super().__init__(code)
+        self.code: str = code
 
 
 class StorageUnavailable(ChatError):

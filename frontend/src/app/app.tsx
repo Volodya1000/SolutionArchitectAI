@@ -14,6 +14,8 @@ export function App() {
           <Routes>
             <Route path="/" element={<Workspace />} />
             <Route path="/chats/:chatId" element={<Workspace />} />
+            <Route path="/documents" element={<Workspace />} />
+            <Route path="/requirements" element={<Workspace />} />
           </Routes>
         </BrowserRouter>
       </ThemeProvider>

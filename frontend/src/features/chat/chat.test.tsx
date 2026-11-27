@@ -3,9 +3,10 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
-import { afterAll, afterEach, beforeAll, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest';
 import { type Snapshot, scopeKey } from '../../shared/api/client';
 import { Chat } from './chat';
+import { sessionStore } from '../../shared/ui/session-storage';
 
 const empty: Snapshot = {
   chat: { id: 'a', task_id: 'task', title: 'Чат', created_at: '2026-11-26T00:00:00Z' },
@@ -45,10 +46,44 @@ function acceptQuestion() {
 const server = setupServer(http.get('/api/chats/a', () => HttpResponse.json(snapshot)));
 beforeAll(() => server.listen({ onUnhandledFrame: 'error' }));
 afterEach(() => {
+  vi.restoreAllMocks();
   server.resetHandlers();
   snapshot = empty;
-  sessionStorage.clear();
+  sessionStore.clear();
 });
+
+it('keeps the conversation and composer visible after a background history error', async () => {
+  acceptQuestion();
+  const { client } = show();
+  await screen.findByText('Сохранённый ответ');
+  const input = screen.getByRole('textbox', { name: 'Сообщение' });
+  await userEvent.type(input, 'Черновик');
+  server.use(http.get('/api/chats/a', () => new HttpResponse(null, { status: 503 })));
+  await client.invalidateQueries({ queryKey: [...scopeKey, 'chat', 'a'] });
+  expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось обновить историю');
+  expect(screen.getByText('Сохранённый ответ')).toBeVisible();
+  expect(input).toHaveValue('Черновик');
+});
+
+it.each(['getItem', 'setItem', 'removeItem'] as const)(
+  'sends and reopens drafts when session storage %s throws',
+  async (method) => {
+    vi.spyOn(Storage.prototype, method).mockImplementation(() => {
+      throw new Error('Storage denied');
+    });
+    server.use(http.post('/api/chats/a/runs', () => HttpResponse.json(acceptQuestion())));
+    const view = show();
+    const input = await screen.findByRole('textbox', { name: 'Сообщение' });
+    await userEvent.type(input, 'Вопрос');
+    view.unmount();
+    const reopened = show();
+    expect(await screen.findByRole('textbox', { name: 'Сообщение' })).toHaveValue('Вопрос');
+    await userEvent.click(screen.getByRole('button', { name: 'Отправить сообщение' }));
+    expect(await screen.findByText('Сохранённый ответ')).toBeVisible();
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    reopened.unmount();
+  },
+);
 afterAll(() => server.close());
 function show() {
   const client = new QueryClient({
@@ -61,6 +96,19 @@ function show() {
   );
   return { client, ...view };
 }
+
+it('disables sending until the draft contains text', async () => {
+  show();
+  const input = await screen.findByRole('textbox', { name: 'Сообщение' });
+  const send = screen.getByRole('button', { name: 'Отправить сообщение' });
+  expect(send).toBeDisabled();
+  await userEvent.type(input, '   ');
+  expect(send).toBeDisabled();
+  await userEvent.type(input, 'Вопрос');
+  expect(send).toBeEnabled();
+  await userEvent.clear(input);
+  expect(send).toBeDisabled();
+});
 
 it('preserves unsent input when server history is refreshed', async () => {
   const { client } = show();

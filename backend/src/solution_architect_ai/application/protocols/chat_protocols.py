@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
 
-from solution_architect_ai.application.dto import (
+from solution_architect_ai.application.models.chat_dto import (
     ChatSnapshot,
     ChatView,
     MessageView,

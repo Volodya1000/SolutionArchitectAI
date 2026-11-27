@@ -1,0 +1,144 @@
+.document-list {
+  display: grid;
+  gap: 16px;
+}
+
+.analysis-form h2 {
+  font-weight: 600;
+  font-size: 16px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.source-viewer h2 {
+  font-size: 14px;
+}
+
+.upload-form {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+
+.upload-form label,
+.analysis-form > label {
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.upload-form label {
+  flex-basis: 100%;
+}
+
+.upload-form input {
+  min-width: 0;
+  max-width: 100%;
+  font-size: 12px;
+}
+
+.upload-form input::file-selector-button {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: inherit;
+  background: var(--sidebar);
+  padding: 8px 10px;
+  margin-right: 12px;
+  cursor: pointer;
+}
+
+.upload-form .notice {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.analysis-form textarea {
+  color: inherit;
+  background: var(--input);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 9px 12px;
+  max-width: 100%;
+}
+
+.analysis-form textarea {
+  display: block;
+  width: 100%;
+  min-height: 80px;
+  resize: vertical;
+  margin: 8px 0 16px;
+  font-size: 13px;
+}
+
+.analysis-form .button:disabled {
+  background: var(--border);
+  color: var(--muted);
+  border-color: var(--border);
+  opacity: 1;
+}
+
+.analysis-options {
+  margin: 16px 0;
+}
+
+.analysis-options summary {
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.document-selection {
+  margin: 12px 0;
+}
+
+.version-choice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.version-choice small {
+  display: block;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 400;
+}
+
+.version-meta {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.8;
+}
+
+.source-fragments {
+  display: grid;
+  gap: 12px;
+}
+
+.source-fragment {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  scroll-margin-block: 18px;
+}
+
+.source-fragment p {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin: 8px 0 0;
+  font-size: 13px;
+}
+
+.selected-fragment {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.fragment-locator {
+  font-size: 11px;
+  color: var(--accent);
+  font-weight: 600;
+}

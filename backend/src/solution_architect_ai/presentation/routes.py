@@ -6,8 +6,7 @@ from dishka.integrations.fastapi import DishkaRoute, FromDishka
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
 
-from solution_architect_ai.application.chat import ChatService
-from solution_architect_ai.application.dto import (
+from solution_architect_ai.application.models.chat_dto import (
     APIError,
     ChatCreate,
     ChatSnapshot,
@@ -19,7 +18,8 @@ from solution_architect_ai.application.dto import (
     RunView,
     StartRun,
 )
-from solution_architect_ai.application.ports import LLM, ChatStore, StoreFactory
+from solution_architect_ai.application.protocols.chat_protocols import LLM, ChatStore, StoreFactory
+from solution_architect_ai.application.services.chat_service import ChatService
 
 router: APIRouter = APIRouter(prefix="/api", route_class=DishkaRoute)
 

@@ -20,9 +20,9 @@ Domain использует dataclasses/enum и чистые валидатор�
 | Пакет | Обязанность и допустимые импорты |
 | --- | --- |
 | domain | Архитектурные объекты, требования, решения и инварианты; стандартная библиотека и свой код |
-| application | Use cases, агентные DTO и Pydantic-схемы результатов, ContextBuilder, запуск графа, порты; зависит от domain, не от адаптеров |
-| persistence | SQLAlchemy, Alembic, SQL-репозитории, Git-адаптер, local/S3 storage; реализует порты application, может использовать domain |
-| infrastructure | LangChain LLM-адаптер, композиция LangGraph и PostgreSQL checkpointer, парсеры документов, PlantUML; реализует порты application |
+| application | Use cases, агентные DTO и Pydantic-схемы результатов, ExtractionContextBuilder, запуск графа, порты; зависит от domain, не от адаптеров |
+| persistence | SQLAlchemy, Alembic, SQL-хранилища, планируемый Git-адаптер; реализует протоколы application, может использовать domain |
+| infrastructure | LangChain LLM-адаптер, композиция LangGraph и PostgreSQL checkpointer, парсеры документов, локальное файловое хранилище, PlantUML; реализует протоколы application |
 | presentation | FastAPI, HTTP DTO, SSE и возможный CLI; вызывает application, не конкретные persistence/infrastructure |
 | config | Чтение и валидация настроек; не импортируется domain/application |
 | di | Composition root связывает реализации и lifecycle; единственная точка сборки |
@@ -32,10 +32,22 @@ Domain использует dataclasses/enum и чистые валидатор�
 ```text
 backend/src/solution_architect_ai/
   domain/                 # architecture, requirements, decisions, verification
-  application/            # use cases по фичам, agents, context, ports
+  application/
+    agents/               # агент и преобразование/проверка результатов
+    context/              # построение, нарезка и бюджеты контекста
+    errors/               # типизированные прикладные ошибки
+    models/               # команды, результаты и политики
     prompts/              # один промпт — один Python-файл
-  persistence/            # postgres, migrations, git, files
-  infrastructure/         # llm, documents, rendering
+    protocols/            # контракты адаптеров
+    services/             # координация сценариев
+    validation/           # чистая валидация результатов
+    workflows/            # подготовка, обработка частей, финализация и воркер
+  persistence/            # SQL-хранилища и миграции
+    documents/
+    extractions/
+  infrastructure/         # LLM, LangGraph, rendering
+    parsers/
+    storage/
   presentation/           # http, streaming
   config/
   di/
@@ -87,7 +99,7 @@ Python-модель остаётся носителем предметных о�
 
 ## Границы первого рабочего чата
 
-`application/dto.py` содержит данные внешних контрактов, `application/errors.py` — прикладные исключения, `ports.py` — порты. Чистая проверка повтора команды и конфликта находится в Domain; SQL-адаптер вызывает её под блокировкой чата в одной транзакции с созданием run/сообщений. Store использует композицию Queries. Простые чтения и настройки идут через application-порт фабрики хранилищ; ChatService оставлен для metadata команды, серверной отмены, объединённой readiness и коротких read-транзакций SSE. Session не удерживается во время ожидания следующего события.
+`application/models` содержит данные внешних контрактов, `application/errors` — прикладные исключения, `application/protocols` — протоколы адаптеров. Чистая проверка повтора команды и конфликта находится в Domain; SQL-адаптер вызывает её под блокировкой чата в одной транзакции с созданием run/сообщений. Store использует композицию Queries. Простые чтения и настройки идут через application-порт фабрики хранилищ; ChatService оставлен для metadata команды, серверной отмены, объединённой readiness и коротких read-транзакций SSE. Session не удерживается во время ожидания следующего события.
 
 Минимальный LLM-порт сохраняет два действия: проверку доступности модели и context-managed поток собственных Chunk. Это граница Application с LangChain/OpenAI SDK и гарантия закрытия upstream при отмене. Абстракции LangChain используются внутри одного адаптера; LM Studio, vLLM и fake не получают отдельных реализаций бизнес-логики. Модульные `logging.Logger` используют стандартную иерархию; технические события содержат IDs, модель, статус и error code, без prompt, ответа и секретов.
 
@@ -96,3 +108,39 @@ Python-модель остаётся носителем предметных о�
 На каждый chunk сохраняется отдельная транзакция для немедленной долговечности частичного ответа. PostgreSQL CTE заменяет четыре SQL-команды на одну, не загружая накопленный текст в Python; проверены блокировка, отмена, scope задачи и видимость первого chunk в новой транзакции. Worker читает только id/status/created_at незавершённых runs. Polling worker 100 мс и SSE 150 мс сохранён ради отзывчивости локального MVP; полные SSE-снимки обеспечивают восстановление после пропущенных событий. Брокер, уведомления и отложенное пакетное сохранение не вводятся без измеренной необходимости.
 
 Повторами управляет `tenacity.AsyncRetrying`: число попыток ограничено обоими бюджетами, задержка использует библиотечные exponential backoff и jitter и учитывает нижнюю границу `Retry-After`. Общий deadline охватывает запросы и ожидания. Повтор допускается только для временной ошибки до сохранения первого фрагмента ответа; отмена прерывает ожидание. Повторы SDK остаются выключены. Политика находится в `application/retry.py`.
+
+
+## Изменения по ревью PR 2
+
+Решения по именам, структуре, производительности и сохранённым гарантиям перечислены
+в [чек-листе ревью](pr2-code-review-checklist.md).
+
+### Компактные запросы для интерфейса
+
+`GET /api/documents` включает `latest_version: DocumentVersionView | null` —
+последнюю завершённую версию каждого документа. Подготовленные загрузки не
+считаются опубликованными версиями; список читается одним SQL-запросом.
+
+`GET /api/extractions/history?limit=50&offset=0` возвращает
+`{items: ExtractionSummary[], has_more: boolean}`. Размер страницы ограничен
+диапазоном 1–100, смещение неотрицательно. Порядок — от новых запусков к старым,
+с идентификатором запуска для разрешения одинакового времени создания.
+`GET /api/extractions/{run_id}/status` возвращает такую же краткую запись:
+`id`, `status`, `progress`, `error_code`, `created_at`, `model`, `version_ids`,
+`analysis_scope`, `configuration_current`. SQL проецирует только метаданные;
+результаты требований и покрытие не загружаются и не валидируются в этих запросах.
+Полный `GET /api/extractions/{run_id}` сохраняет проверку результатов.
+
+`GET /api/extractions/matching?version_ids=<uuid>&analysis_scope=` проверяет
+точный неупорядоченный набор версий и область анализа независимо от страниц
+истории. `version_ids` повторяется для каждой версии (1–20 значений),
+`analysis_scope` обязателен и может быть пустым. Ответ содержит `active`,
+`current_completed`, `latest_completed`: последнюю активную попытку, последний
+успешный запуск с текущими профилем/контрактом/промптом и последний успешный
+запуск с любой конфигурацией. Каждое поле — `ExtractionSummary | null`;
+каждая категория выбирается ограниченным SQL-запросом без загрузки результатов.
+
+`GET /api/extraction-operations/{operation_id}` восстанавливает полный запуск
+по точному идентификатору команды, например после потери ответа на запуск.
+Неизвестная операция или операция другой задачи возвращает 404. Все перечисленные
+запросы ограничены текущей задачей.

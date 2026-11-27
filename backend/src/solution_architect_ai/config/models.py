@@ -30,8 +30,9 @@ class DatabaseSettings(Section):
 
 class RetryConfig(Section):
     network_retries: int = Field(default=1, ge=0, le=3)
-    max_total_requests: int = Field(default=2, ge=1, le=4)
-    deadline_seconds: float = Field(default=120, gt=0, le=600)
+    validation_retries: int = Field(default=1, ge=0, le=3)
+    max_total_requests: int = Field(default=2, ge=1, le=256)
+    deadline_seconds: float = Field(default=120, gt=0, le=3600)
     request_timeout_seconds: float = Field(default=60, gt=0, le=600)
     backoff_initial: float = Field(default=0.25, ge=0)
     backoff_max: float = Field(default=2, ge=0)
@@ -55,6 +56,8 @@ class LLMSettings(Section):
     temperature: float = Field(default=0.2, ge=0, le=2)
     approximate_chars_per_token: float = Field(default=1, gt=0, le=4)
     concurrency: int = Field(default=1, ge=1, le=4)
+    structured_mode: Literal["native_json_schema", "json_text"] = "json_text"
+    service_tokens: int = Field(default=256, ge=0, le=4096)
     retry: RetryConfig = Field(default_factory=RetryConfig)
 
     @model_validator(mode="after")

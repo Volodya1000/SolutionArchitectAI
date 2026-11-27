@@ -4,13 +4,13 @@ from sqlalchemy import Result, func, or_, select
 from sqlalchemy import text as sql_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from solution_architect_ai.application.dto import (
+from solution_architect_ai.application.errors.chat_errors import Conflict, Missing
+from solution_architect_ai.application.models.chat_dto import (
     ChatView,
     Preferences,
     RunView,
     StartRun,
 )
-from solution_architect_ai.application.errors import Conflict, Missing
 from solution_architect_ai.domain.commands import (
     StartCandidate,
     content_digest,

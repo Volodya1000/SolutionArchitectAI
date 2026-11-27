@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { InputValidationError, MESSAGE_LIMIT_HINT } from './validation';
+import { ApiError } from './api-error';
 
 export const scopeKey = [
   'workspace',
@@ -60,11 +61,13 @@ export async function request<T>(
   const response = await sendRequest(path, init);
   if (!response.ok) {
     if (response.status === 422) throw await validationError(response);
-    const message =
-      response.status === 409
-        ? 'В этом чате уже выполняется запрос. Обновите состояние.'
-        : 'Не удалось выполнить запрос. Проверьте подключение и повторите.';
-    throw new Error(message);
+    const body: unknown = await response.json().catch(() => null);
+    const error = z.object({ code: z.string() }).safeParse(body);
+    throw new ApiError(
+      response.status,
+      error.success ? error.data.code : null,
+      'Не удалось выполнить запрос. Проверьте подключение и повторите.',
+    );
   }
   const data: unknown = await response.json();
   return schema.parse(data);
@@ -94,9 +97,11 @@ async function validationError(response: Response): Promise<InputValidationError
   );
 }
 
-async function sendRequest(path: string, init?: RequestInit): Promise<Response> {
+export async function sendRequest(path: string, init?: RequestInit): Promise<Response> {
   try {
-    return await fetch(`/api${path}`, { ...init, headers: { 'Content-Type': 'application/json' } });
+    const headers = new Headers(init?.headers);
+    if (!headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+    return await fetch(`/api${path}`, { ...init, headers });
   } catch {
     throw new Error('Не удалось соединиться с приложением. Проверьте подключение и повторите.');
   }

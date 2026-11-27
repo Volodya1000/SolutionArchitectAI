@@ -7,7 +7,7 @@ import pytest
 from fastapi import Request
 from pydantic import TypeAdapter, ValidationError
 
-from solution_architect_ai.application.dto import RunSnapshotEvent, RunView
+from solution_architect_ai.application.models.chat_dto import RunSnapshotEvent, RunView
 from solution_architect_ai.domain.runs import RunStatus
 from solution_architect_ai.presentation.routes import events
 

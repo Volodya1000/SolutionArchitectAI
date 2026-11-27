@@ -62,3 +62,10 @@ def resolve_transition(
     if current == RunStatus.CANCELLING and target == RunStatus.COMPLETED:
         return current
     return transition(current, target)
+
+
+def confirm_cancellation(current: RunStatus) -> RunStatus:
+    """Validate both cancellation stages before persisting the confirmed outcome."""
+    if current in {RunStatus.QUEUED, RunStatus.RUNNING}:
+        current = resolve_transition(current, RunStatus.CANCELLING)
+    return resolve_transition(current, RunStatus.CANCELLED)

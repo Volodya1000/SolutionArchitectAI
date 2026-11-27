@@ -3,8 +3,8 @@ services:
     environment:
       SAA_LLM__BASE_URL: http://vllm:8000/v1
       SAA_LLM__MODEL: local-vllm
-      SAA_LLM__CONTEXT_WINDOW: "1024"
-      SAA_LLM__OUTPUT_LIMIT: "128"
+      SAA_LLM__CONTEXT_WINDOW: ${VLLM_CONTEXT_WINDOW:-1024}
+      SAA_LLM__OUTPUT_LIMIT: ${VLLM_OUTPUT_LIMIT:-128}
     depends_on:
       vllm:
         condition: service_healthy
@@ -23,7 +23,7 @@ services:
       - --dtype
       - half
       - --max-model-len
-      - "1024"
+      - ${VLLM_CONTEXT_WINDOW:-1024}
       - --max-num-seqs
       - "1"
       - --gpu-memory-utilization

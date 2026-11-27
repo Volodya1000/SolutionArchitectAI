@@ -1,10 +1,14 @@
 from uuid import UUID
 
-from solution_architect_ai.application.dto import (
+from solution_architect_ai.application.models.chat_dto import (
     RunView,
     StartRun,
 )
-from solution_architect_ai.application.ports import ChatStore, ResourceProbe, StoreFactory
+from solution_architect_ai.application.protocols.chat_protocols import (
+    ChatStore,
+    ResourceProbe,
+    StoreFactory,
+)
 from solution_architect_ai.domain.runs import RunStatus
 
 

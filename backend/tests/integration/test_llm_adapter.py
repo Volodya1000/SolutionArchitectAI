@@ -5,8 +5,8 @@ import httpx
 import pytest
 from langchain_openai import ChatOpenAI
 
-from solution_architect_ai.application.errors import GenerationFailure
-from solution_architect_ai.application.ports import Chunk
+from solution_architect_ai.application.errors.chat_errors import GenerationFailure
+from solution_architect_ai.application.protocols.chat_protocols import Chunk
 from solution_architect_ai.infrastructure.llm import LangChainLLM
 
 pytestmark: Final[pytest.MarkDecorator] = pytest.mark.anyio

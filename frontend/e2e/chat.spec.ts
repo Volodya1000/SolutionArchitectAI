@@ -77,6 +77,7 @@ test('LLM failure is visible and a new request works', async ({ page }) => {
 });
 
 test('all themes persist and chat remains accessible', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light' });
   await page.goto('/');
   await createChat(page);
   for (const theme of THEMES) {
@@ -84,6 +85,19 @@ test('all themes persist and chat remains accessible', async ({ page }) => {
     await expect(page.getByRole('combobox', { name: LABELS.themeSelect })).toHaveValue(theme);
     await page.reload();
     await expect(page.getByRole('combobox', { name: LABELS.themeSelect })).toHaveValue(theme);
+    const sendButton = page.getByRole('button', { name: LABELS.sendButton });
+    await expect(sendButton).toBeDisabled();
+    await expect(sendButton).toHaveCSS(
+      'background-color',
+      theme === 'dark' ? 'rgb(51, 64, 77)' : 'rgb(220, 227, 232)',
+    );
+    await input(page).fill('   ');
+    await expect(sendButton).toBeDisabled();
+    await input(page).fill('Вопрос');
+    await expect(sendButton).toBeEnabled();
+    await expect(sendButton).toHaveCSS('background-color', 'rgb(35, 111, 101)');
+    await input(page).clear();
+    await expect(sendButton).toBeDisabled();
     const result = await new AxeBuilder({ page }).analyze();
     expect(result.violations).toEqual([]);
   }

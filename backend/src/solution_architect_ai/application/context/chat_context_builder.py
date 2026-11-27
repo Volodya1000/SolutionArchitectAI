@@ -1,8 +1,8 @@
 from bisect import bisect_right
 
-from solution_architect_ai.application.dto import MessageView
-from solution_architect_ai.application.errors import GenerationFailure
-from solution_architect_ai.application.ports import TokenCounter
+from solution_architect_ai.application.errors.chat_errors import GenerationFailure
+from solution_architect_ai.application.models.chat_dto import MessageView
+from solution_architect_ai.application.protocols.chat_protocols import TokenCounter
 from solution_architect_ai.domain.messages import MessageRole
 from solution_architect_ai.domain.runs import RunErrorCode
 
