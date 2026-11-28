@@ -5,7 +5,7 @@ import { http, HttpResponse } from 'msw';
 import { setupServer } from 'msw/node';
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest';
 import type { ReactNode } from 'react';
-import { scopeKey, type Snapshot } from '../../shared/api/client';
+import { type Snapshot } from '../../shared/api/client';
 import { useChat } from './use-chat';
 
 const active: Snapshot = {
@@ -77,7 +77,7 @@ function show() {
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     ),
   });
-  return { ...view, client };
+  return view;
 }
 
 it('opens a new stream after a closed connection with the same active run', async () => {
@@ -135,10 +135,14 @@ it('recovers malformed stream JSON and closes connections when unmounted', async
 
 it('lets slow history recovery finish while repeated stream connections fail', async () => {
   let reads = 0;
+  let release = () => {};
+  const history = new Promise<void>((resolve) => {
+    release = resolve;
+  });
   server.use(
     http.get(`/api/chats/${fixtureId('a')}`, async () => {
       if (++reads === 1) return HttpResponse.json(active);
-      await new Promise((resolve) => setTimeout(resolve, 1400));
+      await history;
       return HttpResponse.json({
         ...active,
         messages: [{ ...active.messages[0], content: 'Конец', incomplete: false }],
@@ -156,10 +160,16 @@ it('lets slow history recovery finish while repeated stream connections fail', a
   );
   autoFailStreams = true;
   const { result } = show();
+  try {
+    await waitFor(() => expect(sources.length).toBeGreaterThanOrEqual(2), { timeout: 3000 });
+  } finally {
+    release();
+  }
   await waitFor(() => expect(result.current.query.data?.messages[0]?.content).toBe('Конец'), {
     timeout: 4000,
   });
   expect(result.current.connectionError).toBe(false);
+  expect(reads).toBe(2);
 });
 
 it('does not carry a failed connection warning into the next run', async () => {
@@ -175,7 +185,7 @@ it('does not carry a failed connection warning into the next run', async () => {
 });
 
 it('keeps newer SSE text and completion when an older HTTP refresh arrives later', async () => {
-  const { result, client } = show();
+  const { result } = show();
   await waitFor(() => expect(result.current.run?.id).toBe(fixtureId('run')));
   let release = () => {};
   const response = new Promise<void>((resolve) => {
@@ -217,9 +227,6 @@ it('keeps newer SSE text and completion when an older HTTP refresh arrives later
   await act(async () => {
     await refresh;
   });
-  expect(
-    client.getQueryData<Snapshot>([...scopeKey, 'chat', fixtureId('a')])?.runs[0]?.sequence,
-  ).toBe(2);
   expect(result.current.query.data?.messages[0]?.content).toBe('Новый ответ');
   expect(result.current.query.data?.runs[0]?.sequence).toBe(2);
   expect(result.current.run).toBeUndefined();

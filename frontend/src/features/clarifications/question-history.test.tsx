@@ -58,13 +58,15 @@ it('keeps old and new source wording comparable without binding an old version t
   const oldQuote = screen.getByText('Хранить отчёты 30 дней.');
   expect(oldQuote).toBeVisible();
   expect(screen.getByText(source.quote)).toBeVisible();
-  expect(within(oldQuote.closest('article')!).getByRole('link')).toHaveAttribute(
+  const sourceCards = screen.getAllByRole('article');
+  const previous = sourceCards.find((card) => within(card).queryByText('Хранить отчёты 30 дней.'));
+  const current = sourceCards.find((card) => within(card).queryByText(source.quote));
+  if (!previous || !current) throw new Error('Both source quotations must have their own card');
+  expect(within(previous).getByRole('link', { name: /Источник/ })).toHaveAttribute(
     'href',
     `/documents?version=${fixtureId('v1')}&fragment=${fixtureId('fragment-v1')}`,
   );
-  expect(
-    within(screen.getByText(source.quote).closest('article')!).getByRole('link'),
-  ).toHaveAttribute(
+  expect(within(current).getByRole('link', { name: /Источник/ })).toHaveAttribute(
     'href',
     `/documents?version=${fixtureId('v2')}&fragment=${fixtureId('fragment-v2')}&run=${fixtureId('current-run')}`,
   );

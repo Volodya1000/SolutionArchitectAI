@@ -12,6 +12,10 @@
 
 ## Замечания и проверяемые изменения
 
+The testing-quality follow-up from baseline `75ad38f` is documented in
+[PR20 test quality verification](pr20-test-quality.md). Existing closed items keep
+their original evidence and scope; the failed real-Qwen acceptance remains open.
+
 Все строки относятся к PR #20 и ревизии кода, содержащей этот отчёт.
 
 | Пункт / дефект | Изменение | Тест или измерение | Состояние |

@@ -1,0 +1,249 @@
+{
+  "baseline_sha": "75ad38f19138632dd78485faad436f44b385a3db",
+  "scope": "Targeted reversible mutations, not a global mutation score",
+  "restore": "Original source and current test bytes restored in finally after each mutation. Before uses git show baseline:test, after uses changed test. Apply exact replacement once.",
+  "results": [
+    {
+      "mutation": "first_requirement",
+      "phase": "before",
+      "file": "backend/src/solution_architect_ai/application/context/clarification_context_builder.py",
+      "from": "for requirement in requirements\n            ],",
+      "to": "for requirement in requirements[:1]\n            ],",
+      "test": "backend/tests/unit/test_pr20_requirement_context.py",
+      "exit_code": 0,
+      "seconds": 3.07,
+      "command": "uv run --locked --project backend python -m pytest -c backend/pyproject.toml backend/tests/unit/test_pr20_requirement_context.py -q --disable-socket --allow-hosts=127.0.0.1,localhost --allow-unix-socket"
+    },
+    {
+      "mutation": "first_requirement",
+      "phase": "after",
+      "file": "backend/src/solution_architect_ai/application/context/clarification_context_builder.py",
+      "from": "for requirement in requirements\n            ],",
+      "to": "for requirement in requirements[:1]\n            ],",
+      "test": "backend/tests/unit/test_pr20_requirement_context.py",
+      "exit_code": 1,
+      "seconds": 3.19,
+      "command": "uv run --locked --project backend python -m pytest -c backend/pyproject.toml backend/tests/unit/test_pr20_requirement_context.py -q --disable-socket --allow-hosts=127.0.0.1,localhost --allow-unix-socket"
+    },
+    {
+      "mutation": "no_requirements",
+      "phase": "before",
+      "file": "backend/src/solution_architect_ai/application/context/clarification_context_builder.py",
+      "from": "for requirement in requirements\n            ],",
+      "to": "for requirement in []\n            ],",
+      "test": "backend/tests/unit/test_pr20_requirement_context.py",
+      "exit_code": 0,
+      "seconds": 3.1,
+      "command": "uv run --locked --project backend python -m pytest -c backend/pyproject.toml backend/tests/unit/test_pr20_requirement_context.py -q --disable-socket --allow-hosts=127.0.0.1,localhost --allow-unix-socket"
+    },
+    {
+      "mutation": "no_requirements",
+      "phase": "after",
+      "file": "backend/src/solution_architect_ai/application/context/clarification_context_builder.py",
+      "from": "for requirement in requirements\n            ],",
+      "to": "for requirement in []\n            ],",
+      "test": "backend/tests/unit/test_pr20_requirement_context.py",
+      "exit_code": 1,
+      "seconds": 3.18,
+      "command": "uv run --locked --project backend python -m pytest -c backend/pyproject.toml backend/tests/unit/test_pr20_requirement_context.py -q --disable-socket --allow-hosts=127.0.0.1,localhost --allow-unix-socket"
+    },
+    {
+      "mutation": "original_replaced",
+      "phase": "before",
+      "file": "backend/src/solution_architect_ai/application/context/clarification_context_builder.py",
+      "from": "original_text=requirement.original_text,",
+      "to": "original_text=requirement.normalized_text,",
+      "test": "backend/tests/unit/test_pr20_requirement_context.py",
+      "exit_code": 0,
+      "seconds": 3.06,
+      "command": "uv run --locked --project backend python -m pytest -c backend/pyproject.toml backend/tests/unit/test_pr20_requirement_context.py -q --disable-socket --allow-hosts=127.0.0.1,localhost --allow-unix-socket"
+    },
+    {
+      "mutation": "original_replaced",
+      "phase": "after",
+      "file": "backend/src/solution_architect_ai/application/context/clarification_context_builder.py",
+      "from": "original_text=requirement.original_text,",
+      "to": "original_text=requirement.normalized_text,",
+      "test": "backend/tests/unit/test_pr20_requirement_context.py",
+      "exit_code": 1,
+      "seconds": 3.26,
+      "command": "uv run --locked --project backend python -m pytest -c backend/pyproject.toml backend/tests/unit/test_pr20_requirement_context.py -q --disable-socket --allow-hosts=127.0.0.1,localhost --allow-unix-socket"
+    },
+    {
+      "mutation": "duplicate_requirement",
+      "phase": "before",
+      "file": "backend/src/solution_architect_ai/application/context/clarification_context_builder.py",
+      "from": "for requirement in requirements\n            ],",
+      "to": "for requirement in [requirements[0], requirements[0]]\n            ],",
+      "test": "backend/tests/unit/test_pr20_requirement_context.py",
+      "exit_code": 0,
+      "seconds": 3.0,
+      "command": "uv run --locked --project backend python -m pytest -c backend/pyproject.toml backend/tests/unit/test_pr20_requirement_context.py -q --disable-socket --allow-hosts=127.0.0.1,localhost --allow-unix-socket"
+    },
+    {
+      "mutation": "duplicate_requirement",
+      "phase": "after",
+      "file": "backend/src/solution_architect_ai/application/context/clarification_context_builder.py",
+      "from": "for requirement in requirements\n            ],",
+      "to": "for requirement in [requirements[0], requirements[0]]\n            ],",
+      "test": "backend/tests/unit/test_pr20_requirement_context.py",
+      "exit_code": 1,
+      "seconds": 3.25,
+      "command": "uv run --locked --project backend python -m pytest -c backend/pyproject.toml backend/tests/unit/test_pr20_requirement_context.py -q --disable-socket --allow-hosts=127.0.0.1,localhost --allow-unix-socket"
+    },
+    {
+      "mutation": "wrong_id_association",
+      "phase": "before",
+      "file": "backend/src/solution_architect_ai/application/context/clarification_context_builder.py",
+      "from": "id=requirement_keys[str(requirement.id)],",
+      "to": "id=requirement_keys[str(requirements[-1].id)],",
+      "test": "backend/tests/unit/test_pr20_requirement_context.py",
+      "exit_code": 1,
+      "seconds": 3.26,
+      "command": "uv run --locked --project backend python -m pytest -c backend/pyproject.toml backend/tests/unit/test_pr20_requirement_context.py -q --disable-socket --allow-hosts=127.0.0.1,localhost --allow-unix-socket"
+    },
+    {
+      "mutation": "wrong_id_association",
+      "phase": "after",
+      "file": "backend/src/solution_architect_ai/application/context/clarification_context_builder.py",
+      "from": "id=requirement_keys[str(requirement.id)],",
+      "to": "id=requirement_keys[str(requirements[-1].id)],",
+      "test": "backend/tests/unit/test_pr20_requirement_context.py",
+      "exit_code": 1,
+      "seconds": 3.18,
+      "command": "uv run --locked --project backend python -m pytest -c backend/pyproject.toml backend/tests/unit/test_pr20_requirement_context.py -q --disable-socket --allow-hosts=127.0.0.1,localhost --allow-unix-socket"
+    },
+    {
+      "mutation": "assistant_bot",
+      "phase": "before",
+      "file": "backend/src/solution_architect_ai/domain/messages.py",
+      "from": "ASSISTANT = \"assistant\"",
+      "to": "ASSISTANT = \"bot\"",
+      "test": "backend/tests/unit/test_message_role.py",
+      "exit_code": 0,
+      "seconds": 2.69,
+      "command": "uv run --locked --project backend python -m pytest -c backend/pyproject.toml backend/tests/unit/test_message_role.py -q --disable-socket --allow-hosts=127.0.0.1,localhost --allow-unix-socket"
+    },
+    {
+      "mutation": "assistant_bot",
+      "phase": "after",
+      "file": "backend/src/solution_architect_ai/domain/messages.py",
+      "from": "ASSISTANT = \"assistant\"",
+      "to": "ASSISTANT = \"bot\"",
+      "test": "backend/tests/unit/test_message_role.py",
+      "exit_code": 1,
+      "seconds": 2.85,
+      "command": "uv run --locked --project backend python -m pytest -c backend/pyproject.toml backend/tests/unit/test_message_role.py -q --disable-socket --allow-hosts=127.0.0.1,localhost --allow-unix-socket"
+    },
+    {
+      "mutation": "missing_route",
+      "phase": "before",
+      "file": "backend/src/solution_architect_ai/presentation/api.py",
+      "from": "    app.include_router(discussion_router)",
+      "to": "    # deliberately absent route",
+      "test": "backend/tests/unit/test_discussion_routes.py",
+      "exit_code": 0,
+      "seconds": 8.71,
+      "command": "uv run --locked --project backend python -m pytest -c backend/pyproject.toml backend/tests/unit/test_discussion_routes.py -q --disable-socket --allow-hosts=127.0.0.1,localhost --allow-unix-socket"
+    },
+    {
+      "mutation": "missing_route",
+      "phase": "after",
+      "file": "backend/src/solution_architect_ai/presentation/api.py",
+      "from": "    app.include_router(discussion_router)",
+      "to": "    # deliberately absent route",
+      "test": "backend/tests/unit/test_discussion_routes.py",
+      "exit_code": 1,
+      "seconds": 9.39,
+      "command": "uv run --locked --project backend python -m pytest -c backend/pyproject.toml backend/tests/unit/test_discussion_routes.py -q --disable-socket --allow-hosts=127.0.0.1,localhost --allow-unix-socket"
+    },
+    {
+      "mutation": "optional_subject",
+      "phase": "before",
+      "file": "backend/src/solution_architect_ai/application/models/discussion_models.py",
+      "from": "    subject: DiscussionSubject\n",
+      "to": "    subject: DiscussionSubject | None = None\n",
+      "test": "backend/tests/unit/test_discussion_routes.py",
+      "exit_code": 0,
+      "seconds": 8.77,
+      "command": "uv run --locked --project backend python -m pytest -c backend/pyproject.toml backend/tests/unit/test_discussion_routes.py -q --disable-socket --allow-hosts=127.0.0.1,localhost --allow-unix-socket"
+    },
+    {
+      "mutation": "optional_subject",
+      "phase": "after",
+      "file": "backend/src/solution_architect_ai/application/models/discussion_models.py",
+      "from": "    subject: DiscussionSubject\n",
+      "to": "    subject: DiscussionSubject | None = None\n",
+      "test": "backend/tests/unit/test_discussion_routes.py",
+      "exit_code": 1,
+      "seconds": 11.87,
+      "command": "uv run --locked --project backend python -m pytest -c backend/pyproject.toml backend/tests/unit/test_discussion_routes.py -q --disable-socket --allow-hosts=127.0.0.1,localhost --allow-unix-socket"
+    },
+    {
+      "mutation": "sse_ends_at_heartbeat",
+      "phase": "before",
+      "file": "backend/src/solution_architect_ai/presentation/routes.py",
+      "from": "        yield _format_sse_comment(\"heartbeat\")\n",
+      "to": "        yield _format_sse_comment(\"heartbeat\")\n        return\n",
+      "test": "backend/tests/unit/test_events.py",
+      "exit_code": 0,
+      "seconds": 3.31,
+      "command": "uv run --locked --project backend python -m pytest -c backend/pyproject.toml backend/tests/unit/test_events.py -q --disable-socket --allow-hosts=127.0.0.1,localhost --allow-unix-socket"
+    },
+    {
+      "mutation": "sse_ends_at_heartbeat",
+      "phase": "after",
+      "file": "backend/src/solution_architect_ai/presentation/routes.py",
+      "from": "        yield _format_sse_comment(\"heartbeat\")\n",
+      "to": "        yield _format_sse_comment(\"heartbeat\")\n        return\n",
+      "test": "backend/tests/unit/test_events.py",
+      "exit_code": 1,
+      "seconds": 3.4,
+      "command": "uv run --locked --project backend python -m pytest -c backend/pyproject.toml backend/tests/unit/test_events.py -q --disable-socket --allow-hosts=127.0.0.1,localhost --allow-unix-socket"
+    },
+    {
+      "mutation": "equal_sequence",
+      "phase": "before",
+      "file": "frontend/src/features/chat/stream.ts",
+      "from": "incoming.sequence <= current.sequence",
+      "to": "incoming.sequence < current.sequence",
+      "test": "frontend/src/features/chat/stream.test.ts",
+      "exit_code": 0,
+      "seconds": 3.81,
+      "command": "pnpm --dir frontend exec vitest run src/features/chat/stream.test.ts"
+    },
+    {
+      "mutation": "equal_sequence",
+      "phase": "after",
+      "file": "frontend/src/features/chat/stream.ts",
+      "from": "incoming.sequence <= current.sequence",
+      "to": "incoming.sequence < current.sequence",
+      "test": "frontend/src/features/chat/stream.test.ts",
+      "exit_code": 1,
+      "seconds": 4.02,
+      "command": "pnpm --dir frontend exec vitest run src/features/chat/stream.test.ts"
+    },
+    {
+      "mutation": "equal_new_path",
+      "phase": "before",
+      "file": "backend/src/solution_architect_ai/infrastructure/storage/local_files_storage.py",
+      "from": "        return path\n",
+      "to": "        return type(path)(str(path))\n",
+      "test": "backend/tests/unit/test_file_path_comparison.py",
+      "exit_code": 1,
+      "seconds": 3.04,
+      "command": "uv run --locked --project backend python -m pytest -c backend/pyproject.toml backend/tests/unit/test_file_path_comparison.py -q --disable-socket --allow-hosts=127.0.0.1,localhost --allow-unix-socket"
+    },
+    {
+      "mutation": "equal_new_path",
+      "phase": "after",
+      "file": "backend/src/solution_architect_ai/infrastructure/storage/local_files_storage.py",
+      "from": "        return path\n",
+      "to": "        return type(path)(str(path))\n",
+      "test": "backend/tests/unit/test_file_path_comparison.py",
+      "exit_code": 0,
+      "seconds": 2.77,
+      "command": "uv run --locked --project backend python -m pytest -c backend/pyproject.toml backend/tests/unit/test_file_path_comparison.py -q --disable-socket --allow-hosts=127.0.0.1,localhost --allow-unix-socket"
+    }
+  ]
+}

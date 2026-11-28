@@ -15,6 +15,17 @@ ROOT: Final[Path] = Path(__file__).resolve().parents[1]
 PYTHON: Final[str] = sys.executable
 TARGETS: Final[tuple[str, ...]] = ("backend/src", "backend/tests", "backend/test_helpers", "tools")
 CONFIG: Final[str] = "backend/pyproject.toml"
+FAST_ADAPTER_TESTS: Final[tuple[str, ...]] = (
+    "backend/tests/integration/test_llm_adapter.py",
+    "backend/tests/integration/test_structured_adapter.py",
+)
+FAST_QUALITY_TESTS: Final[tuple[str, ...]] = (
+    "backend/tests/quality/test_quality_runtime.py",
+    "backend/tests/quality/test_quality_runner.py",
+    "backend/tests/quality/test_runtime_smoke.py",
+    "backend/tests/quality/test_sqlalchemy_mock_boundaries.py",
+    "backend/tests/quality/test_gates.py::test_resource_construction_stays_in_composition_and_scoped_factories",
+)
 
 
 def git_output(arguments: Sequence[str]) -> str:
@@ -108,6 +119,21 @@ def backend_static(env: dict[str, str]) -> None:
         env,
     )
     run("Ruff", python_tool("ruff", "check", "--config", CONFIG, *TARGETS), env)
+    run(
+        "test private-member boundaries",
+        python_tool(
+            "ruff",
+            "check",
+            "--config",
+            CONFIG,
+            "--select",
+            "SLF001",
+            "backend/tests",
+            "backend/test_helpers",
+        ),
+        env,
+    )
+    run("SQLAlchemy mock boundaries", python_tool("tools.check_sqlalchemy_mocks"), env)
     run("Ruff format", python_tool("ruff", "format", "--check", "--config", CONFIG, *TARGETS), env)
     run(
         "Mypy strict: source, tests, tools",
@@ -170,10 +196,8 @@ def fast(env: dict[str, str]) -> None:
             "-c",
             CONFIG,
             "backend/tests/unit",
-            "backend/tests/quality/test_quality_runtime.py",
-            "backend/tests/quality/test_quality_runner.py",
-            "backend/tests/quality/test_runtime_smoke.py",
-            "backend/tests/quality/test_gates.py::test_resource_construction_stays_in_composition_and_scoped_factories",
+            *FAST_QUALITY_TESTS,
+            *FAST_ADAPTER_TESTS,
             "--cov",
             "--cov-config=backend/pyproject.toml",
             "--cov-report=",
@@ -262,12 +286,13 @@ def acceptance(env: dict[str, str]) -> None:
             backend,
         )
         run(
-            "PostgreSQL and adapter integration tests",
+            "PostgreSQL integration tests",
             python_tool(
                 "pytest",
                 "-c",
                 CONFIG,
                 "backend/tests/integration",
+                *(f"--ignore={path}" for path in FAST_ADAPTER_TESTS),
                 "--cov",
                 "--cov-config=backend/pyproject.toml",
                 "--cov-append",
@@ -292,7 +317,13 @@ def full(env: dict[str, str]) -> None:
     fast(env)
     run(
         "Python quality gate probes",
-        python_tool("pytest", "-c", CONFIG, "backend/tests/quality"),
+        python_tool(
+            "pytest",
+            "-c",
+            CONFIG,
+            "backend/tests/quality",
+            *(f"--deselect={path.removeprefix('backend/')}" for path in FAST_QUALITY_TESTS),
+        ),
         env,
     )
     run(

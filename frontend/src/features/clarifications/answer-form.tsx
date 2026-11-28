@@ -74,6 +74,7 @@ export function AnswerForm({
   }
   return (
     <form
+      aria-label={`Ответ на уточнение: ${question.text}`}
       className="clarification-form"
       noValidate={state.pending !== null}
       onSubmit={(event) => {

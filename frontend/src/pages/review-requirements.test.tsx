@@ -271,12 +271,13 @@ it.each(['running', 'failed'] as const)(
     show();
     const message = await screen.findByText(/проверено 4 из 10 фрагментов, 3 из 8 ответов/);
     if (status === 'failed') {
-      expect(message.closest('[role="alert"]')).toBeVisible();
+      expect(screen.getByRole('alert')).toHaveTextContent(message.textContent);
       expect(message).toHaveTextContent('отсутствие вопроса не означает полноту');
-      const table = await screen.findByRole('table', { name: 'Кандидаты требований' });
-      expect(message.compareDocumentPosition(table) & 4).toBe(4);
+      expect(await screen.findByRole('table', { name: 'Кандидаты требований' })).toBeVisible();
     } else {
-      expect(message.closest('[role="status"]')).toBeVisible();
+      expect(
+        screen.getAllByRole('status').some((status) => status.textContent === message.textContent),
+      ).toBe(true);
       expect(message).not.toHaveTextContent('не завершена');
     }
   },

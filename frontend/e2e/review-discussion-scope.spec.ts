@@ -50,6 +50,13 @@ test('a source panel uses the server scope and keeps another requirement assumpt
   expect(scoped.questions.map((question) => question.id)).toEqual([selected.id]);
   expect(scoped.risks).toHaveLength(0);
   const panel = page.getByRole('complementary', { name: 'Предмет и источники обсуждения' });
+  const panelBounds = await panel.boundingBox();
+  const composer = page.getByRole('textbox', { name: 'Сообщение', exact: true });
+  await expect(composer).toBeVisible();
+  const composerBounds = await composer.boundingBox();
+  if (!panelBounds || !composerBounds) throw new Error('Subject and composer must be visible');
+  expect(composerBounds.x).toBeGreaterThanOrEqual(panelBounds.x + panelBounds.width - 1);
+  expect(composerBounds.y).toBeLessThan(panelBounds.y + panelBounds.height);
   await expect(panel.locator(`#question-${selected.id}`)).toBeVisible();
   await expect(panel.locator(`#question-${unrelated.id}`)).toHaveCount(0);
   await expect(panel.getByText('Допущение другого требования', { exact: true })).toHaveCount(0);

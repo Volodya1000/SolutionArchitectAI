@@ -169,7 +169,10 @@ it('selects the latest version directly without opening history or entering mode
 it('opens an existing result without generating another extraction', async () => {
   let requests = 0;
   server.use(
-    ...mockExtractions([completedRun]),
+    ...mockExtractions([completedRun], {
+      current_completed: completedRun,
+      latest_completed: completedRun,
+    }),
     http.get('/api/extractions/:id', () => HttpResponse.json(completedRun)),
     http.post('/api/extractions', () => {
       requests += 1;
@@ -189,7 +192,10 @@ it('opens an existing result without generating another extraction', async () =>
 it('explicitly repeats analysis and preserves the previous result', async () => {
   let command: unknown;
   server.use(
-    ...mockExtractions([completedRun]),
+    ...mockExtractions([completedRun], {
+      current_completed: completedRun,
+      latest_completed: completedRun,
+    }),
     http.post('/api/extractions', async ({ request }) => {
       command = await request.json();
       const repeated = { ...completedRun, id: fixtureId('repeat-run'), status: 'queued' };
@@ -203,12 +209,18 @@ it('explicitly repeats analysis and preserves the previous result', async () => 
   expect(await screen.findByRole('heading', { name: 'Требования', level: 1 })).toBeVisible();
   expect(command).toMatchObject({ version_ids: [fixtureId('v1')], analysis_scope: '' });
   await waitFor(() =>
-    expect(screen.getByRole('combobox', { name: 'История извлечений' }).children).toHaveLength(2),
+    expect(
+      within(screen.getByRole('combobox', { name: 'История извлечений' })).getAllByRole('option'),
+    ).toHaveLength(2),
   );
 });
 
 it('starts a new analysis for a changed scope or server configuration', async () => {
-  server.use(...mockExtractions([{ ...completedRun, configuration_current: false }]));
+  server.use(
+    ...mockExtractions([{ ...completedRun, configuration_current: false }], {
+      latest_completed: { ...completedRun, configuration_current: false },
+    }),
+  );
   show();
   await selectVersion();
   expect(
@@ -219,15 +231,27 @@ it('starts a new analysis for a changed scope or server configuration', async ()
     screen.queryByText('Документы, область анализа и настройки не изменились.'),
   ).not.toBeInTheDocument();
   await userEvent.click(screen.getByText('Уточнить анализ'));
+  let requestedScope: string | null = null;
+  server.use(
+    http.get('/api/extractions/matching', ({ request }) => {
+      requestedScope = new URL(request.url).searchParams.get('analysis_scope');
+      return HttpResponse.json({ active: null, current_completed: null, latest_completed: null });
+    }),
+  );
   await userEvent.type(
     screen.getByRole('textbox', { name: 'На что обратить внимание (необязательно)' }),
     'Данные',
   );
+  await waitFor(() => expect(requestedScope).toBe('Данные'));
   expect(screen.queryByRole('link', { name: 'Открыть результат' })).not.toBeInTheDocument();
 });
 
 it('opens a matching active analysis without offering a duplicate launch', async () => {
-  server.use(...mockExtractions([{ ...completedRun, status: 'running' }]));
+  server.use(
+    ...mockExtractions([{ ...completedRun, status: 'running' }], {
+      active: { ...completedRun, status: 'running' },
+    }),
+  );
   show();
   await selectVersion();
   expect(await screen.findByRole('link', { name: 'Открыть анализ' })).toBeVisible();

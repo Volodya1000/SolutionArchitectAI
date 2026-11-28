@@ -106,19 +106,21 @@ it('shows the full effective requirement and original pinned quote even without 
   expect(within(panel).getByText(new RegExp(`SHA-256: ${fixtureHash('abc')}`))).toBeVisible();
 });
 
-it('keeps the subject beside the conversation and preserves the composer when the compact panel collapses', async () => {
+it('preserves the visible conversation and composer draft when the subject panel collapses', async () => {
   show(<Chat chatId={fixtureId('chat')} />);
   await screen.findByText(requirement.normalized_text);
   const input = screen.getByRole('textbox', { name: 'Сообщение' });
   await userEvent.type(input, 'Черновик обсуждения');
-  const panel = screen.getByRole('complementary', { name: 'Предмет и источники обсуждения' });
-  expect(panel.parentElement).toHaveClass('discussion-workspace');
-  expect(input.closest('.thread')?.parentElement).toBe(panel.parentElement);
+  expect(
+    screen.getByRole('complementary', { name: 'Предмет и источники обсуждения' }),
+  ).toBeVisible();
   await userEvent.click(screen.getByText('Предмет, источники и уточнения'));
   expect(screen.getByText(requirement.normalized_text)).not.toBeVisible();
   expect(screen.getByText(discussion.title)).toBeVisible();
   expect(screen.getByRole('link', { name: 'Вернуться к требованию' })).toBeVisible();
   expect(input).toHaveValue('Черновик обсуждения');
+  expect(input).toBeVisible();
+  expect(input).toBeEnabled();
   await userEvent.click(screen.getByText('Предмет, источники и уточнения'));
   expect(screen.getByText(requirement.normalized_text)).toBeVisible();
   expect(input).toHaveValue('Черновик обсуждения');

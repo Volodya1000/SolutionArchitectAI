@@ -25,17 +25,27 @@ describe('run snapshots', () => {
         { ...initial, chat_id: fixtureId('chat-b'), sequence: 4 },
         fixtureId('chat-a'),
       ),
-    ).toBe(initial);
+    ).toEqual(initial);
   });
-  it('ignores duplicate or older snapshots', () => {
-    expect(
-      applyRunSnapshot(
+  it.each([2, 3])(
+    'preserves displayed text for sequence %i and accepts a newer event',
+    (sequence) => {
+      const preserved = applyRunSnapshot(
         initial,
-        { ...initial, sequence: 2, content: 'старый' },
+        { ...initial, sequence, content: 'чужое содержимое' },
         fixtureId('chat-a'),
-      ),
-    ).toBe(initial);
-  });
+      );
+      expect(preserved).toEqual(initial);
+      expect(preserved.content).toBe('Ответ');
+      expect(
+        applyRunSnapshot(
+          preserved,
+          { ...initial, sequence: 4, content: 'Продолжение ответа' },
+          fixtureId('chat-a'),
+        ).content,
+      ).toBe('Продолжение ответа');
+    },
+  );
   it('restores missing deltas using a newer persisted snapshot', () => {
     expect(
       applyRunSnapshot(

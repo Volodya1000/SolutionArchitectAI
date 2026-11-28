@@ -107,7 +107,7 @@ it('requires an explicit transfer before submitting an old draft against a new r
   expect(screen.getByRole('button', { name: 'Принять допущение' })).toBeDisabled();
   expect(screen.getByText('Каков срок хранения?')).toBeVisible();
   expect(screen.getByText('Каков срок для администратора?')).toBeVisible();
-  fireEvent.submit(screen.getByLabelText('Ответ архитектора').closest('form')!);
+  fireEvent.submit(screen.getByRole('form', { name: /^Ответ на уточнение:/ }));
   expect(commands).toHaveLength(0);
   await userEvent.click(
     screen.getByRole('button', { name: 'Перенести черновик в текущую ревизию' }),

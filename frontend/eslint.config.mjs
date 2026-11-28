@@ -5,6 +5,9 @@ import importX from 'eslint-plugin-import-x';
 import a11y from 'eslint-plugin-jsx-a11y';
 import hooks from 'eslint-plugin-react-hooks';
 import refresh from 'eslint-plugin-react-refresh';
+import vitest from '@vitest/eslint-plugin';
+import testingLibrary from 'eslint-plugin-testing-library';
+import playwright from 'eslint-plugin-playwright';
 import ts from 'typescript-eslint';
 
 const allow = (from, to) => ({
@@ -77,6 +80,57 @@ export default ts.config(
     rules: {
       // Preserve OpenAPI's documented enum alongside its forward-compatible string union.
       '@typescript-eslint/no-redundant-type-constituents': 'off',
+    },
+  },
+  {
+    files: ['src/**/*.test.{ts,tsx}'],
+    plugins: { vitest, 'testing-library': testingLibrary },
+    rules: {
+      'vitest/valid-expect': 'error',
+      'vitest/no-focused-tests': 'error',
+      'testing-library/no-wait-for-side-effects': 'error',
+      'testing-library/no-node-access': 'error',
+    },
+  },
+  {
+    files: ['e2e/**/*.ts'],
+    plugins: { playwright },
+    rules: {
+      'playwright/missing-playwright-await': ['error', { includePageLocatorMethods: true }],
+      'playwright/no-wait-for-timeout': 'error',
+      'playwright/no-focused-test': 'error',
+    },
+  },
+  {
+    files: ['src/**/*.{ts,tsx}'],
+    ignores: [
+      'src/**/*.test.{ts,tsx}',
+      'src/test/**',
+      'src/**/*test-fixtures.ts',
+      'src/**/*test-network-fixtures.ts',
+    ],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: [
+                'vitest',
+                'msw',
+                'msw/*',
+                '@testing-library/*',
+                '**/test/**',
+                '**/*test-fixtures*',
+                '**/*test-network-fixtures*',
+                '**/*.test',
+                '**/*.test.*',
+              ],
+              message: 'Product modules must not depend on test infrastructure.',
+            },
+          ],
+        },
+      ],
     },
   },
   prettier,

@@ -234,7 +234,8 @@ it('shows the immutable question revision attached to a saved decision', () => {
       />
     </MemoryRouter>,
   );
-  expect(screen.getByText('Ревизия вопроса').nextElementSibling).toHaveTextContent('1');
+  expect(screen.getByText('Ревизия вопроса')).toBeVisible();
+  expect(screen.getAllByRole('definition').map((item) => item.textContent)).toContain('1');
 });
 
 it.each(['confirm', 'reject'] as const)(

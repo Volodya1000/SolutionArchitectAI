@@ -5,12 +5,7 @@ import { setupServer } from 'msw/node';
 import { MemoryRouter } from 'react-router';
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest';
 import { clarificationSchema } from '../../shared/api/clarifications';
-import {
-  extractionSchema,
-  extractionSummarySchema,
-  type Extraction,
-} from '../../shared/api/extractions';
-import { extractionStatusKey } from '../../shared/api/use-extraction-history';
+import { extractionSchema, type Extraction } from '../../shared/api/extractions';
 import { fixtureId, storedModelProfileFixture } from '../../shared/api/test-network-fixtures';
 import { RunResult } from './run-result';
 import { Requirements } from './requirements';
@@ -149,11 +144,12 @@ it('refreshes when the compact status changes while the full result retains its 
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   let reads = 0;
   let persisted = empty;
+  let status = run;
   server.use(
     http.get('/api/extractions/history', () =>
       HttpResponse.json({ items: [run], has_more: false }),
     ),
-    http.get(`/api/extractions/${run.id}/status`, () => HttpResponse.json(run)),
+    http.get(`/api/extractions/${run.id}/status`, () => HttpResponse.json(status)),
     http.get(`/api/extractions/${run.id}`, () => HttpResponse.json(run)),
     http.get(`/api/extractions/${run.id}/clarifications`, () => {
       reads++;
@@ -169,12 +165,11 @@ it('refreshes when the compact status changes while the full result retains its 
   );
   await waitFor(() => expect(reads).toBe(1));
   persisted = ready;
-  act(() => {
-    client.setQueryData(
-      extractionStatusKey(run.id),
-      extractionSummarySchema.parse({ ...run, status: 'waiting_input' }),
-    );
-  });
+  status = { ...run, status: 'waiting_input' };
+  await waitFor(
+    () => expect(screen.getByRole('textbox', { name: 'Ответ архитектора' })).toBeVisible(),
+    { timeout: 3000 },
+  );
   expect(await screen.findByRole('textbox', { name: 'Ответ архитектора' })).toBeVisible();
 });
 

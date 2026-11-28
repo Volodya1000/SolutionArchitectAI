@@ -94,8 +94,7 @@ function show(path = '/requirements') {
 
 it('shows the original source quote once and keeps technical metadata behind disclosure', async () => {
   show();
-  const row = (await screen.findByText('Система сохраняет отчёты.')).closest('tr');
-  if (!row) throw new Error('Requirement row is missing');
+  const row = await screen.findByRole('row', { name: /Система сохраняет отчёты/ });
   expect(within(row).queryByText('Исходная формулировка')).not.toBeInTheDocument();
   await userEvent.click(within(row).getByText('Цитата из документа'));
   expect(within(row).getAllByText(source.quote)).toHaveLength(1);
@@ -244,10 +243,14 @@ it('loads another page of compact history without fetching the unselected result
   );
   show();
   await screen.findByText('Система сохраняет отчёты.');
-  expect(screen.getByRole('combobox', { name: 'История извлечений' }).children).toHaveLength(50);
+  expect(
+    within(screen.getByRole('combobox', { name: 'История извлечений' })).getAllByRole('option'),
+  ).toHaveLength(50);
   await userEvent.click(screen.getByRole('button', { name: 'Загрузить ещё анализы' }));
   await waitFor(() =>
-    expect(screen.getByRole('combobox', { name: 'История извлечений' }).children).toHaveLength(51),
+    expect(
+      within(screen.getByRole('combobox', { name: 'История извлечений' })).getAllByRole('option'),
+    ).toHaveLength(51),
   );
   expect(details).toBe(1);
 });

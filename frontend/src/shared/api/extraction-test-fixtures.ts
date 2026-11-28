@@ -1,8 +1,11 @@
 import { fixtureId } from '@/shared/api/test-network-fixtures';
 import { http, HttpResponse } from 'msw';
-import { extractionActive, extractionSchema, extractionSummarySchema } from './extractions';
+import { extractionSchema, extractionSummarySchema } from './extractions';
 
-export function mockExtractions(values: unknown[]) {
+export function mockExtractions(
+  values: unknown[],
+  matching: { active?: unknown; current_completed?: unknown; latest_completed?: unknown } = {},
+) {
   const runs = values.map((value) => extractionSchema.parse(value));
   return [
     http.get('/api/extractions/:id/clarifications', ({ params }) =>
@@ -32,22 +35,14 @@ export function mockExtractions(values: unknown[]) {
         has_more: runs.length > offset + limit,
       });
     }),
-    http.get('/api/extractions/matching', ({ request }) => {
-      const query = new URL(request.url).searchParams;
-      const ids = query.getAll('version_ids');
-      const matching = runs.filter(
-        (run) =>
-          run.analysis_scope === query.get('analysis_scope') &&
-          run.version_ids.length === ids.length &&
-          run.version_ids.every((id) => ids.includes(id)),
-      );
-      return HttpResponse.json({
-        active: matching.find(extractionActive) ?? null,
-        current_completed:
-          matching.find((run) => run.status === 'completed' && run.configuration_current) ?? null,
-        latest_completed: matching.find((run) => run.status === 'completed') ?? null,
-      });
-    }),
+    http.get('/api/extractions/matching', () =>
+      HttpResponse.json({
+        active: null,
+        current_completed: null,
+        latest_completed: null,
+        ...matching,
+      }),
+    ),
     http.get('/api/extractions/:id/status', ({ params }) => {
       const run = runs.find((run) => run.id === params.id);
       return run

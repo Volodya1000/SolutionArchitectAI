@@ -5,6 +5,18 @@
 
 ## [Unreleased] — Не выпущено
 
+### Test quality
+
+- Strengthen independent LLM requirement and message-role contracts, assembled
+  route validation and streaming lifecycle regressions, with targeted mutation evidence.
+- Isolate PostgreSQL scenarios in migrated per-test databases, replace five ORM
+  session mocks with real persistence checks and verify graph recovery by outcomes.
+- Make SDK transport tests independent of ambient proxies and include them once
+  in the fast/full gates. Add test-specific lint rules and product/test import protection.
+- Replace frontend DOM/cache assertions and matching algorithms in MSW fixtures
+  with user-visible behavior and explicit server responses; exclude test support
+  from production coverage.
+
 ### Добавлено
 
 - Генерация сетевых TypeScript-контрактов и исполняемых Zod-схем из автономного
