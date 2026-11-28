@@ -11,10 +11,7 @@ from fastapi import FastAPI
 from langchain_openai import ChatOpenAI
 from pydantic import TypeAdapter
 
-from backend.tests.integration.test_discussions import Resources, content_chunks, seed_analysis
-from backend.tests.integration.test_discussions import (  # pylint: disable=unused-import,useless-import-alias
-    discussion_resources as discussion_resources,
-)
+from backend.test_helpers.discussion_resources import Resources, content_chunks, seed_analysis
 from solution_architect_ai.application.context.discussion_context_builder import (
     DiscussionContextBuilder,
 )
@@ -362,3 +359,8 @@ async def captured_model_context(messages: list[MessageView]) -> dict[str, objec
     return TypeAdapter(dict[str, object]).validate_json(
         TypeAdapter(str).validate_python(encoded_user["content"])
     )
+
+
+@pytest.fixture(name="resources")
+def discussion_resources_fixture(discussion_resources: Resources) -> Resources:
+    return discussion_resources

@@ -1,9 +1,7 @@
 import asyncio
-import os
 from collections.abc import AsyncGenerator, AsyncIterator
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, replace
-from datetime import UTC, datetime
+from dataclasses import replace
 from pathlib import Path
 from typing import Final
 from uuid import UUID, uuid4
@@ -13,19 +11,17 @@ import pytest
 from dishka import AsyncContainer, Provider, Scope, make_async_container
 from dishka.integrations.fastapi import setup_dishka
 from fastapi import FastAPI
-from sqlalchemy.ext.asyncio import (
-    AsyncEngine,
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
 
-from backend.tests.sql_store_setup import (
+from backend.test_helpers.discussion_resources import (
+    Resources,
+    content_chunks,
+    seed_analysis,
+    upload,
+)
+from backend.test_helpers.sql_store_setup import (
     SqlStoreSetup,
     chat_store_setup,
-    clarification_store_setup,
     discussion_store_setup,
-    document_store_setup,
 )
 from solution_architect_ai.application.context.discussion_context_builder import (
     DiscussionContextBuilder,
@@ -48,10 +44,7 @@ from solution_architect_ai.application.models.chat_dto import (
     StartRun,
 )
 from solution_architect_ai.application.models.clarification_models import (
-    ActorContext,
     AnswerClarification,
-    ClarificationQuestion,
-    SourceVersion,
 )
 from solution_architect_ai.application.models.discussion_models import (
     CreateDiscussion,
@@ -64,29 +57,20 @@ from solution_architect_ai.application.models.document_dto import (
     UploadDocument,
 )
 from solution_architect_ai.application.models.extraction_models import (
-    CoverageView,
-    ExtractionProgress,
-    ExtractionStart,
     ExtractionView,
     RequirementView,
     SourceRef,
-    StoredModelProfile,
 )
 from solution_architect_ai.application.protocols.chat_protocols import ChatStore, Chunk
 from solution_architect_ai.application.retry import GenerationPolicy
 from solution_architect_ai.application.services.clarification_service import ClarificationService
 from solution_architect_ai.application.services.discussion_service import DiscussionService
-from solution_architect_ai.application.services.document_service import DocumentService
-from solution_architect_ai.config.settings import Settings
-from solution_architect_ai.di.main import bootstrap, chat_error
-from solution_architect_ai.di.providers import database_url
+from solution_architect_ai.di.main import chat_error
 from solution_architect_ai.domain.documents import ParsedDocument
 from solution_architect_ai.domain.messages import MessageRole
 from solution_architect_ai.domain.requirements import RequirementCategory
 from solution_architect_ai.domain.runs import RunErrorCode, RunStatus
 from solution_architect_ai.infrastructure.context import LangChainTokenCounter
-from solution_architect_ai.infrastructure.parsers.document_parser import DocumentParser
-from solution_architect_ai.infrastructure.storage.local_files_storage import LocalFileStorage
 from solution_architect_ai.persistence.clarifications.clarification_store import (
     SqlAlchemyClarificationStore,
 )
@@ -100,144 +84,6 @@ from solution_architect_ai.presentation.discussion_routes import router as discu
 from solution_architect_ai.presentation.document_routes import document_error
 
 pytestmark: Final[list[pytest.MarkDecorator]] = [pytest.mark.anyio, pytest.mark.integration]
-
-
-@dataclass(frozen=True)
-class Resources:
-    discussions: DiscussionService
-    stores: SqlStoreSetup[SqlAlchemyDiscussionStore]
-    clarifications: SqlStoreSetup[SqlAlchemyClarificationStore]
-    documents: DocumentService
-    directory: Path
-
-
-@pytest.fixture(name="resources")
-async def discussion_resources(tmp_path: Path) -> AsyncGenerator[Resources]:
-    assert os.environ.get("SAA_DATABASE__DATABASE", "").endswith("_test")
-    settings: Settings = bootstrap()
-    engine: AsyncEngine = create_async_engine(database_url(settings))
-    sessions: async_sessionmaker[AsyncSession] = async_sessionmaker(engine, expire_on_commit=False)
-    actor: ActorContext = ActorContext.local(DEFAULT_TASK_ID)
-    documents: DocumentService = DocumentService(
-        document_store_setup(sessions), LocalFileStorage(tmp_path), DocumentParser()
-    )
-    clarifications: SqlStoreSetup[SqlAlchemyClarificationStore] = clarification_store_setup(
-        sessions, actor
-    )
-    stores: SqlStoreSetup[SqlAlchemyDiscussionStore] = discussion_store_setup(sessions, actor)
-    try:
-        yield Resources(
-            DiscussionService(stores, documents, ClarificationService(clarifications, documents)),
-            stores,
-            clarifications,
-            documents,
-            tmp_path,
-        )
-    finally:
-        await engine.dispose()
-
-
-async def content_chunks(content: bytes) -> AsyncGenerator[bytes]:
-    yield content
-
-
-async def upload(resources: Resources, file_id: UUID | None = None) -> DocumentVersionView:
-    return await resources.documents.upload(
-        UploadDocument(
-            operation_id=uuid4(),
-            filename="requirements.md",
-            mime_type="text/markdown",
-            file_id=file_id,
-        ),
-        content_chunks(
-            b"# Reporting\n\nR03 Reports must be published.\n\n"
-            b"R04 Reports contain a comparison to the previous period.\n"
-        ),
-    )
-
-
-async def seed_analysis(
-    resources: Resources,
-    version: DocumentVersionView,
-    answer: str | None,
-) -> tuple[UUID, UUID]:
-    parsed: ParsedDocument = await resources.documents.get_parsed_document(version.version_id)
-    source: SourceRef = await resources.discussions.source_reference(
-        version.version_id, parsed.fragments[0].fragment_id
-    )
-    run_id: UUID = uuid4()
-    requirement_id: UUID = uuid4()
-    command: ExtractionStart = ExtractionStart(
-        operation_id=uuid4(), version_ids=[version.version_id], answer_history_mode="new"
-    )
-    settings: Settings = bootstrap()
-    view: ExtractionView = ExtractionView(
-        id=run_id,
-        status=RunStatus.COMPLETED,
-        progress=ExtractionProgress(),
-        error_code=None,
-        created_at=datetime.now(UTC),
-        model="fake-chat",
-        version_ids=[version.version_id],
-        coverage=CoverageView(),
-        model_profile=StoredModelProfile.model_validate(
-            settings.llm.model_dump(mode="json", exclude={"api_key"})
-        ),
-        contract_version="test",
-        prompt_version="test",
-        requirements=[
-            RequirementView(
-                id=requirement_id,
-                category=RequirementCategory.FUNCTIONAL,
-                original_text="R03 Reports must be published.",
-                normalized_text="R03 Reports must be published.",
-                sources=[source],
-            )
-        ],
-    )
-    store: SqlAlchemyClarificationStore
-    async with resources.clarifications.open() as store:
-        store.session.add(
-            ExtractionRow(
-                id=run_id,
-                task_id=DEFAULT_TASK_ID,
-                operation_id=command.operation_id,
-                payload_digest="test",
-                config_digest="test",
-                command_json=command.model_dump_json(),
-                snapshot_json=view.model_dump_json(),
-                status=view.status.value,
-                created_at=view.created_at,
-            )
-        )
-        await store.session.flush()
-        if answer is not None:
-            question: ClarificationQuestion = ClarificationQuestion(
-                id=uuid4(),
-                gap_key=f"report:{run_id}",
-                text="How often?",
-                basis="Not specified",
-                dependent_decision="Report schedule",
-                blocking=True,
-                requirement_ids=[requirement_id],
-                sources=[source],
-            )
-            await store.save_questions(run_id, [question])
-            await store.answer(
-                run_id,
-                question.id,
-                AnswerClarification(
-                    operation_id=uuid4(),
-                    expected_question_revision=1,
-                    source_versions=[
-                        SourceVersion(version_id=version.version_id, sha256=version.sha256)
-                    ],
-                    kind="answer",
-                    text=answer,
-                    basis="Architect decision",
-                ),
-            )
-    return run_id, requirement_id
 
 
 async def test_same_source_keeps_analysis_a_b_and_direct_context_separate(
@@ -677,3 +523,8 @@ async def test_reporting_context_contains_r03_r04_without_unrelated_requirement_
         incomplete=False,
     )
     assert LangChainTokenCounter(2).count([*messages, question]) <= 5376
+
+
+@pytest.fixture(name="resources")
+def discussion_resources_fixture(discussion_resources: Resources) -> Resources:
+    return discussion_resources

@@ -9,16 +9,13 @@ from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.types import StateSnapshot
 
-from backend.tests.integration.test_clarification_graph import (
+from backend.test_helpers.clarification_graph import (
     DOCUMENT,
     answer,
     install_questions,
     start_fresh,
 )
-from backend.tests.integration.test_extraction_lifecycle import ExtractionResources, upload
-from backend.tests.integration.test_extraction_lifecycle import (  # pylint: disable=unused-import,useless-import-alias
-    extraction_resources as extraction_resources,
-)
+from backend.test_helpers.extraction_resources import ExtractionResources, upload
 from solution_architect_ai.application.errors.chat_errors import StorageUnavailable
 from solution_architect_ai.application.models.clarification_models import (
     ClarificationView,

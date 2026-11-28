@@ -13,7 +13,7 @@ from tools.quality_runtime import RuntimeEnvironment, isolated_runtime
 
 ROOT: Final[Path] = Path(__file__).resolve().parents[1]
 PYTHON: Final[str] = sys.executable
-TARGETS: Final[tuple[str, ...]] = ("backend/src", "backend/tests", "tools")
+TARGETS: Final[tuple[str, ...]] = ("backend/src", "backend/tests", "backend/test_helpers", "tools")
 CONFIG: Final[str] = "backend/pyproject.toml"
 
 
@@ -118,7 +118,9 @@ def backend_static(env: dict[str, str]) -> None:
     run("Bandit source", python_tool("bandit", "-c", CONFIG, "-r", "backend/src", "-q"), env)
     run(
         "Bandit tests and tools",
-        python_tool("bandit", "-r", "backend/tests", "tools", "-s", "B101", "-q"),
+        python_tool(
+            "bandit", "-r", "backend/tests", "backend/test_helpers", "tools", "-s", "B101", "-q"
+        ),
         env,
     )
     run(

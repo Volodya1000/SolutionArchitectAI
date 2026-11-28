@@ -3,25 +3,12 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from backend.tests.integration.test_clarification_commands import (  # pylint: disable=unused-import,useless-import-alias
-    decision_stores_fixture as decision_stores_fixture,
-)
-from backend.tests.integration.test_clarification_graph import (
-    answer,
-    install_questions,
-    start_fresh,
-)
-from backend.tests.integration.test_clarification_history import (
-    document,
-    prepare_questions,
-    seed_analysis,
-)
-from backend.tests.integration.test_extraction_lifecycle import ExtractionResources, upload
-from backend.tests.integration.test_extraction_lifecycle import (  # pylint: disable=unused-import,useless-import-alias
-    extraction_resources as extraction_resources,
-)
-from backend.tests.sql_store_setup import SqlStoreSetup
-from backend.tests.unit.test_clarification_agent import referenced_requirement
+from backend.test_helpers.clarification_graph import answer, install_questions, start_fresh
+from backend.test_helpers.clarification_history import prepare_questions, seed_analysis
+from backend.test_helpers.clarification_models import referenced_requirement
+from backend.test_helpers.document_builders import document
+from backend.test_helpers.extraction_resources import ExtractionResources, upload
+from backend.test_helpers.sql_store_setup import SqlStoreSetup
 from solution_architect_ai.application.agents.requirements_extraction_agent import (
     RequirementsExtractionAgent,
 )

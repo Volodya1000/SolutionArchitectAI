@@ -4,7 +4,7 @@ from typing import Final
 
 import pytest
 from dishka import AsyncContainer, make_async_container
-from sqlalchemy import URL, AsyncAdaptedQueuePool, Pool
+from sqlalchemy import URL
 from sqlalchemy.ext.asyncio import (
     AsyncEngine,
     AsyncSession,
@@ -12,7 +12,8 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from backend.tests.sql_store_setup import SqlStoreSetup, chat_store_setup
+from backend.test_helpers.pool_inspection import checked_out
+from backend.test_helpers.sql_store_setup import SqlStoreSetup, chat_store_setup
 from solution_architect_ai.application.errors.chat_errors import StorageUnavailable
 from solution_architect_ai.application.models.chat_dto import ChatView
 from solution_architect_ai.application.protocols.chat_protocols import ChatStore
@@ -23,12 +24,6 @@ from solution_architect_ai.di.providers import AppProvider
 from solution_architect_ai.persistence.store import SqlAlchemyStore
 
 pytestmark: Final[list[pytest.MarkDecorator]] = [pytest.mark.anyio, pytest.mark.integration]
-
-
-def checked_out(engine: AsyncEngine) -> int:
-    pool: Pool = engine.pool
-    assert isinstance(pool, AsyncAdaptedQueuePool)
-    return pool.checkedout()
 
 
 async def write_then_fail(stores: StoreContext[ChatStore]) -> None:

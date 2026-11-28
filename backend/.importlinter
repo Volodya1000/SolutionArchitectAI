@@ -1,6 +1,16 @@
 [importlinter]
-root_package = solution_architect_ai
+root_packages =
+    solution_architect_ai
+    backend.tests
+    backend.test_helpers
 include_external_packages = True
+exclude_type_checking_imports = False
+contract_types =
+    test_independence: tools.test_import_contract.TestIndependenceContract
+
+[importlinter:contract:tests]
+name = Test modules are independent
+type = test_independence
 
 [importlinter:contract:layers]
 name = Application boundaries

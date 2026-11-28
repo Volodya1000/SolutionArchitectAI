@@ -11,6 +11,7 @@ from solution_architect_ai.application.context.source_fingerprints import (
 )
 from solution_architect_ai.application.errors.chat_errors import Missing
 from solution_architect_ai.application.errors.clarification_errors import PermissionDenied
+from solution_architect_ai.application.errors.extraction_errors import StoredExtractionCorrupt
 from solution_architect_ai.application.models.clarification_models import (
     ActorContext,
     ClarificationMetadata,
@@ -37,6 +38,11 @@ from solution_architect_ai.persistence.clarifications.clarification_models impor
     RiskRow,
 )
 from solution_architect_ai.persistence.extractions.extraction_models import ExtractionRow
+from solution_architect_ai.persistence.stored_data import (
+    read_stored_json,
+    read_stored_json_value,
+    read_stored_value,
+)
 
 
 class ClarificationQueries:
@@ -68,8 +74,10 @@ class ClarificationQueries:
             row = ClarificationRunRow(
                 run_id=run_id,
                 history_id=history_id,
-                active_seconds=ExtractionView.model_validate_json(
-                    extraction.snapshot_json
+                active_seconds=read_stored_json(
+                    ExtractionView,
+                    extraction.snapshot_json,
+                    failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
                 ).elapsed_seconds,
             )
             self.session.add(row)
@@ -77,7 +85,11 @@ class ClarificationQueries:
         return row
 
     async def resolve_history(self, extraction: ExtractionRow) -> UUID:
-        command: ExtractionStart = ExtractionStart.model_validate_json(extraction.command_json)
+        command: ExtractionStart = read_stored_json(
+            ExtractionStart,
+            extraction.command_json,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+        )
         if command.answer_history_mode == "new":
             return extraction.id
         if command.answer_history_id is None:
@@ -138,23 +150,43 @@ class ClarificationQueries:
             initialized=state.initialized,
             resume_pending=state.resume_pending,
             resume_version=state.resume_version,
-            metadata=ClarificationMetadata.model_validate_json(state.metadata_json)
+            metadata=read_stored_json(
+                ClarificationMetadata,
+                state.metadata_json,
+                failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+            )
             if state.metadata_json is not None
             else None,
-            completed_cycles=TypeAdapter(list[CompletedCycle]).validate_json(state.completed_json),
-            requirements=ExtractionView.model_validate_json(extraction.snapshot_json).requirements,
+            completed_cycles=read_stored_json_value(
+                TypeAdapter(list[CompletedCycle]),
+                state.completed_json,
+                failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+            ),
+            requirements=read_stored_json(
+                ExtractionView,
+                extraction.snapshot_json,
+                failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+            ).requirements,
         )
         link: QuestionLinkRow
         for link in await self.links(run_id):
             revision: QuestionRevisionRow = await self.question(run_id, link.question_id)
-            question: ClarificationQuestion = ClarificationQuestion.model_validate_json(
-                revision.snapshot_json
+            question: ClarificationQuestion = read_stored_json(
+                ClarificationQuestion,
+                revision.snapshot_json,
+                failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
             )
-            question.requirement_ids = TypeAdapter(list[UUID]).validate_json(
-                link.requirement_ids_json
+            question.requirement_ids = read_stored_json_value(
+                TypeAdapter(list[UUID]),
+                link.requirement_ids_json,
+                failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
             )
             if link.sources_json is not None:
-                question.sources = TypeAdapter(list[SourceRef]).validate_json(link.sources_json)
+                question.sources = read_stored_json_value(
+                    TypeAdapter(list[SourceRef]),
+                    link.sources_json,
+                    failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+                )
             view.questions.append(question)
             decisions: ScalarResult[DecisionRow] = await self.session.scalars(
                 select(DecisionRow)
@@ -166,13 +198,23 @@ class ClarificationQueries:
             )
             decision: DecisionRow
             for decision in decisions:
-                item: DecisionResult = DecisionResult.model_validate_json(decision.snapshot_json)
+                item: DecisionResult = read_stored_json(
+                    DecisionResult,
+                    decision.snapshot_json,
+                    failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+                )
                 view.decisions.append(item)
                 risk: RiskRow | None = await self.session.scalar(
                     select(RiskRow).where(RiskRow.decision_id == decision.id)
                 )
                 if risk is not None:
-                    view.risks.append(RiskView.model_validate_json(risk.snapshot_json))
+                    view.risks.append(
+                        read_stored_json(
+                            RiskView,
+                            risk.snapshot_json,
+                            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+                        )
+                    )
         self.apply_decisions(view)
         return view
 
@@ -213,7 +255,11 @@ class ClarificationQueries:
         self, state: ClarificationRunRow, question: ClarificationQuestion
     ) -> None:
         extraction: ExtractionRow = await self.extraction(state.run_id)
-        snapshot: ExtractionView = ExtractionView.model_validate_json(extraction.snapshot_json)
+        snapshot: ExtractionView = read_stored_json(
+            ExtractionView,
+            extraction.snapshot_json,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+        )
         conflicts: list[str] = [
             requirement.normalized_text
             for requirement in snapshot.requirements
@@ -259,8 +305,10 @@ class ClarificationQueries:
             current_revision: QuestionRevisionRow = await self.question_revision(
                 identity.id, identity.revision
             )
-            current_question: ClarificationQuestion = ClarificationQuestion.model_validate_json(
-                current_revision.snapshot_json
+            current_question: ClarificationQuestion = read_stored_json(
+                ClarificationQuestion,
+                current_revision.snapshot_json,
+                failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
             )
             if has_changed_clarification_basis(current_question, question):
                 question.previous_basis = current_question.basis
@@ -285,17 +333,27 @@ class ClarificationQueries:
 
     async def bound_question(self, run_id: UUID, question_id: UUID) -> ClarificationQuestion:
         revision: QuestionRevisionRow = await self.question(run_id, question_id)
-        question: ClarificationQuestion = ClarificationQuestion.model_validate_json(
-            revision.snapshot_json
+        question: ClarificationQuestion = read_stored_json(
+            ClarificationQuestion,
+            revision.snapshot_json,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
         )
         link: QuestionLinkRow | None = await self.session.get(
             QuestionLinkRow, (run_id, question_id)
         )
         if link is None:
             raise Missing("question")
-        question.requirement_ids = TypeAdapter(list[UUID]).validate_json(link.requirement_ids_json)
+        question.requirement_ids = read_stored_json_value(
+            TypeAdapter(list[UUID]),
+            link.requirement_ids_json,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+        )
         if link.sources_json is not None:
-            question.sources = TypeAdapter(list[SourceRef]).validate_json(link.sources_json)
+            question.sources = read_stored_json_value(
+                TypeAdapter(list[SourceRef]),
+                link.sources_json,
+                failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+            )
         return question
 
     async def question_revision(self, question_id: UUID, revision: int) -> QuestionRevisionRow:
@@ -312,8 +370,10 @@ class ClarificationQueries:
         )
         if previous is None:
             raise Missing("question_revision")
-        old: ClarificationQuestion = ClarificationQuestion.model_validate_json(
-            previous.snapshot_json
+        old: ClarificationQuestion = read_stored_json(
+            ClarificationQuestion,
+            previous.snapshot_json,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
         )
         if question.previous_basis != old.basis:
             return
@@ -344,10 +404,17 @@ class ClarificationQueries:
         questions: list[ClarificationQuestion] = []
         row: QuestionRevisionRow
         for row in rows:
-            question: ClarificationQuestion = ClarificationQuestion.model_validate_json(
-                row.snapshot_json
+            question: ClarificationQuestion = read_stored_json(
+                ClarificationQuestion,
+                row.snapshot_json,
+                failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
             )
-            question.status = TypeAdapter(QuestionStatus).validate_python(row.status, strict=True)
+            question.status = read_stored_value(
+                TypeAdapter(QuestionStatus),
+                row.status,
+                failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+                strict=True,
+            )
             questions.append(question)
         return questions
 
@@ -365,4 +432,11 @@ class ClarificationQueries:
                 QuestionRow.history_id == state.history_id,
             )
         )
-        return [DecisionResult.model_validate_json(row.snapshot_json) for row in rows]
+        return [
+            read_stored_json(
+                DecisionResult,
+                row.snapshot_json,
+                failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+            )
+            for row in rows
+        ]

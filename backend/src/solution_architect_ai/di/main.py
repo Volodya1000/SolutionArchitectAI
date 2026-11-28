@@ -12,7 +12,12 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from pydantic import TypeAdapter, ValidationError
 
-from solution_architect_ai.application.errors.chat_errors import ChatError, Conflict, Missing
+from solution_architect_ai.application.errors.chat_errors import (
+    ChatError,
+    Conflict,
+    Missing,
+    StoredDataCorrupt,
+)
 from solution_architect_ai.application.errors.clarification_errors import (
     ClarificationConflict,
     PermissionDenied,
@@ -40,6 +45,8 @@ from solution_architect_ai.presentation.routes import router
 
 
 async def chat_error(_request: Request, error: Exception) -> JSONResponse:
+    if isinstance(error, StoredDataCorrupt):
+        return JSONResponse(status_code=500, content={"code": "stored_data_corrupt"})
     if isinstance(error, PermissionDenied):
         return JSONResponse(status_code=403, content={"code": "permission_denied"})
     if isinstance(error, ClarificationConflict):

@@ -14,7 +14,11 @@ from fastapi import FastAPI
 from pydantic import TypeAdapter
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from backend.tests.sql_store_setup import SqlStoreSetup, chat_store_setup, document_store_setup
+from backend.test_helpers.sql_store_setup import (
+    SqlStoreSetup,
+    chat_store_setup,
+    document_store_setup,
+)
 from solution_architect_ai.application.errors.chat_errors import ChatError
 from solution_architect_ai.application.errors.document_errors import DocumentFailure
 from solution_architect_ai.application.models.chat_dto import ChatSnapshot, ChatView, StartRun

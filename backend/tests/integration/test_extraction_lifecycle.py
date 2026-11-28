@@ -1,8 +1,7 @@
 import asyncio
 import json
-import os
-from collections.abc import AsyncIterator, Awaitable, Callable
-from dataclasses import dataclass, replace
+from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from hashlib import sha256
 from pathlib import Path
 from typing import Final
@@ -15,7 +14,8 @@ from langgraph.types import StateSnapshot
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, async_sessionmaker
 
-from backend.tests.sql_store_setup import SqlStoreSetup, extraction_store_setup
+from backend.test_helpers.extraction_resources import ORIGINAL, ExtractionResources, upload
+from backend.test_helpers.sql_store_setup import SqlStoreSetup, extraction_store_setup
 from solution_architect_ai.application.agents.requirements_extraction_agent import (
     RequirementsExtractionAgent,
 )
@@ -28,7 +28,6 @@ from solution_architect_ai.application.errors.structured_errors import (
 )
 from solution_architect_ai.application.models.document_dto import (
     DocumentVersionView,
-    UploadDocument,
 )
 from solution_architect_ai.application.models.extraction_agent_models import (
     AgentRequest,
@@ -45,18 +44,11 @@ from solution_architect_ai.application.protocols.extraction_protocols import (
     ExtractionStore,
 )
 from solution_architect_ai.application.protocols.store_context_protocols import StoreContext
-from solution_architect_ai.application.services.document_service import DocumentService
 from solution_architect_ai.application.services.requirements_extraction_service import (
     RequirementsExtractionService,
 )
 from solution_architect_ai.application.workflows.extraction_steps import ExtractionSteps
 from solution_architect_ai.application.workflows.extraction_worker import ExtractionWorker
-from solution_architect_ai.config.models import (
-    GitSettings,
-    LLMSettings,
-    RetryConfig,
-    StorageSettings,
-)
 from solution_architect_ai.config.settings import Settings
 from solution_architect_ai.di.documents import DocumentProvider
 from solution_architect_ai.di.extraction import ExtractionProvider
@@ -73,88 +65,6 @@ from solution_architect_ai.persistence.extractions.extraction_models import (
 from solution_architect_ai.persistence.extractions.extraction_store import SqlAlchemyExtractionStore
 
 pytestmark: Final[list[pytest.MarkDecorator]] = [pytest.mark.anyio, pytest.mark.integration]
-ORIGINAL: Final[str] = "\n".join(
-    ("# Отчётность", "", "## Требования", "Система должна сохранять отчёты.", "")
-)
-
-
-@dataclass
-class ExtractionResources:
-    container: AsyncContainer
-    settings: Settings
-    documents: DocumentService
-    stores: StoreContext[ExtractionStore]
-    service: RequirementsExtractionService
-    runs: list[UUID]
-
-    async def start(self, versions: list[UUID], scope: str = "") -> ExtractionView:
-        view: ExtractionView = await self.service.start(
-            ExtractionStart(operation_id=uuid4(), version_ids=versions, analysis_scope=scope)
-        )
-        self.runs.append(view.id)
-        return view
-
-    async def view(self, run_id: UUID) -> ExtractionView:
-        return await self.service.get(run_id)
-
-    async def running(self, run_id: UUID) -> None:
-        store: ExtractionStore
-        async with self.stores.open() as store:
-            await store.set_status(run_id, RunStatus.RUNNING)
-
-
-@pytest.fixture(name="resources")
-async def extraction_resources(tmp_path: Path) -> AsyncIterator[ExtractionResources]:
-    assert os.environ.get("SAA_DATABASE__DATABASE", "").endswith("_test")
-    profile: LLMSettings = LLMSettings(
-        base_url=os.environ["SAA_LLM__BASE_URL"],
-        model="fake-chat",
-        context_window=16000,
-        output_limit=2048,
-        approximate_chars_per_token=1,
-        retry=RetryConfig(max_total_requests=128, deadline_seconds=120, request_timeout_seconds=30),
-    )
-    settings: Settings = Settings(
-        config_root=tmp_path,
-        mode="test",
-        llm=profile,
-        storage=StorageSettings(root=tmp_path / "files"),
-        git=GitSettings(root=tmp_path / "git"),
-    )
-    container: AsyncContainer = make_async_container(
-        AppProvider(), DocumentProvider(), ExtractionProvider(), context={Settings: settings}
-    )
-    resources: ExtractionResources = ExtractionResources(
-        container,
-        settings,
-        await container.get(DocumentService),
-        await container.get(StoreContext[ExtractionStore]),
-        await container.get(RequirementsExtractionService),
-        [],
-    )
-    try:
-        yield resources
-    finally:
-        store: ExtractionStore
-        async with resources.stores.open() as store:
-            for run_id in resources.runs:
-                if not (await store.get(run_id)).status.terminal:
-                    await store.set_status(run_id, RunStatus.FAILED, "test_cleanup")
-        await resources.container.close()
-
-
-async def upload(
-    resources: ExtractionResources, text: str = ORIGINAL, file_id: UUID | None = None
-) -> DocumentVersionView:
-    async def chunks() -> AsyncIterator[bytes]:
-        yield text.encode()
-
-    return await resources.documents.upload(
-        UploadDocument(
-            operation_id=uuid4(), filename="BRD.md", mime_type="text/markdown", file_id=file_id
-        ),
-        chunks(),
-    )
 
 
 async def test_one_execution_reuses_context_and_next_execution_revalidates_sources(

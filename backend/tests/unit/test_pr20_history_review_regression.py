@@ -8,9 +8,9 @@ from uuid import uuid4
 import pytest
 from pydantic import BaseModel, TypeAdapter
 
-from backend.tests.integration.test_clarification_history import document
-from backend.tests.unit.test_clarification_agent import referenced_requirement
-from backend.tests.unit.test_pr20_bounded_review import CrossSectionModel
+from backend.test_helpers.bounded_review_model import CrossSectionModel
+from backend.test_helpers.clarification_models import referenced_requirement
+from backend.test_helpers.document_builders import document
 from solution_architect_ai.application.agents.clarification_agent import ClarificationAgent
 from solution_architect_ai.application.context.clarification_context_builder import (
     ClarificationContextBuilder,

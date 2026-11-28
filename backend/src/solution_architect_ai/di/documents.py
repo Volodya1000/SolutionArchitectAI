@@ -17,10 +17,7 @@ from solution_architect_ai.infrastructure.parsers.document_parser import (
 from solution_architect_ai.infrastructure.storage.local_files_storage import LocalFileStorage
 from solution_architect_ai.persistence.documents.document_store import SqlAlchemyDocumentStore
 from solution_architect_ai.persistence.queries import DEFAULT_TASK_ID
-from solution_architect_ai.persistence.store_context import (
-    SqlAlchemyStoreContext,
-    SqlStoreErrorPolicy,
-)
+from solution_architect_ai.persistence.store_context import SqlAlchemyStoreContext
 
 
 class DocumentProvider(Provider):
@@ -31,7 +28,6 @@ class DocumentProvider(Provider):
         return SqlAlchemyStoreContext(
             database_sessions,
             partial(SqlAlchemyDocumentStore, task_id=DEFAULT_TASK_ID),
-            SqlStoreErrorPolicy.DOCUMENT,
         )
 
     @provide(scope=Scope.APP)

@@ -1,9 +1,9 @@
 from uuid import UUID
 
-from sqlalchemy import JSON, Select, cast, func, or_, select
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Select, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from solution_architect_ai.application.errors.extraction_errors import StoredExtractionCorrupt
 from solution_architect_ai.application.models.extraction_models import (
     AnswerHistorySelection,
     StoredExtractionMatches,
@@ -16,6 +16,8 @@ from solution_architect_ai.application.prompts.extraction_prompt import (
 )
 from solution_architect_ai.domain.runs import ACTIVE_STATUSES, RunStatus
 from solution_architect_ai.persistence.extractions.extraction_models import ExtractionRow
+from solution_architect_ai.persistence.sql_json import guarded_json
+from solution_architect_ai.persistence.stored_data import read_stored_model
 
 
 def extraction_summary_query() -> Select[object]:
@@ -29,21 +31,21 @@ def extraction_summary_query() -> Select[object]:
             "created_at",
             ExtractionRow.created_at,
             "progress",
-            cast(ExtractionRow.snapshot_json, JSON)["progress"],
+            guarded_json(ExtractionRow.snapshot_json)["progress"],
             "error_code",
-            cast(ExtractionRow.snapshot_json, JSON)["error_code"],
+            guarded_json(ExtractionRow.snapshot_json)["error_code"],
             "model",
-            cast(ExtractionRow.snapshot_json, JSON)["model"],
+            guarded_json(ExtractionRow.snapshot_json)["model"],
             "model_profile",
-            cast(ExtractionRow.snapshot_json, JSON)["model_profile"],
+            guarded_json(ExtractionRow.snapshot_json)["model_profile"],
             "contract_version",
-            cast(ExtractionRow.snapshot_json, JSON)["contract_version"],
+            guarded_json(ExtractionRow.snapshot_json)["contract_version"],
             "prompt_version",
-            cast(ExtractionRow.snapshot_json, JSON)["prompt_version"],
+            guarded_json(ExtractionRow.snapshot_json)["prompt_version"],
             "version_ids",
-            cast(ExtractionRow.command_json, JSON)["version_ids"],
+            guarded_json(ExtractionRow.command_json)["version_ids"],
             "analysis_scope",
-            cast(ExtractionRow.command_json, JSON)["analysis_scope"],
+            guarded_json(ExtractionRow.command_json)["analysis_scope"],
         )
     )
 
@@ -63,9 +65,10 @@ async def get_matching_extractions(
         extraction_summary_query()
         .where(
             ExtractionRow.task_id == task_id,
-            cast(ExtractionRow.command_json, JSONB)["version_ids"].contains(identifiers),
-            cast(ExtractionRow.command_json, JSONB)["version_ids"].contained_by(identifiers),
-            cast(ExtractionRow.command_json, JSONB)["analysis_scope"].as_string() == analysis_scope,
+            guarded_json(ExtractionRow.command_json)["version_ids"].contains(identifiers),
+            guarded_json(ExtractionRow.command_json)["version_ids"].contained_by(identifiers),
+            guarded_json(ExtractionRow.command_json)["analysis_scope"].as_string()
+            == analysis_scope,
         )
         .order_by(ExtractionRow.created_at.desc(), ExtractionRow.id)
         .limit(1)
@@ -74,18 +77,19 @@ async def get_matching_extractions(
         query = query.where(
             or_(
                 ExtractionRow.id == history.history_id,
-                cast(ExtractionRow.command_json, JSONB)["answer_history_id"].as_string()
+                guarded_json(ExtractionRow.command_json)["answer_history_id"].as_string()
                 == str(history.history_id),
             )
         )
     else:
         query = query.where(
-            cast(ExtractionRow.command_json, JSONB)["answer_history_id"].as_string().is_(None),
+            guarded_json(ExtractionRow.command_json)["answer_history_id"].as_string().is_(None),
             or_(
-                cast(ExtractionRow.command_json, JSONB)["answer_history_mode"]
+                guarded_json(ExtractionRow.command_json)["answer_history_mode"]
                 .as_string()
                 .is_(None),
-                cast(ExtractionRow.command_json, JSONB)["answer_history_mode"].as_string() != "new",
+                guarded_json(ExtractionRow.command_json)["answer_history_mode"].as_string()
+                != "new",
             ),
         )
     active: object = await session.scalar(
@@ -95,20 +99,34 @@ async def get_matching_extractions(
     latest: object = await session.scalar(completed)
     current: object = await session.scalar(
         completed.where(
-            cast(ExtractionRow.snapshot_json, JSONB)["model_profile"]
+            guarded_json(ExtractionRow.snapshot_json)["model_profile"]
             == profile.model_dump(mode="json"),
-            cast(ExtractionRow.snapshot_json, JSONB)["prompt_version"].as_string()
+            guarded_json(ExtractionRow.snapshot_json)["prompt_version"].as_string()
             == PROMPT_VERSION,
-            cast(ExtractionRow.snapshot_json, JSONB)["contract_version"].as_string()
+            guarded_json(ExtractionRow.snapshot_json)["contract_version"].as_string()
             == CONTRACT_VERSION,
         )
     )
     return StoredExtractionMatches(
-        active=StoredExtractionSummary.model_validate(active) if active is not None else None,
-        current_completed=StoredExtractionSummary.model_validate(current)
+        active=read_stored_model(
+            StoredExtractionSummary,
+            active,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+        )
+        if active is not None
+        else None,
+        current_completed=read_stored_model(
+            StoredExtractionSummary,
+            current,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+        )
         if current is not None
         else None,
-        latest_completed=StoredExtractionSummary.model_validate(latest)
+        latest_completed=read_stored_model(
+            StoredExtractionSummary,
+            latest,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+        )
         if latest is not None
         else None,
     )

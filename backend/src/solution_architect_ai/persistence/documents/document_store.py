@@ -31,6 +31,11 @@ from solution_architect_ai.persistence.documents.document_models import (
     ParsedDocumentRow,
 )
 from solution_architect_ai.persistence.models import ChatRow, MessageRow, TaskRow
+from solution_architect_ai.persistence.stored_data import (
+    read_stored_json,
+    read_stored_model,
+    read_stored_value,
+)
 
 LOCATOR: Final[TypeAdapter[SourceLocator]] = TypeAdapter(SourceLocator)
 
@@ -39,8 +44,18 @@ def upload_view(row: DocumentUploadRow) -> UploadOperationView:
     return UploadOperationView(
         operation_id=row.operation_id,
         payload_digest=row.payload_digest,
-        stage=UploadStage(row.stage),
-        version=DocumentVersionView.model_validate_json(row.version_json, strict=True),
+        stage=read_stored_value(
+            TypeAdapter(UploadStage),
+            row.stage,
+            strict=False,
+            failure=DocumentFailure(DocumentErrorCode.CORRUPT_METADATA),
+        ),
+        version=read_stored_json(
+            DocumentVersionView,
+            row.version_json,
+            failure=DocumentFailure(DocumentErrorCode.CORRUPT_METADATA),
+            strict=True,
+        ),
     )
 
 
@@ -70,9 +85,15 @@ class SqlAlchemyDocumentStore:
             .order_by(DocumentRow.created_at.desc(), DocumentRow.file_id)
         )
         return [
-            DocumentView.model_validate(document).model_copy(
+            read_stored_model(
+                DocumentView, document, failure=DocumentFailure(DocumentErrorCode.CORRUPT_METADATA)
+            ).model_copy(
                 update={
-                    "latest_version": DocumentVersionView.model_validate(version)
+                    "latest_version": read_stored_model(
+                        DocumentVersionView,
+                        version,
+                        failure=DocumentFailure(DocumentErrorCode.CORRUPT_METADATA),
+                    )
                     if version
                     else None
                 }
@@ -99,7 +120,14 @@ class SqlAlchemyDocumentStore:
             )
             .order_by(DocumentVersionRow.uploaded_at.desc(), DocumentVersionRow.version_id)
         )
-        return [DocumentVersionView.model_validate(row) for row in rows]
+        return [
+            read_stored_model(
+                DocumentVersionView,
+                row,
+                failure=DocumentFailure(DocumentErrorCode.CORRUPT_METADATA),
+            )
+            for row in rows
+        ]
 
     async def version_row(self, version_id: UUID, *, lock: bool = False) -> DocumentVersionRow:
         query: Select[DocumentVersionRow] = select(DocumentVersionRow).where(
@@ -113,7 +141,11 @@ class SqlAlchemyDocumentStore:
         return row
 
     async def get_version(self, version_id: UUID) -> DocumentVersionView:
-        return DocumentVersionView.model_validate(await self.version_row(version_id))
+        return read_stored_model(
+            DocumentVersionView,
+            await self.version_row(version_id),
+            failure=DocumentFailure(DocumentErrorCode.CORRUPT_METADATA),
+        )
 
     async def upload_row(self, operation_id: UUID) -> DocumentUploadRow | None:
         return await self.session.scalar(
@@ -283,4 +315,11 @@ class SqlAlchemyDocumentStore:
             )
             .order_by(DocumentVersionRow.uploaded_at, DocumentVersionRow.version_id)
         )
-        return [DocumentVersionView.model_validate(row) for row in rows]
+        return [
+            read_stored_model(
+                DocumentVersionView,
+                row,
+                failure=DocumentFailure(DocumentErrorCode.CORRUPT_METADATA),
+            )
+            for row in rows
+        ]

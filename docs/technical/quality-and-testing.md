@@ -194,6 +194,18 @@ SOLID применяется к реальным границам, KISS/YAGNI о
 
 ## Архитектурные импорты
 
+Тесты проверяет собственный контракт import-linter: `tools/test_import_contract.py`.
+Он находит Python-файлы в репозитории и запрещает импорты тестовых модулей из других
+файлов, включая хелперы и инструменты. Проверяются относительные импорты,
+`TYPE_CHECKING`, имена `backend.tests`, `tests` и короткие имена модулей pytest.
+Проверка файлов нужна дополнительно к графу пакетов: pytest собирает также каталоги
+без `__init__.py`. Контракт работает из корня и из `backend`.
+Общие pytest-фикстуры находятся в ближайшем `conftest.py` и подключаются через
+обнаружение pytest; импортировать `conftest.py` вручную не нужно. Переиспользуемые
+данные, конструкторы, ресурсы и подставные модели находятся в `backend/test_helpers`.
+Новые модули и вложенные наборы тестов автоматически попадают под контракт.
+Отрицательные проверки самого правила — `backend/tests/quality/test_test_import_boundaries.py`.
+
 [import-linter](https://import-linter.readthedocs.io/en/stable/contract_types/) дополняет Ruff/Mypy: проверяет граф импортов, а не форматирование/типы. Конфигурация — `backend/.importlinter`, команда CI `uv run --locked lint-imports .importlinter` из `backend` с установленным backend package.
 
 | Contract | Конкретное ограничение |

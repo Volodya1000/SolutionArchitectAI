@@ -1,19 +1,18 @@
 import asyncio
 import os
 from collections.abc import AsyncIterator
-from typing import Final, Literal
+from typing import Final, Protocol, cast
 from uuid import uuid4
 
 import pytest
 from dishka import AsyncContainer, make_async_container
 from pydantic import TypeAdapter, ValidationError
 from sqlalchemy import select, text
+from sqlalchemy.exc import DataError, IntegrityError, ProgrammingError
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from backend.tests.integration.test_lifecycle import checked_out
+from backend.test_helpers.pool_inspection import checked_out
 from solution_architect_ai.application.errors.chat_errors import Missing, StorageUnavailable
-from solution_architect_ai.application.errors.document_errors import DocumentFailure
-from solution_architect_ai.application.errors.extraction_errors import StoredExtractionCorrupt
 from solution_architect_ai.application.models.chat_dto import ChatView
 from solution_architect_ai.application.protocols.chat_protocols import ChatStore
 from solution_architect_ai.application.protocols.clarification_protocols import ClarificationStore
@@ -29,12 +28,13 @@ from solution_architect_ai.di.main import bootstrap
 from solution_architect_ai.di.providers import AppProvider
 from solution_architect_ai.persistence.models import ChatRow
 from solution_architect_ai.persistence.store import SqlAlchemyStore
-from solution_architect_ai.persistence.store_context import (
-    SqlAlchemyStoreContext,
-    SqlStoreErrorPolicy,
-)
+from solution_architect_ai.persistence.store_context import SqlAlchemyStoreContext
 
 pytestmark: Final[list[pytest.MarkDecorator]] = [pytest.mark.anyio, pytest.mark.integration]
+
+
+class SessionStore(Protocol):
+    session: AsyncSession
 
 
 @pytest.fixture(name="store_container")
@@ -102,30 +102,32 @@ async def test_dishka_resolves_five_store_specializations_with_one_sessionmaker(
             await discussion_store.operation(uuid4())
 
 
-@pytest.mark.parametrize("policy_name", ["STORAGE", "DOCUMENT", "EXTRACTION"])
-async def test_validation_translation_rolls_back_without_changing_other_error_types(
-    store_container: AsyncContainer, policy_name: Literal["STORAGE", "DOCUMENT", "EXTRACTION"]
+@pytest.mark.parametrize(
+    "context_type",
+    [
+        StoreContext[ChatStore],
+        StoreContext[DocumentStore],
+        StoreContext[ExtractionStore],
+        StoreContext[ClarificationStore],
+        StoreContext[DiscussionStore],
+    ],
+)
+async def test_input_validation_propagates_and_rolls_back_every_store_specialization(
+    store_container: AsyncContainer, context_type: type[StoreContext[object]]
 ) -> None:
     sessions: async_sessionmaker[AsyncSession] = await store_container.get(
         async_sessionmaker[AsyncSession]
     )
-    context: SqlAlchemyStoreContext[SqlAlchemyStore] = SqlAlchemyStoreContext(
-        sessions, SqlAlchemyStore, SqlStoreErrorPolicy[policy_name]
-    )
+    context: StoreContext[object] = await store_container.get(context_type)
     title: str = f"Откат {uuid4()}"
-    expected: type[Exception] = {
-        "STORAGE": ValidationError,
-        "DOCUMENT": DocumentFailure,
-        "EXTRACTION": StoredExtractionCorrupt,
-    }[policy_name]
 
     async def write_invalid_value() -> None:
-        chat_store: SqlAlchemyStore
-        async with context.open() as chat_store:
-            await chat_store.create_chat(title)
+        concrete_store: object
+        async with context.open() as concrete_store:
+            await SqlAlchemyStore(cast(SessionStore, concrete_store).session).create_chat(title)
             TypeAdapter(int).validate_python("invalid")
 
-    with pytest.raises(expected):
+    with pytest.raises(ValidationError):
         await write_invalid_value()
     session: AsyncSession
     async with sessions() as session:
@@ -184,5 +186,58 @@ async def test_cancellation_propagates_and_rolls_back_the_shared_scope(
     session: AsyncSession
     async with sessions() as session:
         assert await session.scalar(select(ChatRow.id).where(ChatRow.title == title)) is None
+    engine: AsyncEngine = await store_container.get(AsyncEngine)
+    assert checked_out(engine) == 0
+
+
+@pytest.mark.parametrize("sql", ["SELECT 1 / 0", "SELECT FROM missing_store_table"])
+async def test_sql_execution_errors_roll_back_without_becoming_unavailability(
+    store_container: AsyncContainer, sql: str
+) -> None:
+    sessions: async_sessionmaker[AsyncSession] = await store_container.get(
+        async_sessionmaker[AsyncSession]
+    )
+    context: SqlAlchemyStoreContext[SqlAlchemyStore] = SqlAlchemyStoreContext(
+        sessions, SqlAlchemyStore
+    )
+    title: str = f"SQL rollback {uuid4()}"
+
+    async def execute_invalid_sql() -> None:
+        chat_store: SqlAlchemyStore
+        async with context.open() as chat_store:
+            await chat_store.create_chat(title)
+            await chat_store.session.execute(text(sql))
+
+    with pytest.raises((DataError, ProgrammingError)):
+        await execute_invalid_sql()
+    session: AsyncSession
+    async with sessions() as session:
+        assert await session.scalar(select(ChatRow.id).where(ChatRow.title == title)) is None
+
+
+async def test_integrity_failure_on_commit_rolls_back_and_releases_session(
+    store_container: AsyncContainer,
+) -> None:
+    sessions: async_sessionmaker[AsyncSession] = await store_container.get(
+        async_sessionmaker[AsyncSession]
+    )
+    context: SqlAlchemyStoreContext[SqlAlchemyStore] = SqlAlchemyStoreContext(
+        sessions, SqlAlchemyStore
+    )
+    title: str = f"Integrity rollback {uuid4()}"
+
+    async def commit_invalid_reference() -> None:
+        chat_store: SqlAlchemyStore
+        async with context.open() as chat_store:
+            await chat_store.create_chat(title)
+            chat_store.session.add(ChatRow(task_id=uuid4(), title="Missing task"))
+
+    with pytest.raises(IntegrityError):
+        await commit_invalid_reference()
+    session: AsyncSession
+    async with sessions() as session:
+        assert await session.scalar(select(ChatRow.id).where(ChatRow.title == title)) is None
+    async with context.open() as chat_store:
+        assert (await chat_store.create_chat("After failed commit")).id
     engine: AsyncEngine = await store_container.get(AsyncEngine)
     assert checked_out(engine) == 0

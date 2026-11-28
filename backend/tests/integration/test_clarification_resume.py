@@ -6,20 +6,14 @@ from uuid import uuid4
 import httpx
 import pytest
 
-from backend.tests.integration.test_clarification_http import (
+from backend.test_helpers.clarification_http import (
     HttpCase,
     SqlSnapshot,
     actor_client,
     answer_command,
     sql_snapshot,
 )
-from backend.tests.integration.test_clarification_http import (  # pylint: disable=unused-import,useless-import-alias
-    http_case_fixture as http_case_fixture,
-)
-from backend.tests.integration.test_extraction_lifecycle import (  # pylint: disable=unused-import,useless-import-alias
-    extraction_resources as extraction_resources,
-)
-from backend.tests.integration.test_extraction_lifecycle import upload
+from backend.test_helpers.extraction_resources import upload
 from solution_architect_ai.application.models.clarification_models import (
     ActorContext,
     AnswerClarification,

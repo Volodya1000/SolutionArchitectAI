@@ -6,8 +6,8 @@ from typing import Final
 from uuid import uuid4
 
 import pytest
-from pydantic import BaseModel
 
+from backend.test_helpers.clarification_models import ClarificationModel, referenced_requirement
 from solution_architect_ai.application.agents.clarification_agent import ClarificationAgent
 from solution_architect_ai.application.context.clarification_context_builder import (
     ClarificationContextBuilder,
@@ -21,16 +21,12 @@ from solution_architect_ai.application.models.clarification_review_models import
     ClarificationReviewResult,
 )
 from solution_architect_ai.application.models.extraction_models import (
-    LocatorView,
     RequirementView,
-    SourceRef,
 )
 from solution_architect_ai.application.models.structured_models import (
     ExecutionBudget,
     ModelProfile,
     StructuredMode,
-    StructuredRequest,
-    StructuredResponse,
 )
 from solution_architect_ai.application.retry import GenerationPolicy
 from solution_architect_ai.application.services.structured_output_generator import (
@@ -43,23 +39,11 @@ from solution_architect_ai.domain.documents import (
     ParsedDocument,
     SourceLocator,
 )
-from solution_architect_ai.domain.requirements import EvidenceStatus, RequirementCategory
+from solution_architect_ai.domain.requirements import RequirementCategory
 from solution_architect_ai.infrastructure.context import LangChainTokenCounter
 from solution_architect_ai.infrastructure.parsers.document_parser import DocumentParser
 
 pytestmark: Final[pytest.MarkDecorator] = pytest.mark.anyio
-
-
-class ClarificationModel:
-    def __init__(self, payload: str) -> None:
-        self.payload: str = payload
-        self.requests: list[StructuredRequest] = []
-
-    async def invoke[T: BaseModel](
-        self, request: StructuredRequest, _schema: type[T]
-    ) -> StructuredResponse[T]:
-        self.requests.append(request)
-        return StructuredResponse(self.payload, "stop")
 
 
 @pytest.mark.parametrize("fabricate_source", [False, True])
@@ -126,33 +110,6 @@ async def test_clarification_receives_all_selected_fragments_and_rejects_fabrica
         assert questions[0].requirement_ids == [requirement.id]
     assert first.text in model.requests[0].messages[-1].content
     assert second.text in model.requests[0].messages[-1].content
-
-
-def referenced_requirement(document: ParsedDocument, fragment: DocumentFragment) -> RequirementView:
-    return RequirementView(
-        id=uuid4(),
-        category=RequirementCategory.FUNCTIONAL,
-        original_text=fragment.text,
-        normalized_text=fragment.text,
-        sources=[
-            SourceRef(
-                file_id=document.file_id,
-                version_id=document.version_id,
-                sha256=document.sha256,
-                fragment_id=str(fragment.fragment_id),
-                quote=fragment.text,
-                status=EvidenceStatus.VERIFIED,
-                reason=None,
-                locator=LocatorView(
-                    kind=fragment.locator.kind.value,
-                    start=fragment.locator.start,
-                    end=fragment.locator.end,
-                    section=fragment.locator.section,
-                    path=fragment.locator.path,
-                ),
-            )
-        ],
-    )
 
 
 async def test_full_reporting_source_and_registry_fit_loaded_model_context_without_omission() -> (

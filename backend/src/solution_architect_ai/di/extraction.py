@@ -53,10 +53,7 @@ from solution_architect_ai.infrastructure.extraction_graph import LangGraphExtra
 from solution_architect_ai.infrastructure.structured import LangChainStructuredModel
 from solution_architect_ai.persistence.extractions.extraction_store import SqlAlchemyExtractionStore
 from solution_architect_ai.persistence.queries import DEFAULT_TASK_ID
-from solution_architect_ai.persistence.store_context import (
-    SqlAlchemyStoreContext,
-    SqlStoreErrorPolicy,
-)
+from solution_architect_ai.persistence.store_context import SqlAlchemyStoreContext
 
 
 def profile_digest(settings: Settings) -> str:
@@ -86,9 +83,7 @@ class ExtractionProvider(ClarificationProvider):
     def extraction_store_context(
         self, database_sessions: async_sessionmaker[AsyncSession]
     ) -> StoreContext[ExtractionStore]:
-        return SqlAlchemyStoreContext(
-            database_sessions, SqlAlchemyExtractionStore, SqlStoreErrorPolicy.EXTRACTION
-        )
+        return SqlAlchemyStoreContext(database_sessions, SqlAlchemyExtractionStore)
 
     @provide(scope=Scope.APP)
     async def structured_output_generator(

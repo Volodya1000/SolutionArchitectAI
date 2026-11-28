@@ -14,10 +14,7 @@ from solution_architect_ai.persistence.documents.document_store import SqlAlchem
 from solution_architect_ai.persistence.extractions.extraction_store import SqlAlchemyExtractionStore
 from solution_architect_ai.persistence.queries import DEFAULT_TASK_ID
 from solution_architect_ai.persistence.store import SqlAlchemyStore
-from solution_architect_ai.persistence.store_context import (
-    SqlAlchemyStoreContext,
-    SqlStoreErrorPolicy,
-)
+from solution_architect_ai.persistence.store_context import SqlAlchemyStoreContext
 
 
 @dataclass(frozen=True)
@@ -45,7 +42,6 @@ def document_store_setup(
         SqlAlchemyStoreContext(
             sessions,
             partial(SqlAlchemyDocumentStore, task_id=task_id),
-            SqlStoreErrorPolicy.DOCUMENT,
         ),
         sessions,
         ActorContext.local(task_id),
@@ -59,7 +55,6 @@ def extraction_store_setup(
         SqlAlchemyStoreContext(
             sessions,
             partial(SqlAlchemyExtractionStore, task_id=task_id),
-            SqlStoreErrorPolicy.EXTRACTION,
         ),
         sessions,
         ActorContext.local(task_id),

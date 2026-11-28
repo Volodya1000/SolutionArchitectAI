@@ -3,8 +3,13 @@ from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from solution_architect_ai.application.errors.chat_errors import Conflict, Missing
+from solution_architect_ai.application.errors.chat_errors import (
+    Conflict,
+    Missing,
+    StoredDataCorrupt,
+)
 from solution_architect_ai.application.errors.clarification_errors import PermissionDenied
+from solution_architect_ai.application.errors.extraction_errors import StoredExtractionCorrupt
 from solution_architect_ai.application.models.chat_dto import ChatView
 from solution_architect_ai.application.models.clarification_models import ActorContext
 from solution_architect_ai.application.models.discussion_models import (
@@ -19,6 +24,7 @@ from solution_architect_ai.persistence.discussions.models import (
 from solution_architect_ai.persistence.documents.document_models import DocumentVersionRow
 from solution_architect_ai.persistence.extractions.extraction_models import ExtractionRow
 from solution_architect_ai.persistence.models import ChatRow, TaskRow
+from solution_architect_ai.persistence.stored_data import read_stored_json
 
 
 class SqlAlchemyDiscussionStore:
@@ -34,7 +40,11 @@ class SqlAlchemyDiscussionStore:
         )
         if row is None:
             raise Missing("analysis")
-        return ExtractionView.model_validate_json(row.snapshot_json)
+        return read_stored_json(
+            ExtractionView,
+            row.snapshot_json,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+        )
 
     async def check_version(self, version_id: UUID) -> None:
         row: DocumentVersionRow | None = await self.session.scalar(
@@ -54,9 +64,16 @@ class SqlAlchemyDiscussionStore:
             return None
         if row.author_id != self.actor.id:
             raise Missing("discussion_operation")
-        if CreateDiscussion.model_validate_json(row.command_json) != command:
+        if (
+            read_stored_json(
+                CreateDiscussion, row.command_json, failure=StoredDataCorrupt("stored_data_corrupt")
+            )
+            != command
+        ):
             raise Conflict("operation_payload_changed")
-        return ChatView.model_validate_json(row.result_json)
+        return read_stored_json(
+            ChatView, row.result_json, failure=StoredDataCorrupt("stored_data_corrupt")
+        )
 
     async def operation(self, operation_id: UUID) -> ChatView:
         row: DiscussionOperationRow | None = await self.session.get(
@@ -64,7 +81,9 @@ class SqlAlchemyDiscussionStore:
         )
         if row is None or row.author_id != self.actor.id:
             raise Missing("discussion_operation")
-        return ChatView.model_validate_json(row.result_json)
+        return read_stored_json(
+            ChatView, row.result_json, failure=StoredDataCorrupt("stored_data_corrupt")
+        )
 
     async def create(self, command: CreateDiscussion, binding: DiscussionBinding) -> ChatView:
         if not self.actor.can_write:
@@ -104,4 +123,12 @@ class SqlAlchemyDiscussionStore:
         if chat is None:
             raise Missing("chat")
         row: DiscussionRow | None = await self.session.get(DiscussionRow, chat_id)
-        return None if row is None else DiscussionBinding.model_validate_json(row.binding_json)
+        return (
+            None
+            if row is None
+            else read_stored_json(
+                DiscussionBinding,
+                row.binding_json,
+                failure=StoredDataCorrupt("stored_data_corrupt"),
+            )
+        )

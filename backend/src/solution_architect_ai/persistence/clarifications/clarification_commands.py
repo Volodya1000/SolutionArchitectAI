@@ -10,6 +10,7 @@ from solution_architect_ai.application.errors.chat_errors import Missing
 from solution_architect_ai.application.errors.clarification_errors import (
     ClarificationConflict as Conflict,
 )
+from solution_architect_ai.application.errors.extraction_errors import StoredExtractionCorrupt
 from solution_architect_ai.application.models.clarification_models import (
     AnswerClarification,
     ClarificationQuestion,
@@ -39,6 +40,7 @@ from solution_architect_ai.persistence.clarifications.clarification_queries impo
     ClarificationQueries,
 )
 from solution_architect_ai.persistence.extractions.extraction_models import ExtractionRow
+from solution_architect_ai.persistence.stored_data import read_stored_json
 
 
 class ClarificationCommands:
@@ -94,7 +96,11 @@ class ClarificationCommands:
             command.operation_id, operation_kind, question_id, command
         )
         if previous is not None:
-            return DecisionResult.model_validate_json(previous)
+            return read_stored_json(
+                DecisionResult,
+                previous,
+                failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+            )
         state: ClarificationRunRow = await self.clarification_queries.run(run_id, lock=True)
         revision: QuestionRevisionRow = await self.clarification_queries.question(
             run_id, question_id, lock=True
@@ -104,8 +110,10 @@ class ClarificationCommands:
         extraction: ExtractionRow = await self.clarification_queries.extraction(run_id)
         if extraction.status in {RunStatus.CANCELLED, RunStatus.CANCELLING, RunStatus.FAILED}:
             raise Conflict("extraction_not_resumable")
-        question: ClarificationQuestion = ClarificationQuestion.model_validate_json(
-            revision.snapshot_json
+        question: ClarificationQuestion = read_stored_json(
+            ClarificationQuestion,
+            revision.snapshot_json,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
         )
         bound_question: ClarificationQuestion = await self.clarification_queries.bound_question(
             run_id, question_id
@@ -154,7 +162,11 @@ class ClarificationCommands:
             command.operation_id, f"answer:{run_id}", question_id, command
         )
         if previous is not None:
-            return DecisionResult.model_validate_json(previous)
+            return read_stored_json(
+                DecisionResult,
+                previous,
+                failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+            )
         revision: QuestionRevisionRow = await self.clarification_queries.question(
             run_id, question_id
         )
@@ -164,7 +176,11 @@ class ClarificationCommands:
             run_id, question_id
         )
         self.check_sources(question, command.source_versions)
-        selected: ExtractionStart = ExtractionStart.model_validate_json(extraction.command_json)
+        selected: ExtractionStart = read_stored_json(
+            ExtractionStart,
+            extraction.command_json,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+        )
         if not {source.version_id for source in command.source_versions} <= set(
             selected.version_ids
         ):
@@ -174,7 +190,15 @@ class ClarificationCommands:
     async def preflight_resume(self, run_id: UUID, command: ResumeRun) -> CommandResult | None:
         await self.clarification_queries.extraction(run_id)
         previous: str | None = await self.replay(command.operation_id, "resume", run_id, command)
-        return CommandResult.model_validate_json(previous) if previous is not None else None
+        return (
+            read_stored_json(
+                CommandResult,
+                previous,
+                failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+            )
+            if previous is not None
+            else None
+        )
 
     @staticmethod
     def check_sources(question: ClarificationQuestion, sources: list[SourceVersion]) -> None:
@@ -204,7 +228,11 @@ class ClarificationCommands:
         await self.clarification_queries.extraction(run_id)
         previous: str | None = await self.replay(command.operation_id, "resume", run_id, command)
         if previous is not None:
-            return CommandResult.model_validate_json(previous)
+            return read_stored_json(
+                CommandResult,
+                previous,
+                failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+            )
         state: ClarificationRunRow = await self.clarification_queries.run(run_id, lock=True)
         view: ClarificationView = await self.clarification_queries.get(run_id)
         if any(question.blocks_completion for question in view.questions):
@@ -242,11 +270,19 @@ class ClarificationCommands:
             command.operation_id, "resolve", decision_id, command
         )
         if previous is not None:
-            return DecisionResult.model_validate_json(previous)
+            return read_stored_json(
+                DecisionResult,
+                previous,
+                failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+            )
         extractions: list[ExtractionRow] = await self._lock_resolution_runs(decision_row)
         await self.clarification_queries.run(decision_row.run_id, lock=True)
         await self.clarification_queries.session.refresh(decision_row, with_for_update=True)
-        decision: DecisionResult = DecisionResult.model_validate_json(decision_row.snapshot_json)
+        decision: DecisionResult = read_stored_json(
+            DecisionResult,
+            decision_row.snapshot_json,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+        )
         if (
             decision.kind != "assumption"
             or decision.resolution != "pending"
@@ -266,7 +302,11 @@ class ClarificationCommands:
         )
         if risk_row is None:
             raise Missing("risk")
-        risk: RiskView = RiskView.model_validate_json(risk_row.snapshot_json)
+        risk: RiskView = read_stored_json(
+            RiskView,
+            risk_row.snapshot_json,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+        )
         risk.status = "closed" if command.resolution == "confirm" else "realized"
         risk.resolution_reason = command.reason
         risk_row.snapshot_json = risk.model_dump_json()
@@ -320,8 +360,10 @@ class ClarificationCommands:
         )
         if identity is None:
             raise Missing("question")
-        question: ClarificationQuestion = ClarificationQuestion.model_validate_json(
-            old.snapshot_json
+        question: ClarificationQuestion = read_stored_json(
+            ClarificationQuestion,
+            old.snapshot_json,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
         )
         question.previous_basis, question.basis = question.basis, reason
         question.revision, question.status = identity.revision + 1, "open"
@@ -353,6 +395,10 @@ class ClarificationCommands:
         state.cycle += 1
         state.resume_pending = True
         state.resume_version += 1
-        view: ExtractionView = ExtractionView.model_validate_json(extraction.snapshot_json)
+        view: ExtractionView = read_stored_json(
+            ExtractionView,
+            extraction.snapshot_json,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+        )
         view.status = RunStatus.WAITING_INPUT
         extraction.status, extraction.snapshot_json = view.status.value, view.model_dump_json()

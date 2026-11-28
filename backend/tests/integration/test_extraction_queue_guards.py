@@ -7,10 +7,7 @@ import pytest
 from sqlalchemy import func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from backend.tests.integration.test_extraction_lifecycle import ExtractionResources, upload
-from backend.tests.integration.test_extraction_lifecycle import (  # pylint: disable=unused-import,useless-import-alias
-    extraction_resources as extraction_resources,
-)
+from backend.test_helpers.extraction_resources import ExtractionResources, upload
 from solution_architect_ai.application.errors.chat_errors import Conflict, Missing
 from solution_architect_ai.application.models.clarification_models import ClarificationQuestion
 from solution_architect_ai.application.models.document_dto import DocumentVersionView

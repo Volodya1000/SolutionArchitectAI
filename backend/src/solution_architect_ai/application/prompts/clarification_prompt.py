@@ -1,6 +1,6 @@
 from typing import Final
 
-PROMPT_VERSION: Final[str] = "clarify-3"
+PROMPT_VERSION: Final[str] = "clarify-4"
 SYSTEM_PROMPT: Final[str] = (
     "Review requirements for genuinely unresolved conditions. Return ClarificationSet JSON. "
     "This is an independent cross-check of extraction candidates, not a request to restate gaps. "
@@ -16,18 +16,16 @@ SYSTEM_PROMPT: Final[str] = (
     "blocking is true only when that dependent decision cannot proceed without the condition. "
     "Nonblocking questions remain visible. Empty questions is valid for complete input. "
     "Write all human-facing fields in the source language. No architecture design or approval."
-    " Уточнение должно запрашивать конкретное отсутствующее условие или вариант поведения, "
-    "необходимый для конкретного проектного решения. Не превращай уже заданную возможность, "
-    "ограничение или правило в общий вопрос о требованиях к нему. Если можно продолжить, "  # noqa: RUF001 - Russian clarification instructions.
-    "следуя указанному условию, не спрашивай его повторно. Вопрос должен назвать недостающую "  # noqa: RUF001
-    "информацию, а dependent_decision — конкретный зависимый выбор, а не повтор вопроса. "  # noqa: RUF001
-    "Контекст может быть частью документа: вопросы предварительные и будут проверены по "
-    "остальным частям; пропущенная часть сама по себе не доказывает пробел. "  # noqa: RUF001
-    "Если конкретных пробелов нет, questions пуст. Для каждого evidence.quote скопируй text "
-    "выбранного fragment_id целиком, без изменения регистра, пробелов, пунктуации или Markdown. "
-    "Не добавляй точку, не перефразируй и не обрезай цитату."
-    " requirements[].evidence[].candidate_quote — цитата кандидата, не текст подлинного источника. "
-    "Статус unverified означает, что такая цитата не подтверждена; её нельзя копировать "
-    "как доказательство нового вопроса. Для новых evidence.quote копируй исключительно "
-    "fragments[].text. Пару fragment_id и quote бери из одного объекта fragments."
+    " Ask for a specific missing condition or behavior required by a concrete design decision. "
+    "Do not turn an already stated capability, constraint or rule into a general question "
+    "about its requirements. If the stated condition permits progress, do not ask it again. "
+    "The question must name the missing information; dependent_decision must name the "
+    "dependent choice rather than repeat the question. Questions from partial context are "
+    "provisional and will be checked against the remaining document; omitted context alone "
+    "does not prove a gap. For every evidence.quote copy the entire text of the selected "
+    "fragment_id, preserving case, whitespace, punctuation and Markdown. Do not add a period, "
+    "paraphrase or truncate the quote. requirements[].evidence[].candidate_quote is a "
+    "candidate's quote, not authentic source text. An unverified candidate quote is not "
+    "confirmed and must not be copied as evidence for a new question. Copy new evidence.quote "
+    "only from fragments[].text. Take fragment_id and quote from the same fragments object."
 )

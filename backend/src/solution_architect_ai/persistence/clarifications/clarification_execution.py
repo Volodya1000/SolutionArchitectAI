@@ -5,6 +5,7 @@ from pydantic import TypeAdapter
 from sqlalchemy import select, update
 
 from solution_architect_ai.application.errors.clarification_errors import ClarificationConflict
+from solution_architect_ai.application.errors.extraction_errors import StoredExtractionCorrupt
 from solution_architect_ai.application.models.clarification_models import (
     ClarificationView,
     CompletedCycle,
@@ -18,6 +19,7 @@ from solution_architect_ai.persistence.clarifications.clarification_queries impo
     ClarificationQueries,
 )
 from solution_architect_ai.persistence.extractions.extraction_models import ExtractionRow
+from solution_architect_ai.persistence.stored_data import read_stored_json, read_stored_json_value
 
 
 def active_elapsed(state: ClarificationRunRow) -> float:
@@ -53,7 +55,11 @@ class ClarificationExecution:
 
     async def set_waiting(self, run_id: UUID) -> None:
         extraction: ExtractionRow = await self.clarification_queries.extraction(run_id, lock=True)
-        view: ExtractionView = ExtractionView.model_validate_json(extraction.snapshot_json)
+        view: ExtractionView = read_stored_json(
+            ExtractionView,
+            extraction.snapshot_json,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+        )
         if view.status not in {RunStatus.CANCELLED, RunStatus.CANCELLING, RunStatus.FAILED}:
             view.status = RunStatus.WAITING_INPUT
             extraction.status, extraction.snapshot_json = view.status.value, view.model_dump_json()
@@ -64,7 +70,11 @@ class ClarificationExecution:
             return
         view: ClarificationView = await self.clarification_queries.get(run_id)
         extraction: ExtractionRow = await self.clarification_queries.extraction(run_id)
-        snapshot: ExtractionView = ExtractionView.model_validate_json(extraction.snapshot_json)
+        snapshot: ExtractionView = read_stored_json(
+            ExtractionView,
+            extraction.snapshot_json,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+        )
         if snapshot.status in {RunStatus.CANCELLED, RunStatus.CANCELLING, RunStatus.FAILED}:
             return
         if any(question.blocks_completion for question in view.questions):
@@ -75,8 +85,10 @@ class ClarificationExecution:
             and not view.metadata.coverage.complete
         ):
             raise ClarificationConflict("clarification_review_incomplete")
-        cycles: list[CompletedCycle] = TypeAdapter(list[CompletedCycle]).validate_json(
-            state.completed_json
+        cycles: list[CompletedCycle] = read_stored_json_value(
+            TypeAdapter(list[CompletedCycle]),
+            state.completed_json,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
         )
         if not any(cycle.cycle == state.cycle for cycle in cycles):
             cycles.append(

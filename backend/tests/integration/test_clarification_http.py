@@ -1,226 +1,32 @@
 import asyncio
-from collections.abc import AsyncGenerator, Awaitable, Callable
-from contextlib import asynccontextmanager
-from dataclasses import dataclass, replace
+from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from typing import Final, Literal
 from uuid import UUID, uuid4
 
 import httpx
 import pytest
-from dishka import AsyncContainer, Provider, Scope, make_async_container
-from dishka.integrations.fastapi import setup_dishka
 from fastapi import FastAPI
-from sqlalchemy import select
-from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
-from backend.tests.integration.test_extraction_lifecycle import ExtractionResources, upload
-from backend.tests.integration.test_extraction_lifecycle import (  # pylint: disable=unused-import,useless-import-alias
-    extraction_resources as extraction_resources,
-)
-from backend.tests.sql_store_setup import SqlStoreSetup, clarification_store_setup
-from solution_architect_ai.application.agents.clarification_agent import ClarificationAgent
-from solution_architect_ai.application.agents.extraction_sources import verify_evidence
-from solution_architect_ai.application.context.context_models import ContextFragment
-from solution_architect_ai.application.errors.chat_errors import ChatError
-from solution_architect_ai.application.errors.document_errors import DocumentFailure
-from solution_architect_ai.application.models.clarification_context_models import (
-    ClarificationContext,
+from backend.test_helpers.clarification_http import (
+    HttpCase,
+    SqlSnapshot,
+    actor_client,
+    answer_command,
+    application,
+    sql_snapshot,
 )
 from solution_architect_ai.application.models.clarification_models import (
     ActorContext,
     AnswerClarification,
-    AssumptionDetails,
-    ClarificationQuestion,
-    ClarificationView,
     DecisionResult,
     SourceVersion,
 )
-from solution_architect_ai.application.models.document_dto import DocumentVersionView
 from solution_architect_ai.application.models.extraction_models import (
-    Evidence,
-    ExtractionStart,
-    ExtractionView,
     RequirementView,
-    SourceRef,
 )
-from solution_architect_ai.application.models.structured_models import ExecutionBudget
-from solution_architect_ai.application.services.clarification_service import ClarificationService
-from solution_architect_ai.application.workflows.extraction_worker import ExtractionWorker
-from solution_architect_ai.di.main import chat_error
-from solution_architect_ai.domain.requirements import EvidenceStatus
-from solution_architect_ai.domain.runs import RunStatus
-from solution_architect_ai.persistence.clarifications.clarification_models import (
-    ClarificationOperationRow,
-    DecisionRow,
-    RiskRow,
-)
-from solution_architect_ai.persistence.clarifications.clarification_store import (
-    SqlAlchemyClarificationStore,
-)
-from solution_architect_ai.presentation.clarification_routes import router
-from solution_architect_ai.presentation.document_routes import document_error
 
 pytestmark: Final[list[pytest.MarkDecorator]] = [pytest.mark.anyio, pytest.mark.integration]
-
-
-@dataclass(frozen=True)
-class HttpCase:
-    resources: ExtractionResources
-    service: ClarificationService
-    stores: SqlStoreSetup[SqlAlchemyClarificationStore]
-    version: DocumentVersionView
-    run_id: UUID
-    question: ClarificationQuestion
-
-    @property
-    def answer_url(self) -> str:
-        return f"/api/extractions/{self.run_id}/questions/{self.question.id}/answers"
-
-
-@dataclass(frozen=True)
-class SqlSnapshot:
-    view: ClarificationView
-    extraction: ExtractionView
-    decisions: tuple[str, ...]
-    risks: tuple[str, ...]
-    operations: tuple[tuple[UUID, str], ...]
-
-
-@pytest.fixture(name="http_case")
-async def http_case_fixture(
-    resources: ExtractionResources, monkeypatch: pytest.MonkeyPatch
-) -> HttpCase:
-    agent: ClarificationAgent = await resources.container.get(ClarificationAgent)
-
-    async def scripted_questions(
-        context: ClarificationContext, _budget: ExecutionBudget
-    ) -> list[ClarificationQuestion]:
-        fragment: ContextFragment = context.part.fragments[-1]
-        source: SourceRef = verify_evidence(
-            Evidence(fragment_id=str(fragment.fragment_id), quote=fragment.text), context.part
-        )
-        assert source.status == EvidenceStatus.VERIFIED
-        return [
-            ClarificationQuestion(
-                id=uuid4(),
-                gap_key=f"{fragment.file_id}:http-failure-policy",
-                text="Как реагировать на отказ сохранения?",
-                basis="Поведение при отказе не определено",
-                dependent_decision="Обработка отказа сохранения",
-                blocking=True,
-                requirement_ids=[min(context.requirements, key=lambda item: item.original_text).id],
-                sources=[source],
-            )
-        ]
-
-    monkeypatch.setattr(agent, "clarify", scripted_questions)
-    version: DocumentVersionView = await upload(resources)
-    run: ExtractionView = await resources.service.start(
-        ExtractionStart(
-            operation_id=uuid4(), version_ids=[version.version_id], answer_history_mode="new"
-        )
-    )
-    resources.runs.append(run.id)
-    worker: ExtractionWorker = await resources.container.get(ExtractionWorker)
-    await worker.execute(run.id)
-    assert (await resources.view(run.id)).status == RunStatus.WAITING_INPUT
-    service: ClarificationService = await resources.container.get(ClarificationService)
-    view: ClarificationView = await service.get(run.id)
-    assert len(view.questions) == 1
-    stores: SqlStoreSetup[SqlAlchemyClarificationStore] = clarification_store_setup(
-        await resources.container.get(async_sessionmaker[AsyncSession]),
-        await resources.container.get(ActorContext),
-    )
-    return HttpCase(resources, service, stores, version, run.id, view.questions[0])
-
-
-def answer_command(case: HttpCase, *, assumption: bool = False) -> AnswerClarification:
-    return AnswerClarification(
-        operation_id=uuid4(),
-        expected_question_revision=case.question.revision,
-        source_versions=[
-            SourceVersion(version_id=case.version.version_id, sha256=case.version.sha256)
-        ],
-        kind="assumption" if assumption else "answer",
-        text="Повторить сохранение" if assumption else "Отклонить сохранение",
-        basis="Решение архитектора",
-        assumption=AssumptionDetails(
-            responsible="Архитектор",
-            verification_condition="Согласовать до реализации",
-            consequences="Повторная запись отчёта",
-            mitigation="Проверять уникальность отчёта",
-        )
-        if assumption
-        else None,
-    )
-
-
-def application(container: AsyncContainer) -> FastAPI:
-    app: FastAPI = FastAPI()
-    app.include_router(router)
-    app.add_exception_handler(ChatError, chat_error)
-    app.add_exception_handler(DocumentFailure, document_error)
-    setup_dishka(container, app)
-    return app
-
-
-@asynccontextmanager
-async def actor_client(case: HttpCase, actor: ActorContext) -> AsyncGenerator[httpx.AsyncClient]:
-    provider: Provider = Provider(scope=Scope.APP)
-    provider.from_context(ClarificationService)
-    service: ClarificationService = ClarificationService(
-        clarification_store_setup(case.stores.sessions, actor), case.resources.documents
-    )
-    container: AsyncContainer = make_async_container(
-        provider, context={ClarificationService: service}
-    )
-    client: httpx.AsyncClient
-    try:
-        async with httpx.AsyncClient(
-            transport=httpx.ASGITransport(app=application(container)), base_url="http://test"
-        ) as client:
-            yield client
-    finally:
-        await container.close()
-
-
-async def sql_snapshot(case: HttpCase, operation_ids: list[UUID]) -> SqlSnapshot:
-    # A fresh PostgreSQL transaction observes only mutations committed by the request.
-    store: SqlAlchemyClarificationStore
-    async with case.stores.open() as store:
-        view: ClarificationView = await store.get(case.run_id)
-        extraction: ExtractionView = ExtractionView.model_validate_json(
-            (await store.extraction(case.run_id)).snapshot_json
-        )
-        decisions: tuple[str, ...] = tuple(
-            await store.session.scalars(
-                select(DecisionRow.snapshot_json).where(DecisionRow.run_id == case.run_id)
-            )
-        )
-        risks: tuple[str, ...] = tuple(
-            await store.session.scalars(
-                select(RiskRow.snapshot_json)
-                .join(DecisionRow, DecisionRow.id == RiskRow.decision_id)
-                .where(DecisionRow.run_id == case.run_id)
-            )
-        )
-        rows: list[ClarificationOperationRow] = list(
-            await store.session.scalars(
-                select(ClarificationOperationRow)
-                .where(
-                    ClarificationOperationRow.task_id == case.stores.actor.task_id,
-                    ClarificationOperationRow.operation_id.in_(operation_ids),
-                )
-                .order_by(ClarificationOperationRow.operation_id)
-            )
-        )
-        return SqlSnapshot(
-            view,
-            extraction,
-            decisions,
-            risks,
-            tuple((row.operation_id, row.result_json) for row in rows),
-        )
 
 
 class DropCommittedResponse(httpx.AsyncBaseTransport):

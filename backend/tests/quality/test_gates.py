@@ -50,6 +50,10 @@ def test_tools_reject_the_intended_defect(
 
 
 def test_import_contract_rejects_a_domain_to_persistence_dependency(tmp_path: Path) -> None:
+    probe_directory: Path
+    for probe_directory in (tmp_path / "backend/tests", tmp_path / "backend/test_helpers"):
+        probe_directory.mkdir(parents=True)
+        (probe_directory / "__init__.py").touch()
     package: Path = tmp_path / "solution_architect_ai"
     package.mkdir()
     (package / "__init__.py").touch()
@@ -79,7 +83,7 @@ def test_import_contract_rejects_a_domain_to_persistence_dependency(tmp_path: Pa
             str(config),
         ],
         cwd=tmp_path,
-        env={**os.environ, "PYTHONPATH": str(tmp_path)},
+        env={**os.environ, "PYTHONPATH": os.pathsep.join([str(config.parents[1]), str(tmp_path)])},
         capture_output=True,
         text=True,
         check=False,

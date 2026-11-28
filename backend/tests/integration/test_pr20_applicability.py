@@ -4,17 +4,14 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from backend.tests.integration.test_clarification_commands import (  # pylint: disable=unused-import,useless-import-alias
-    decision_stores_fixture as decision_stores_fixture,
-)
-from backend.tests.integration.test_clarification_history import (
+from backend.test_helpers.clarification_history import (
     answer_command,
-    document,
     prepare_questions,
     seed_analysis,
 )
-from backend.tests.sql_store_setup import SqlStoreSetup
-from backend.tests.unit.test_clarification_agent import referenced_requirement
+from backend.test_helpers.clarification_models import referenced_requirement
+from backend.test_helpers.document_builders import document
+from backend.test_helpers.sql_store_setup import SqlStoreSetup
 from solution_architect_ai.application.models.clarification_models import ClarificationView
 from solution_architect_ai.application.models.extraction_models import RequirementView
 from solution_architect_ai.domain.documents import DocumentFragment, ParsedDocument

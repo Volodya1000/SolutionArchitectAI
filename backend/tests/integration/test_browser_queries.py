@@ -12,7 +12,6 @@ from dishka import AsyncContainer, Provider, Scope, from_context, make_async_con
 from dishka.dependency_source import CompositeDependencySource
 from dishka.integrations.fastapi import setup_dishka
 from fastapi import FastAPI
-from pydantic import ValidationError
 from sqlalchemy import event
 from sqlalchemy.ext.asyncio import (
     AsyncConnection,
@@ -22,8 +21,9 @@ from sqlalchemy.ext.asyncio import (
     create_async_engine,
 )
 
-from backend.tests.sql_store_setup import document_store_setup, extraction_store_setup
+from backend.test_helpers.sql_store_setup import document_store_setup, extraction_store_setup
 from solution_architect_ai.application.errors.chat_errors import ChatError, Missing
+from solution_architect_ai.application.errors.extraction_errors import StoredExtractionCorrupt
 from solution_architect_ai.application.models.document_dto import DocumentView, UploadDocument
 from solution_architect_ai.application.models.extraction_models import (
     CoverageView,
@@ -180,7 +180,7 @@ async def test_history_is_bounded_task_scoped_and_does_not_read_result_blobs(
     assert (await store.get_status(rows[2].id)).id == rows[2].id
     with pytest.raises(Missing):
         await SqlAlchemyExtractionStore(session, task_id=other_task).get_status(rows[2].id)
-    with pytest.raises(ValidationError):
+    with pytest.raises(StoredExtractionCorrupt, match="stored_extraction_corrupt"):
         await store.get(rows[2].id)
 
 

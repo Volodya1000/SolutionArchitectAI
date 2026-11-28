@@ -19,6 +19,10 @@ class StorageUnavailable(ChatError):
     pass
 
 
+class StoredDataCorrupt(ChatError):
+    pass
+
+
 class GenerationFailure(Exception):
     def __init__(
         self, code: RunErrorCode, *, retryable: bool = False, retry_after: float = 0

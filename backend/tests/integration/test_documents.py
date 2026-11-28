@@ -10,7 +10,7 @@ from dishka import AsyncContainer, make_async_container
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from backend.tests.sql_store_setup import document_store_setup
+from backend.test_helpers.sql_store_setup import document_store_setup
 from solution_architect_ai.application.errors.chat_errors import (
     Conflict,
     Missing,

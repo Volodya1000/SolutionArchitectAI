@@ -1,10 +1,15 @@
 from uuid import UUID
 
+from pydantic import TypeAdapter
 from sqlalchemy import Result, func, or_, select
 from sqlalchemy import text as sql_text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from solution_architect_ai.application.errors.chat_errors import Conflict, Missing
+from solution_architect_ai.application.errors.chat_errors import (
+    Conflict,
+    Missing,
+    StoredDataCorrupt,
+)
 from solution_architect_ai.application.models.chat_dto import (
     ChatView,
     Preferences,
@@ -27,6 +32,7 @@ from solution_architect_ai.domain.runs import (
 )
 from solution_architect_ai.persistence.models import ChatRow, MessageRow, PreferenceRow, RunRow
 from solution_architect_ai.persistence.queries import DEFAULT_TASK_ID, Queries, run_view
+from solution_architect_ai.persistence.stored_data import read_stored_value
 
 
 class SqlAlchemyStore:
@@ -107,7 +113,12 @@ class SqlAlchemyStore:
         self, run_id: UUID, target: RunStatus, error: RunErrorCode | None = None
     ) -> RunView:
         row: RunRow = await self.locked_run(run_id)
-        status: RunStatus = RunStatus(row.status)
+        status: RunStatus = read_stored_value(
+            TypeAdapter(RunStatus),
+            row.status,
+            strict=False,
+            failure=StoredDataCorrupt("stored_data_corrupt"),
+        )
         resolved: RunStatus = resolve_transition(status, target, error)
         message: MessageRow = await self.assistant_message(row)
         if resolved == status:

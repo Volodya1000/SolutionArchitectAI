@@ -1,25 +1,16 @@
 import asyncio
-import os
-from collections.abc import AsyncIterator
 from dataclasses import replace
-from datetime import UTC, datetime
 from typing import Final
 from uuid import UUID, uuid4
 
 import pytest
-from sqlalchemy import func, select, text
-from sqlalchemy.ext.asyncio import (
-    AsyncEngine,
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
+from sqlalchemy import func, select
 
-from backend.tests.sql_store_setup import SqlStoreSetup, clarification_store_setup
+from backend.test_helpers.clarification_commands import seed_run, wait_for_database_lock
+from backend.test_helpers.sql_store_setup import SqlStoreSetup, clarification_store_setup
 from solution_architect_ai.application.errors.chat_errors import Conflict, Missing
 from solution_architect_ai.application.errors.clarification_errors import PermissionDenied
 from solution_architect_ai.application.models.clarification_models import (
-    ActorContext,
     AnswerClarification,
     AssumptionDetails,
     ClarificationQuestion,
@@ -28,19 +19,6 @@ from solution_architect_ai.application.models.clarification_models import (
     ResolveAssumption,
     SourceVersion,
 )
-from solution_architect_ai.application.models.extraction_models import (
-    CoverageView,
-    ExtractionProgress,
-    ExtractionStart,
-    ExtractionView,
-    RequirementView,
-    StoredModelProfile,
-)
-from solution_architect_ai.config.settings import Settings
-from solution_architect_ai.di.main import bootstrap
-from solution_architect_ai.di.providers import database_url
-from solution_architect_ai.domain.requirements import RequirementCategory
-from solution_architect_ai.domain.runs import RunStatus
 from solution_architect_ai.persistence.clarifications.clarification_models import (
     ClarificationRunRow,
     DecisionRow,
@@ -48,88 +26,8 @@ from solution_architect_ai.persistence.clarifications.clarification_models impor
 from solution_architect_ai.persistence.clarifications.clarification_store import (
     SqlAlchemyClarificationStore,
 )
-from solution_architect_ai.persistence.extractions.extraction_models import ExtractionRow
-from solution_architect_ai.persistence.queries import DEFAULT_TASK_ID
 
 pytestmark: Final[list[pytest.MarkDecorator]] = [pytest.mark.anyio, pytest.mark.integration]
-
-
-async def seed_run(
-    stores: SqlStoreSetup[SqlAlchemyClarificationStore],
-    run_id: UUID,
-    question: ClarificationQuestion,
-) -> None:
-    command: ExtractionStart = ExtractionStart(
-        operation_id=uuid4(), version_ids=[uuid4()], answer_history_mode="new"
-    )
-    settings: Settings = bootstrap()
-    view: ExtractionView = ExtractionView(
-        id=run_id,
-        status=RunStatus.WAITING_INPUT,
-        progress=ExtractionProgress(),
-        error_code=None,
-        created_at=datetime.now(UTC),
-        model="fake-chat",
-        coverage=CoverageView(),
-        model_profile=StoredModelProfile.model_validate(
-            settings.llm.model_dump(mode="json", exclude={"api_key"})
-        ),
-        contract_version="test",
-        prompt_version="test",
-        requirements=[
-            RequirementView(
-                id=question.requirement_ids[0],
-                category=RequirementCategory.FUNCTIONAL,
-                original_text="Исходное требование",
-                normalized_text="Исходное требование",
-                sources=[],
-            )
-        ],
-    )
-    store: SqlAlchemyClarificationStore
-    async with stores.open() as store:
-        store.session.add(
-            ExtractionRow(
-                id=run_id,
-                task_id=stores.actor.task_id,
-                operation_id=command.operation_id,
-                payload_digest="test",
-                config_digest="test",
-                command_json=command.model_dump_json(),
-                snapshot_json=view.model_dump_json(),
-                status=view.status.value,
-                created_at=view.created_at,
-            )
-        )
-        await store.session.flush()
-        await store.save_questions(run_id, [question])
-
-
-@pytest.fixture(name="decision_stores")
-async def decision_stores_fixture() -> AsyncIterator[SqlStoreSetup[SqlAlchemyClarificationStore]]:
-    assert os.environ.get("SAA_DATABASE__DATABASE", "").endswith("_test")
-    settings: Settings = bootstrap()
-    engine: AsyncEngine = create_async_engine(database_url(settings))
-    sessions: async_sessionmaker[AsyncSession] = async_sessionmaker(engine, expire_on_commit=False)
-    try:
-        yield clarification_store_setup(sessions, ActorContext.local(DEFAULT_TASK_ID))
-    finally:
-        await engine.dispose()
-
-
-async def wait_for_database_lock(
-    stores: SqlStoreSetup[SqlAlchemyClarificationStore], backend_pid: int
-) -> None:
-    monitor: SqlAlchemyClarificationStore
-    async with stores.open() as monitor, asyncio.timeout(3):
-        while True:
-            waiting: bool | None = await monitor.session.scalar(
-                text("SELECT wait_event_type = 'Lock' FROM pg_stat_activity WHERE pid = :pid"),
-                {"pid": backend_pid},
-            )
-            if waiting is True:
-                return
-            await asyncio.sleep(0.01)
 
 
 async def submit_contending_command(

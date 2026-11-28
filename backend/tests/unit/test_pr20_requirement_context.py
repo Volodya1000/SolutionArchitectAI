@@ -4,7 +4,7 @@ from uuid import uuid4
 import pytest
 from pydantic import BaseModel
 
-from backend.tests.unit.test_clarification_agent import ClarificationModel, referenced_requirement
+from backend.test_helpers.clarification_models import ClarificationModel, referenced_requirement
 from solution_architect_ai.application.agents.clarification_agent import ClarificationAgent
 from solution_architect_ai.application.context.clarification_context_builder import (
     ClarificationContextBuilder,
