@@ -1,4 +1,5 @@
-import { z } from 'zod';
+import type { z } from 'zod';
+import { zApiFailure } from './generated/zod.gen';
 import { sendRequest } from './client';
 import { ApiError } from './api-error';
 
@@ -75,7 +76,7 @@ export async function resourceRequest<T>(
   const response = await sendRequest(path, init);
   if (!response.ok) {
     const body: unknown = await response.json().catch(() => null);
-    const error = z.object({ code: z.string() }).safeParse(body);
+    const error = zApiFailure.safeParse(body);
     throw new ApiError(
       response.status,
       error.success ? error.data.code : null,

@@ -1,3 +1,5 @@
 # Fix GHSA-238p-pmpm-9mq7 in the Markdown linter's math parser.
 overrides:
   micromark-extension-math>katex: 0.18.2
+  # GHSA-52cp-r559-cp3m, GHSA-5p4m-2wfm-xmqj, GHSA-2883-xcg3-v3hh.
+  '@hey-api/json-schema-ref-parser>js-yaml': 4.3.2

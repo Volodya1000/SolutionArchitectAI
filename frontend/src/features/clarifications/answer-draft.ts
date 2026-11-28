@@ -45,7 +45,9 @@ export function draftIsCurrent(
 ) {
   const canonical = (sources: SourceVersions) =>
     JSON.stringify(
-      [...sources].sort((first, second) => first.version_id.localeCompare(second.version_id)),
+      sources
+        .map(({ version_id, sha256 }) => ({ version_id, sha256 }))
+        .sort((first, second) => first.version_id.localeCompare(second.version_id)),
     );
   return (
     draft.question_revision === question.revision &&

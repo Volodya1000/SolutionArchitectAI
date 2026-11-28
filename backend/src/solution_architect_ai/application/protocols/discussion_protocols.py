@@ -1,7 +1,8 @@
 from typing import Protocol
 from uuid import UUID
 
-from solution_architect_ai.application.models.chat_dto import ChatView, MessageView
+from solution_architect_ai.application.models.chat_dto import ChatView
+from solution_architect_ai.application.models.discussion_input_models import PreparedDiscussion
 from solution_architect_ai.application.models.discussion_models import (
     CreateDiscussion,
     DiscussionBinding,
@@ -19,4 +20,4 @@ class DiscussionStore(Protocol):
 
 
 class DiscussionContext(Protocol):
-    async def messages(self, chat_id: UUID) -> list[MessageView]: ...
+    async def prepare(self, chat_id: UUID) -> PreparedDiscussion | None: ...

@@ -1,3 +1,4 @@
+import { fixtureId, fixtureHash } from '@/shared/api/test-network-fixtures';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -9,7 +10,11 @@ import { sessionStore } from '../../shared/ui/session-storage';
 import { AnswerForm } from './answer-form';
 
 const question: Question = {
-  id: 'q1',
+  source_fingerprints: {},
+  requirement_fingerprints: {},
+  requirement_basis_fingerprints: {},
+
+  id: fixtureId('q1'),
   gap_key: 'retention',
   revision: 1,
   text: 'Каков срок хранения?',
@@ -20,17 +25,20 @@ const question: Question = {
   dependent_decision: 'Выбор хранилища',
   blocking: true,
   status: 'open',
-  requirement_ids: ['r1'],
+  requirement_ids: [fixtureId('r1')],
   sources: [],
 };
-const versions = [{ version_id: 'v1', sha256: 'first-hash' }];
+const versions = [{ version_id: fixtureId('v1'), sha256: fixtureHash('first-hash') }];
 const commands: unknown[] = [];
 const server = setupServer(
   http.get('/api/clarification-operations/:id', () => new HttpResponse(null, { status: 404 })),
-  http.post('/api/extractions/run/questions/q1/answers', async ({ request }) => {
-    commands.push(await request.json());
-    return new HttpResponse(null, { status: 503 });
-  }),
+  http.post(
+    `/api/extractions/${fixtureId('run')}/questions/${fixtureId('q1')}/answers`,
+    async ({ request }) => {
+      commands.push(await request.json());
+      return new HttpResponse(null, { status: 503 });
+    },
+  ),
 );
 beforeAll(() => server.listen({ onUnhandledFrame: 'error' }));
 afterAll(() => server.close());
@@ -45,7 +53,7 @@ function content(next = question, sources = versions) {
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
-      <AnswerForm runId="run" question={next} sourceVersions={sources} />
+      <AnswerForm runId={fixtureId('run')} question={next} sourceVersions={sources} />
     </QueryClientProvider>
   );
 }
@@ -93,7 +101,7 @@ it('requires an explicit transfer before submitting an old draft against a new r
         text: 'Каков срок для администратора?',
         basis: 'Новое основание',
       },
-      [{ version_id: 'v2', sha256: 'second-hash' }],
+      [{ version_id: fixtureId('v2'), sha256: fixtureHash('second-hash') }],
     ),
   );
   expect(screen.getByRole('button', { name: 'Принять допущение' })).toBeDisabled();
@@ -108,7 +116,7 @@ it('requires an explicit transfer before submitting an old draft against a new r
   await waitFor(() => expect(commands).toHaveLength(1));
   expect(commands[0]).toMatchObject({
     expected_question_revision: 2,
-    source_versions: [{ version_id: 'v2', sha256: 'second-hash' }],
+    source_versions: [{ version_id: fixtureId('v2'), sha256: fixtureHash('second-hash') }],
     kind: 'assumption',
     text: 'Хранить 30 дней',
     basis: 'Обсуждение команды',
@@ -124,7 +132,9 @@ it('requires an explicit transfer before submitting an old draft against a new r
 it('also requires transfer when pinned sources change without a revision increment', async () => {
   const view = render(content());
   await userEvent.type(screen.getByLabelText('Ответ архитектора'), 'Черновик');
-  view.rerender(content(question, [{ version_id: 'v1', sha256: 'replaced-hash' }]));
+  view.rerender(
+    content(question, [{ version_id: fixtureId('v1'), sha256: fixtureHash('replaced-hash') }]),
+  );
   expect(screen.getByRole('button', { name: 'Сохранить ответ' })).toBeDisabled();
   expect(
     screen.getByRole('button', { name: 'Перенести черновик в текущую ревизию' }),

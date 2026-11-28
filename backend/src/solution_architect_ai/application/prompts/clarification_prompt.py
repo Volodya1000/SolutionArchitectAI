@@ -1,6 +1,7 @@
 from typing import Final
 
 PROMPT_VERSION: Final[str] = "clarify-4"
+CONTRACT_VERSION: Final[str] = "clarification-1"
 SYSTEM_PROMPT: Final[str] = (
     "Review requirements for genuinely unresolved conditions. Return ClarificationSet JSON. "
     "This is an independent cross-check of extraction candidates, not a request to restate gaps. "
@@ -22,9 +23,9 @@ SYSTEM_PROMPT: Final[str] = (
     "The question must name the missing information; dependent_decision must name the "
     "dependent choice rather than repeat the question. Questions from partial context are "
     "provisional and will be checked against the remaining document; omitted context alone "
-    "does not prove a gap. For every evidence.quote copy the entire text of the selected "
-    "fragment_id, preserving case, whitespace, punctuation and Markdown. Do not add a period, "
-    "paraphrase or truncate the quote. requirements[].evidence[].candidate_quote is a "
+    "does not prove a gap. For every evidence.quote copy an exact contiguous substring of the "
+    "selected fragment_id text, preserving case, whitespace, punctuation and Markdown. "
+    "Do not add a period or paraphrase the quote. requirements[].evidence[].candidate_quote is a "
     "candidate's quote, not authentic source text. An unverified candidate quote is not "
     "confirmed and must not be copied as evidence for a new question. Copy new evidence.quote "
     "only from fragments[].text. Take fragment_id and quote from the same fragments object."

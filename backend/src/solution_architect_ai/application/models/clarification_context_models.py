@@ -19,6 +19,7 @@ from solution_architect_ai.domain.requirements import EvidenceStatus, Requiremen
 class ContextSource(DTO):
     fragment_id: str
     text: str
+    table_header: str = ""
 
 
 class RequirementEvidenceContext(DTO):

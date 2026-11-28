@@ -22,16 +22,22 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from backend.test_helpers.sql_store_setup import document_store_setup, extraction_store_setup
-from solution_architect_ai.application.errors.chat_errors import ChatError, Missing
+from solution_architect_ai.application.errors.chat_errors import ChatError, Conflict, Missing
 from solution_architect_ai.application.errors.extraction_errors import StoredExtractionCorrupt
+from solution_architect_ai.application.models.clarification_models import ActorContext
 from solution_architect_ai.application.models.document_dto import DocumentView, UploadDocument
 from solution_architect_ai.application.models.extraction_models import (
+    AnswerHistorySelection,
     CoverageView,
     ExtractionProgress,
     ExtractionStart,
     ExtractionView,
+    StoredExtractionMatches,
     StoredExtractionSummary,
     StoredModelProfile,
+)
+from solution_architect_ai.application.prompts.extraction_pipeline import (
+    current_extraction_pipeline_versions,
 )
 from solution_architect_ai.application.prompts.extraction_prompt import (
     CONTRACT_VERSION,
@@ -47,6 +53,12 @@ from solution_architect_ai.di.providers import database_url
 from solution_architect_ai.domain.runs import RunStatus
 from solution_architect_ai.infrastructure.parsers.document_parser import DocumentParser
 from solution_architect_ai.infrastructure.storage.local_files_storage import LocalFileStorage
+from solution_architect_ai.persistence.clarifications.clarification_models import (
+    ClarificationRunRow,
+)
+from solution_architect_ai.persistence.clarifications.clarification_queries import (
+    ClarificationQueries,
+)
 from solution_architect_ai.persistence.documents.document_models import (
     DocumentRow,
     DocumentVersionRow,
@@ -143,6 +155,7 @@ def extraction_row(task_id: UUID, created_at: datetime) -> ExtractionRow:
         requirements=[],
         contract_version=CONTRACT_VERSION,
         prompt_version=PROMPT_VERSION,
+        pipeline_versions=current_extraction_pipeline_versions(),
     )
     snapshot: dict[str, object] = json.loads(view.model_dump_json())
     # Summary reads must tolerate malformed result content; full detail must reject it.
@@ -231,6 +244,8 @@ async def test_history_and_status_api_return_compact_current_configuration(
         "version_ids",
         "analysis_scope",
         "configuration_current",
+        "pipeline_versions",
+        "current_pipeline_versions",
     }
     response = await client.get("/api/extractions/history?limit=1&offset=1")
     payload = response.json()
@@ -332,6 +347,287 @@ async def test_matching_api_requires_explicit_scope(
         "/api/extractions/matching", params={"version_ids": str(uuid4())}
     )
     assert response.status_code == 422
+
+
+@pytest.mark.parametrize("stored_history", ["implicit", "explicit", "legacy"])
+@pytest.mark.parametrize("selected_history", ["implicit", "explicit"])
+async def test_matching_normalizes_default_history_identity_without_clarification_row(
+    session: AsyncSession,
+    browser_client: tuple[httpx.AsyncClient, UUID],
+    stored_history: str,
+    selected_history: str,
+) -> None:
+    task_id: UUID = browser_client[1]
+    row: ExtractionRow = extraction_row(task_id, datetime.now(UTC))
+    command: ExtractionStart = ExtractionStart.model_validate_json(row.command_json)
+    if stored_history == "explicit":
+        command.answer_history_id = task_id
+    row.command_json = command.model_dump_json(
+        exclude={"answer_history_mode", "answer_history_id"}
+        if stored_history == "legacy"
+        else set()
+    )
+    row.status = RunStatus.COMPLETED.value
+    session.add(row)
+    await session.flush()
+    store: SqlAlchemyExtractionStore = SqlAlchemyExtractionStore(session, task_id=task_id)
+    matches: StoredExtractionMatches = await store.get_matching(
+        command.version_ids,
+        command.analysis_scope,
+        PROFILE,
+        AnswerHistorySelection(mode="reuse", history_id=task_id)
+        if selected_history == "explicit"
+        else None,
+    )
+    assert matches.latest_completed is not None
+    assert matches.latest_completed.id == row.id
+    assert (
+        await ClarificationQueries(session, ActorContext.local(task_id)).resolve_history(row)
+        == task_id
+    )
+
+
+@pytest.mark.parametrize(
+    "field",
+    [
+        "extraction_prompt_version",
+        "extraction_contract_version",
+        "clarification_prompt_version",
+        "clarification_contract_version",
+        "clarification_review_prompt_version",
+        "conflict_assessment_prompt_version",
+        "structured_prompt_version",
+        "extraction_context_contract_version",
+    ],
+)
+@pytest.mark.parametrize("saved_version", ["previous-version", None])
+async def test_matching_compares_every_saved_pipeline_version(
+    session: AsyncSession,
+    browser_client: tuple[httpx.AsyncClient, UUID],
+    field: str,
+    saved_version: str | None,
+) -> None:
+    task_id: UUID = browser_client[1]
+    current: ExtractionRow = extraction_row(task_id, datetime.now(UTC))
+    stale: ExtractionRow = extraction_row(task_id, current.created_at + timedelta(seconds=1))
+    stale.command_json = current.command_json
+    current.status = stale.status = RunStatus.COMPLETED.value
+    snapshot: dict[str, object] = json.loads(stale.snapshot_json)
+    pipeline: dict[str, str | None] = current_extraction_pipeline_versions().model_dump()
+    pipeline[field] = saved_version
+    snapshot["pipeline_versions"] = pipeline
+    stale.snapshot_json = json.dumps(snapshot)
+    session.add_all([current, stale])
+    await session.flush()
+    response: httpx.Response = await browser_client[0].get(f"/api/extractions/{stale.id}/status")
+    assert response.status_code == 200
+    assert response.json()["configuration_current"] is False
+    assert response.json()["pipeline_versions"][field] == saved_version
+    assert (
+        response.json()["current_pipeline_versions"]
+        == current_extraction_pipeline_versions().model_dump()
+    )
+    command: ExtractionStart = ExtractionStart.model_validate_json(current.command_json)
+    matches: StoredExtractionMatches = await SqlAlchemyExtractionStore(
+        session, task_id=task_id
+    ).get_matching(
+        command.version_ids,
+        command.analysis_scope,
+        PROFILE,
+    )
+    assert matches.current_completed is not None
+    assert matches.current_completed.id == current.id
+    assert matches.latest_completed is not None
+    assert matches.latest_completed.id == stale.id
+
+
+async def test_new_selected_and_default_histories_remain_isolated(
+    session: AsyncSession,
+    browser_client: tuple[httpx.AsyncClient, UUID],
+) -> None:
+    task_id: UUID = browser_client[1]
+    default: ExtractionRow = extraction_row(task_id, datetime.now(UTC))
+    fresh: ExtractionRow = extraction_row(task_id, default.created_at + timedelta(seconds=1))
+    selected: ExtractionRow = extraction_row(task_id, default.created_at + timedelta(seconds=2))
+    other_task: UUID = await create_task(session)
+    foreign: ExtractionRow = extraction_row(other_task, default.created_at + timedelta(seconds=3))
+    command: ExtractionStart = ExtractionStart.model_validate_json(default.command_json)
+    row: ExtractionRow
+    for row in (default, fresh, selected, foreign):
+        row.status = RunStatus.COMPLETED.value
+        row.command_json = command.model_dump_json()
+    fresh.command_json = command.model_copy(update={"answer_history_mode": "new"}).model_dump_json()
+    selected.command_json = command.model_copy(
+        update={"answer_history_id": fresh.id}
+    ).model_dump_json()
+    session.add_all([default, fresh, selected, foreign])
+    await session.flush()
+    session.add(ClarificationRunRow(run_id=fresh.id, history_id=fresh.id))
+    await session.flush()
+    store: SqlAlchemyExtractionStore = SqlAlchemyExtractionStore(session, task_id=task_id)
+    matches: StoredExtractionMatches = await store.get_matching(
+        command.version_ids, command.analysis_scope, PROFILE
+    )
+    assert matches.latest_completed is not None
+    assert matches.latest_completed.id == default.id
+    matches = await store.get_matching(
+        command.version_ids,
+        command.analysis_scope,
+        PROFILE,
+        AnswerHistorySelection(mode="reuse", history_id=fresh.id),
+    )
+    assert matches.latest_completed is not None
+    assert matches.latest_completed.id == selected.id
+    matches = await store.get_matching(
+        command.version_ids, command.analysis_scope, PROFILE, AnswerHistorySelection(mode="new")
+    )
+    assert matches.latest_completed is None
+    matches = await store.get_matching(
+        command.version_ids,
+        command.analysis_scope,
+        PROFILE,
+        AnswerHistorySelection(mode="reuse", history_id=uuid4()),
+    )
+    assert matches.latest_completed is None
+
+
+async def test_start_accepts_explicit_default_history_before_any_clarification_row(
+    session: AsyncSession,
+    browser_client: tuple[httpx.AsyncClient, UUID],
+) -> None:
+    task_id: UUID = browser_client[1]
+    file_id: UUID = uuid4()
+    version_id: UUID = uuid4()
+    created_at: datetime = datetime.now(UTC)
+    session.add(
+        DocumentRow(file_id=file_id, task_id=task_id, name="History source", created_at=created_at)
+    )
+    await session.flush()
+    session.add(
+        DocumentVersionRow(
+            file_id=file_id,
+            task_id=task_id,
+            version_id=version_id,
+            sha256="a" * 64,
+            mime_type="text/plain",
+            size=1,
+            original_name="source.txt",
+            uploaded_at=created_at,
+            storage_key=str(version_id),
+        )
+    )
+    await session.flush()
+    view: ExtractionView = await SqlAlchemyExtractionStore(session, task_id=task_id).start(
+        ExtractionStart(operation_id=uuid4(), version_ids=[version_id], answer_history_id=task_id),
+        PROFILE,
+        "config",
+    )
+    row: ExtractionRow | None = await session.get(ExtractionRow, view.id)
+    assert row is not None
+    assert await session.get(ClarificationRunRow, view.id) is None
+    assert view.pipeline_versions == current_extraction_pipeline_versions()
+    assert (
+        await ClarificationQueries(session, ActorContext.local(task_id)).resolve_history(row)
+        == task_id
+    )
+
+
+async def test_new_history_rejects_an_explicit_default_history_id(
+    session: AsyncSession,
+    browser_client: tuple[httpx.AsyncClient, UUID],
+) -> None:
+    task_id: UUID = browser_client[1]
+    store: SqlAlchemyExtractionStore = SqlAlchemyExtractionStore(session, task_id=task_id)
+    command: ExtractionStart = ExtractionStart(
+        operation_id=uuid4(),
+        version_ids=[uuid4()],
+        answer_history_mode="new",
+        answer_history_id=task_id,
+    )
+    with pytest.raises(Conflict, match="answer_history_selection_conflict"):
+        await store.start(command, PROFILE, "config")
+
+
+@pytest.mark.parametrize("clarification_version", ["clarify-3", "clarify-4", None])
+async def test_legacy_configuration_does_not_assume_current_pipeline_versions(
+    session: AsyncSession,
+    browser_client: tuple[httpx.AsyncClient, UUID],
+    clarification_version: str | None,
+) -> None:
+    row: ExtractionRow = extraction_row(browser_client[1], datetime.now(UTC))
+    snapshot: dict[str, object] = json.loads(row.snapshot_json)
+    snapshot.pop("pipeline_versions")
+    row.snapshot_json = json.dumps(snapshot)
+    row.status = RunStatus.COMPLETED.value
+    session.add(row)
+    await session.flush()
+    if clarification_version is not None:
+        session.add(
+            ClarificationRunRow(
+                run_id=row.id,
+                history_id=browser_client[1],
+                metadata_json=json.dumps({"prompt_version": clarification_version}),
+            )
+        )
+        await session.flush()
+    response: httpx.Response = await browser_client[0].get(f"/api/extractions/{row.id}/status")
+    assert response.status_code == 200
+    assert response.json()["configuration_current"] is False
+    assert (
+        response.json()["pipeline_versions"]["clarification_prompt_version"]
+        == clarification_version
+    )
+    command: ExtractionStart = ExtractionStart.model_validate_json(row.command_json)
+    response = await browser_client[0].get(
+        "/api/extractions/matching",
+        params={
+            "version_ids": [str(version_id) for version_id in command.version_ids],
+            "analysis_scope": command.analysis_scope,
+        },
+    )
+    assert response.json()["latest_completed"]["id"] == str(row.id)
+    assert response.json()["current_completed"] is None
+
+
+@pytest.mark.parametrize("field", ["prompt_version", "review_prompt_version"])
+async def test_recorded_clarification_versions_override_start_pipeline(
+    session: AsyncSession,
+    browser_client: tuple[httpx.AsyncClient, UUID],
+    field: str,
+) -> None:
+    row: ExtractionRow = extraction_row(browser_client[1], datetime.now(UTC))
+    snapshot: dict[str, object] = json.loads(row.snapshot_json)
+    snapshot["requirements"] = []
+    row.snapshot_json = json.dumps(snapshot)
+    session.add(row)
+    await session.flush()
+    metadata: dict[str, str] = {
+        "prompt_version": "clarify-4",
+        "contract_version": "clarification-1",
+        "review_prompt_version": "clarify-review-1",
+    }
+    metadata[field] = "previous-version"
+    session.add(
+        ClarificationRunRow(
+            run_id=row.id,
+            history_id=browser_client[1],
+            metadata_json=json.dumps(metadata),
+        )
+    )
+    await session.flush()
+    response: httpx.Response = await browser_client[0].get(f"/api/extractions/{row.id}/status")
+    assert response.status_code == 200
+    assert response.json()["configuration_current"] is False
+    api_field: str = (
+        "clarification_prompt_version"
+        if field == "prompt_version"
+        else "clarification_review_prompt_version"
+    )
+    assert response.json()["pipeline_versions"][api_field] == "previous-version"
+    detail: httpx.Response = await browser_client[0].get(f"/api/extractions/{row.id}")
+    assert detail.status_code == 200
+    assert detail.json()["configuration_current"] is False
+    assert detail.json()["pipeline_versions"] == response.json()["pipeline_versions"]
 
 
 async def test_documents_select_latest_completed_version_in_one_query(

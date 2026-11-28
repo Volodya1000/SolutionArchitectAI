@@ -31,7 +31,11 @@ from solution_architect_ai.application.validation.structured_response_validator 
 from solution_architect_ai.domain.messages import MessageRole
 
 _CORRECTABLE: Final[frozenset[StructuredErrorCode]] = frozenset(
-    {StructuredErrorCode.JSON_INVALID, StructuredErrorCode.SCHEMA_INVALID}
+    {
+        StructuredErrorCode.JSON_INVALID,
+        StructuredErrorCode.SCHEMA_INVALID,
+        StructuredErrorCode.EVIDENCE_INVALID,
+    }
 )
 
 
@@ -144,7 +148,10 @@ class StructuredOutputGenerator:
             raise StructuredGenerationFailure(StructuredErrorCode.BUDGET_EXHAUSTED) from None
         if correctable:
             budget.corrections += 1
-            messages.append(StructuredMessage(MessageRole.USER, CORRECTION_PROMPT))
+            feedback: str = CORRECTION_PROMPT
+            if error.diagnostic is not None:
+                feedback += " Validation diagnostic: " + error.diagnostic
+            messages.append(StructuredMessage(MessageRole.USER, feedback))
         else:
             budget.network_failures += 1
         await budget.observe()

@@ -28,6 +28,19 @@ class DocumentFragment:
 
 
 @dataclass(frozen=True)
+class MarkdownTable:
+    header_line: int
+    delimiter_line: int
+    end_line: int
+    header_text: str = ""
+
+
+@dataclass(frozen=True)
+class DocumentStructure:
+    tables: tuple[MarkdownTable, ...] = ()
+
+
+@dataclass(frozen=True)
 class ParsedDocument:
     file_id: UUID
     version_id: UUID
@@ -36,6 +49,7 @@ class ParsedDocument:
     text: str
     fragments: tuple[DocumentFragment, ...]
     warnings: tuple[str, ...] = ()
+    structure: DocumentStructure | None = None
 
 
 @dataclass(frozen=True)

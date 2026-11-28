@@ -32,6 +32,7 @@ from solution_architect_ai.application.retry import GenerationPolicy
 from solution_architect_ai.application.services.structured_output_generator import (
     StructuredOutputGenerator,
 )
+from solution_architect_ai.application.validation.markdown_structure import separator_fragment_ids
 from solution_architect_ai.application.workflows.clarification_review import ClarificationReview
 from solution_architect_ai.domain.documents import (
     DocumentFragment,
@@ -121,7 +122,9 @@ async def test_full_reporting_source_and_registry_fit_loaded_model_context_witho
         DocumentParser().parse, uuid4(), uuid4(), content, source.name, "text/markdown"
     )
     requirements: list[RequirementView] = [
-        referenced_requirement(document, fragment) for fragment in document.fragments
+        referenced_requirement(document, fragment)
+        for fragment in document.fragments
+        if str(fragment.fragment_id) not in separator_fragment_ids(document)
     ]
     profile: ModelProfile = ModelProfile(
         "test", StructuredMode.NATIVE_JSON_SCHEMA, 12288, 6912, 256
@@ -138,5 +141,7 @@ async def test_full_reporting_source_and_registry_fit_loaded_model_context_witho
     ).run(context, ExecutionBudget(128, monotonic() + 10, 5, correction_retries=0))
     assert result.questions == []
     assert result.coverage.complete
-    assert result.coverage.reviewed_fragments == len(document.fragments)
-    assert len(context.part.fragments) == len(document.fragments)
+    assert result.coverage.reviewed_fragments == len(context.part.fragments)
+    assert len(context.part.fragments) == len(document.fragments) - len(
+        separator_fragment_ids(document)
+    )

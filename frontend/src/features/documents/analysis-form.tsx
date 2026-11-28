@@ -8,6 +8,7 @@ import { useAnalysisHistory } from './use-analysis-history';
 import { useAnalysisCommand } from './use-analysis-command';
 import { AnalysisContextStatus } from './analysis-context';
 import { useAnalysisContext } from './use-analysis-context';
+import { HistorySelection } from './history-selection';
 
 type AnalysisState = ReturnType<typeof useAnalysisCommand>;
 type AnalysisHistory = ReturnType<typeof useAnalysisHistory>;
@@ -76,6 +77,7 @@ export function AnalysisForm({
         Начать с новой историей уточнений
       </label>
       <AnalysisContextStatus context={context} newHistory={newHistory} />
+      <HistorySelection disabled={newHistory || start.isPending || pending !== null} />
       <AnalysisRecovery state={state} />
       <AnalysisCommandActions
         state={state}

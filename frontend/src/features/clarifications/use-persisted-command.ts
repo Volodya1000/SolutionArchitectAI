@@ -1,5 +1,5 @@
 import { useMutation, useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { z } from 'zod';
 import { ApiError } from '../../shared/api/api-error';
 import { scopeKey } from '../../shared/api/client';
@@ -15,6 +15,7 @@ export function usePersistedCommand<C extends { operation_id: string }, R>(optio
 }) {
   const store = savedValue(options.key, options.schema);
   const [pending, setPending] = useState(() => store.read());
+  const recoveredOperation = useRef<string | null>(null);
   const recovery = useQuery({
     queryKey: [...scopeKey, 'command', options.key, pending?.operation_id],
     queryFn: () => (pending ? options.recover(pending.operation_id) : Promise.resolve(null)),
@@ -40,6 +41,13 @@ export function usePersistedCommand<C extends { operation_id: string }, R>(optio
       }
     },
   });
+  useEffect(() => {
+    if (!recovery.data || !pending || recoveredOperation.current === pending.operation_id) return;
+    recoveredOperation.current = pending.operation_id;
+    store.clear();
+    setPending(null);
+    void options.onSuccess(recovery.data);
+  }, [recovery.data, pending, store, options]);
   function submit(command: C) {
     const original = pending ?? command;
     store.save(original);

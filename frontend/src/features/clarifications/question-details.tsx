@@ -1,5 +1,6 @@
 import { type Question } from '../../shared/api/clarifications';
 import { PinnedSource } from './discussion-subject';
+import { Link, useSearchParams } from 'react-router';
 
 export function QuestionDetails({
   question,
@@ -10,6 +11,8 @@ export function QuestionDetails({
   runId: string;
   compactSources: boolean;
 }) {
+  const [search] = useSearchParams();
+  const selectedRequirement = search.get('requirement');
   return (
     <>
       <h3>{question.text}</h3>
@@ -24,6 +27,26 @@ export function QuestionDetails({
         <dd>{question.dependent_decision}</dd>
       </dl>
       <p>{question.basis}</p>
+      {selectedRequirement && question.requirement_ids.includes(selectedRequirement) && (
+        <p>
+          <Link
+            className="text-link"
+            to={`/requirements?run=${encodeURIComponent(runId)}&tab=requirements&requirement=${encodeURIComponent(selectedRequirement)}`}
+          >
+            Вернуться к выбранному требованию
+          </Link>
+        </p>
+      )}
+      {question.requirement_ids.map((id, index) => (
+        <p key={id}>
+          <Link
+            className="text-link"
+            to={`/requirements?run=${encodeURIComponent(runId)}&tab=requirements&requirement=${encodeURIComponent(id)}`}
+          >
+            К связанному требованию {index + 1}
+          </Link>
+        </p>
+      ))}
       {question.mandatory_conflict && (
         <p className="notice error-text" role="alert">
           {question.mandatory_conflict}

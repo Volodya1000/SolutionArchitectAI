@@ -3,7 +3,7 @@ from typing import ClassVar
 
 from langchain_core.language_models import LanguageModelInput
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
-from langchain_core.runnables import Runnable
+from langchain_core.runnables import Runnable, RunnableBinding, RunnableParallel, RunnableSequence
 from langchain_openai import ChatOpenAI
 from openai import (
     APIConnectionError,
@@ -124,10 +124,25 @@ class LangChainStructuredModel:
                 strict=True,
                 max_completion_tokens=output_limit,
             )
-        if observed:
+        if not native_schema_bound(runnable):
             raise StructuredGenerationFailure(StructuredErrorCode.UNSUPPORTED)
+        warning: warnings.WarningMessage
+        for warning in observed:
+            warnings.warn(warning.message, warning.category, stacklevel=2)
         result: object = await runnable.ainvoke(messages)
         try:
             return NativeEnvelope.model_validate(result).raw
         except ValidationError:
             raise StructuredGenerationFailure(StructuredErrorCode.INVALID_RESPONSE) from None
+
+
+def native_schema_bound(runnable: Runnable[LanguageModelInput, object]) -> bool:
+    if not isinstance(runnable, RunnableSequence) or not isinstance(
+        runnable.first, RunnableParallel
+    ):
+        return False
+    raw: object = runnable.first.steps__.get("raw")
+    if not isinstance(raw, RunnableBinding) or raw.kwargs.get("tools"):
+        return False
+    response_format: object = raw.kwargs.get("response_format")
+    return isinstance(response_format, dict) and response_format.get("type") == "json_schema"

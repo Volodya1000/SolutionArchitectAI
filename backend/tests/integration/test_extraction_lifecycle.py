@@ -15,6 +15,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, async_sessionmaker
 
 from backend.test_helpers.extraction_resources import ORIGINAL, ExtractionResources, upload
+from backend.test_helpers.extraction_steps import configured_extraction_steps
 from backend.test_helpers.sql_store_setup import SqlStoreSetup, extraction_store_setup
 from solution_architect_ai.application.agents.requirements_extraction_agent import (
     RequirementsExtractionAgent,
@@ -154,7 +155,7 @@ async def test_insufficient_part_budget_does_not_persist_a_prepared_plan(
     run: ExtractionView = await resources.start([first.version_id, second.version_id])
     await resources.running(run.id)
     steps: ExtractionSteps = await resources.container.get(ExtractionSteps)
-    steps.extraction_policy = replace(steps.extraction_policy, requests=1)
+    steps = configured_extraction_steps(steps, replace(steps.extraction_policy, requests=1))
     with pytest.raises(StructuredGenerationFailure) as error:
         await steps.prepare(run.id)
     assert error.value.reason == StructuredErrorCode.BUDGET_EXHAUSTED
@@ -382,12 +383,8 @@ async def test_shared_budget_across_parts_preserves_completed_candidates_on_fail
     run: ExtractionView = await resources.start([version.version_id])
     await resources.running(run.id)
     original: ExtractionSteps = await resources.container.get(ExtractionSteps)
-    limited: ExtractionSteps = ExtractionSteps(
-        original.extraction_store_context,
-        original.documents_service,
-        original.extraction_context_builder,
-        original.requirements_extraction_agent,
-        replace(original.extraction_policy, requests=1),
+    limited: ExtractionSteps = configured_extraction_steps(
+        original, replace(original.extraction_policy, requests=1)
     )
     pack: ContextPack = await limited.context(run.id)
     assert len(pack.parts) > 1
@@ -475,12 +472,11 @@ async def test_changed_model_profile_fails_with_saved_provenance(
     version: DocumentVersionView = await upload(resources)
     run: ExtractionView = await resources.start([version.version_id])
     steps: ExtractionSteps = await resources.container.get(ExtractionSteps)
-    monkeypatch.setattr(
-        steps,
-        "extraction_policy",
-        replace(steps.extraction_policy, config_digest="different-profile"),
+    changed: ExtractionSteps = configured_extraction_steps(
+        steps, replace(steps.extraction_policy, config_digest="different-profile")
     )
     worker: ExtractionWorker = await resources.container.get(ExtractionWorker)
+    monkeypatch.setattr(worker.extraction_graph, "extraction_steps", changed)
     await worker.execute(run.id)
     failed: ExtractionView = await resources.view(run.id)
     assert failed.status == RunStatus.FAILED

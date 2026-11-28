@@ -1,6 +1,7 @@
 import { Link } from 'react-router';
 import { extractionActive, type ExtractionSummary } from '../../shared/api/extractions';
 import { Button } from '../../shared/ui/button';
+import { PipelineChanges } from '../../shared/ui/pipeline-changes';
 
 export function AnalysisActions({
   previous,
@@ -44,6 +45,7 @@ function PreviousAnalysis({ run }: { run: ExtractionSummary }) {
               ? 'Документы, область анализа и настройки не изменились.'
               : 'Настройки анализа изменились. Можно получить новый результат.'}
       </p>
+      <PipelineChanges run={run} />
       <Button asChild>
         <Link to={`/requirements?run=${encodeURIComponent(run.id)}`}>
           {active ? 'Открыть анализ' : 'Открыть результат'}

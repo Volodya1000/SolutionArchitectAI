@@ -15,7 +15,12 @@ export function ClarificationRisks({
     <section className="clarifications" aria-label="Риски A-07">
       <h2>Риски A-07</h2>
       {view.risks.map((risk) => (
-        <article className="surface-card clarification-card" key={risk.id} id={`risk-${risk.id}`}>
+        <article
+          className="surface-card clarification-card"
+          key={risk.id}
+          id={`risk-${risk.id}`}
+          tabIndex={-1}
+        >
           <h3>Риск допущения</h3>
           <dl className="metadata-grid">
             <dt>Последствия</dt>

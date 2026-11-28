@@ -40,7 +40,9 @@ TEXT-полей JSON защищён `pg_input_is_valid` и `CASE`: повреж�
 Каталоги без `__init__.py` также проверяются. Фикстуры подключает pytest.
 
 26 проверок правила воспроизводят запрещённые случаи и разрешённое использование
-хелперов/фикстур. Контракт работает из корня репозитория и из `backend`.
+хелперов/фикстур. Контракт запускается из корня репозитория: этот каталог
+должен быть в Python import path для `backend.*` и `tools.test_import_contract`.
+Самостоятельный запуск из `backend` без настройки import path не поддерживается.
 
 ## Промпт
 
@@ -57,7 +59,7 @@ TEXT-полей JSON защищён `pg_input_is_valid` и `CASE`: повреж�
 ```powershell
 uv run --locked --project backend python -m tools.quality setup
 uv run --locked --project backend python -m tools.quality full
-uv run --locked --project backend lint-imports backend/.importlinter
+uv run --locked --project backend lint-imports --config backend/.importlinter
 ```
 
 Целевые регрессии находятся в `test_store_error_classification.py`,

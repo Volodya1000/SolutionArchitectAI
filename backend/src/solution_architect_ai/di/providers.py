@@ -17,6 +17,9 @@ from sqlalchemy.ext.asyncio import (
 
 from solution_architect_ai.application.capacity import GenerationCapacity
 from solution_architect_ai.application.generation import RunWorker
+from solution_architect_ai.application.prompts.discussion_prompt import (
+    PROMPT_VERSION as DISCUSSION_PROMPT_VERSION,
+)
 from solution_architect_ai.application.protocols.chat_protocols import (
     LLM,
     ChatStore,
@@ -24,6 +27,7 @@ from solution_architect_ai.application.protocols.chat_protocols import (
     TokenCounter,
 )
 from solution_architect_ai.application.protocols.store_context_protocols import StoreContext
+from solution_architect_ai.application.protocols.transaction_protocols import TransactionRunner
 from solution_architect_ai.application.retry import GenerationPolicy
 from solution_architect_ai.application.services.chat_service import ChatService
 from solution_architect_ai.config.models import DatabaseSettings, LLMSettings
@@ -33,6 +37,7 @@ from solution_architect_ai.infrastructure.health import LocalResourceProbe
 from solution_architect_ai.infrastructure.llm import LangChainLLM
 from solution_architect_ai.persistence.store import SqlAlchemyStore
 from solution_architect_ai.persistence.store_context import SqlAlchemyStoreContext
+from solution_architect_ai.persistence.transaction_runner import SqlTransactionRunner
 
 
 def database_url(settings: Settings) -> URL:
@@ -112,6 +117,7 @@ class AppProvider(Provider):
         settings: Settings,
         chat_token_counter: TokenCounter,
         capacity: GenerationCapacity,
+        transaction_runner: TransactionRunner,
     ) -> RunWorker:
         profile: LLMSettings = settings.llm
         generation_policy: GenerationPolicy = GenerationPolicy(
@@ -126,11 +132,23 @@ class AppProvider(Provider):
         )
         if chat_token_counter.count([]) >= generation_policy.input_budget:
             raise ValueError("output limit leaves no input budget for the system prompt")
-        return RunWorker(chat_store_context, llm, generation_policy, chat_token_counter, capacity)
+        worker: RunWorker = RunWorker(
+            chat_store_context,
+            llm,
+            generation_policy,
+            chat_token_counter,
+            capacity,
+        )
+        worker.transaction_runner = transaction_runner
+        return worker
 
     @provide(scope=Scope.APP)
     def capacity(self, settings: Settings) -> GenerationCapacity:
         return GenerationCapacity(settings.llm.concurrency)
+
+    @provide(scope=Scope.APP)
+    def transaction_runner(self) -> TransactionRunner:
+        return SqlTransactionRunner()
 
     @provide(scope=Scope.APP)
     def chat_service(
@@ -140,6 +158,7 @@ class AppProvider(Provider):
         resource_probe: ResourceProbe,
     ) -> ChatService:
         profile: dict[str, object] = settings.llm.model_dump(mode="json", exclude={"api_key"})
+        profile["discussion_prompt_version"] = DISCUSSION_PROMPT_VERSION
         config_digest: str = sha256(json.dumps(profile, sort_keys=True).encode()).hexdigest()
         return ChatService(chat_store_context, settings.llm.model, config_digest, resource_probe)
 

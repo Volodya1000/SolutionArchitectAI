@@ -1,5 +1,6 @@
 from uuid import UUID
 
+from solution_architect_ai.application.context.discussion_model_input import DiscussionInputBuilder
 from solution_architect_ai.application.context.discussion_sources import (
     DiscussionSourceContextBuilder,
 )
@@ -12,6 +13,7 @@ from solution_architect_ai.application.models.discussion_context_models import (
     DiscussionContextManifest,
     DiscussionModelContext,
 )
+from solution_architect_ai.application.models.discussion_input_models import PreparedDiscussion
 from solution_architect_ai.application.models.discussion_models import DiscussionBinding
 from solution_architect_ai.application.models.extraction_models import SourceRef
 from solution_architect_ai.application.prompts.discussion_prompt import (
@@ -45,6 +47,15 @@ class DiscussionContextBuilder:
         self.source_context_builder: DiscussionSourceContextBuilder = (
             DiscussionSourceContextBuilder(discussion_service)
         )
+
+    async def prepare(self, chat_id: UUID) -> PreparedDiscussion | None:
+        messages: list[MessageView] = await self.messages(chat_id)
+        if not messages:
+            return None
+        context: DiscussionModelContext = DiscussionModelContext.model_validate_json(
+            messages[-1].content
+        )
+        return DiscussionInputBuilder(context).prepare()
 
     async def messages(self, chat_id: UUID) -> list[MessageView]:
         binding: DiscussionBinding | None = await self.discussion_service.get_binding(chat_id)

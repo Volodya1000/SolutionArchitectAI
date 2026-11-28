@@ -176,7 +176,7 @@ def walk_table(
         seen: set[int] = set()
         cell_index: int
         cell: _Cell
-        for cell_index, cell in enumerate(row.cells, 1):
+        for cell_index, cell in enumerate(row.cells, row.grid_cols_before + 1):
             if id(cell) not in seen:
                 seen.add(id(cell))
                 cell_path: str = f"{path}/row/{row_index}/cell/{cell_index}"
@@ -186,6 +186,7 @@ def walk_table(
 
 def cell_context(table: Table, row: _Row, row_index: int, cell_index: int, section: str) -> str:
     headings: tuple[_Cell, ...] = table.rows[0].cells
-    heading: str = headings[cell_index - 1].text[:256] if cell_index <= len(headings) else ""
-    key: str = row.cells[0].text[:256] if row.cells else ""
+    heading_index: int = cell_index - table.rows[0].grid_cols_before - 1
+    heading: str = headings[heading_index].text[:256] if 0 <= heading_index < len(headings) else ""
+    key: str = row.cells[0].text[:256] if row.cells and row.grid_cols_before == 0 else ""
     return f"{section} | row {row_index}: {key} | column {cell_index}: {heading}"

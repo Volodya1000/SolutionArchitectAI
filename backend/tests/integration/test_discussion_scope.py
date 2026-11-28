@@ -12,6 +12,7 @@ from langchain_openai import ChatOpenAI
 from pydantic import TypeAdapter
 
 from backend.test_helpers.discussion_resources import Resources, content_chunks, seed_analysis
+from solution_architect_ai.application.context.discussion_citations import DiscussionCitationStream
 from solution_architect_ai.application.context.discussion_context_builder import (
     DiscussionContextBuilder,
 )
@@ -22,6 +23,12 @@ from solution_architect_ai.application.models.clarification_models import (
     ClarificationQuestion,
     ClarificationView,
     SourceVersion,
+)
+from solution_architect_ai.application.models.discussion_input_models import (
+    DiscussionInput,
+    DiscussionInputEvidence,
+    DiscussionInputSource,
+    PreparedDiscussion,
 )
 from solution_architect_ai.application.models.discussion_models import (
     CreateDiscussion,
@@ -301,23 +308,30 @@ async def test_actual_adapter_keeps_candidate_verification_separate_from_authent
         view.requirements[0].sources = [candidate]
         row.snapshot_json = view.model_dump_json()
     chat: ChatView = await selected_chat(scope_case, "requirement")
-    messages: list[MessageView] = await DiscussionContextBuilder(
+    prepared: PreparedDiscussion | None = await DiscussionContextBuilder(
         scope_case.resources.discussions
-    ).messages(chat.id)
-    payload: dict[str, object] = await captured_model_context(messages)
-    analysis: dict[str, object] = TypeAdapter(dict[str, object]).validate_python(
-        payload["analysis"]
-    )
-    requirements: list[RequirementView] = TypeAdapter(list[RequirementView]).validate_python(
-        analysis["requirements"]
-    )
-    assert requirements[0].sources[0] == candidate
-    authentic: list[SourceRef] = TypeAdapter(list[SourceRef]).validate_python(
-        payload["source_fragments"]
-    )
+    ).prepare(chat.id)
+    assert prepared is not None
+    payload: dict[str, object] = await captured_model_context(prepared.messages)
+    context: DiscussionInput = DiscussionInput.model_validate(payload)
+    assert context.analysis is not None
+    evidence: DiscussionInputEvidence = context.analysis.requirements[0].sources[0]
+    assert evidence.quote == candidate.quote
+    assert evidence.status == EvidenceStatus.UNVERIFIED
+    assert evidence.reason == "quote_not_in_context"
+    assert context.analysis.requirements[0].id == "r0"
+    assert str(scope_case.run_id) not in prepared.messages[-1].content
+    assert str(scope_case.version.version_id) not in prepared.messages[-1].content
+    assert scope_case.version.sha256 not in prepared.messages[-1].content
+    authentic: list[DiscussionInputSource] = context.source_fragments
     assert authentic[0].quote == "Retention is 30 days."
     assert authentic[0].status == EvidenceStatus.VERIFIED
     assert authentic[0].reason is None
+    citations: DiscussionCitationStream = DiscussionCitationStream(prepared.references)
+    assert citations.feed("[source](ref:f0) [unknown](ref:f99)", final=True) == (
+        f"[source](/documents?version={scope_case.version.version_id}"
+        f"&fragment={scope_case.sources[0].fragment_id}&run={scope_case.run_id}) unknown"
+    )
 
 
 async def captured_model_context(messages: list[MessageView]) -> dict[str, object]:

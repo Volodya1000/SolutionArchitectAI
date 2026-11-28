@@ -41,7 +41,7 @@ class QuestionPayload(BaseModel):
 
 @pytest.mark.parametrize("schema", [RequirementsExtraction, QuestionPayload])
 @pytest.mark.parametrize("mode", list(StructuredMode))
-def test_cyrillic_source_gets_trusted_language_guidance_after_untrusted_data(
+def test_cyrillic_source_gets_trusted_language_guidance_before_agent_and_untrusted_data(
     schema: type[BaseModel], mode: StructuredMode
 ) -> None:
     source: str = "Система должна сохранять журнал аудита."
@@ -51,11 +51,20 @@ def test_cyrillic_source_gets_trusted_language_guidance_after_untrusted_data(
     )
     messages: tuple[StructuredMessage, ...] = render_messages(request, schema)
 
-    assert messages[-1].role == MessageRole.SYSTEM
-    assert "normalized_text" in messages[-1].content
-    assert source not in messages[-1].content
-    assert messages[-2].role == MessageRole.USER
-    assert source in json.dumps(json.loads(messages[-2].content), ensure_ascii=False)
+    guidance_index: int = next(
+        index for index, message in enumerate(messages) if "Copy evidence.quote" in message.content
+    )
+    agent_index: int = next(
+        index
+        for index, message in enumerate(messages)
+        if message.content == context.parts[0].messages[0].content
+    )
+    assert guidance_index < agent_index
+    assert messages[guidance_index].role == MessageRole.SYSTEM
+    assert source not in messages[guidance_index].content
+    assert all(message.role == MessageRole.SYSTEM for message in messages[:-1])
+    assert messages[-1].role == MessageRole.USER
+    assert source in json.dumps(json.loads(messages[-1].content), ensure_ascii=False)
     assert context.parts[0].fragments[0].text == source
 
 
@@ -87,6 +96,9 @@ def test_english_correction_does_not_hide_the_language_of_source_prose() -> None
     )
     messages: tuple[StructuredMessage, ...] = render_messages(corrected, RequirementsExtraction)
 
-    assert messages[-1].role == MessageRole.SYSTEM
-    assert messages[-2].content == CORRECTION_PROMPT
-    assert "normalized_text" in messages[-1].content
+    assert messages[-1].role == MessageRole.USER
+    assert messages[-1].content == CORRECTION_PROMPT
+    first_user: int = next(
+        index for index, message in enumerate(messages) if message.role == MessageRole.USER
+    )
+    assert all(message.role != MessageRole.SYSTEM for message in messages[first_user:])

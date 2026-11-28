@@ -294,7 +294,19 @@ async def test_source_restatement_cannot_remove_an_established_contradiction() -
     context: ClarificationContext = ClarificationContextBuilder().build(
         (document,),
         [requirement],
-        [],
+        [
+            ClarificationQuestion(
+                id=uuid4(),
+                gap_key=f"{document.file_id}:access:failure",
+                text="Противоречие обязательному правилу",
+                basis="Установленный ранее конфликт",
+                dependent_decision="Зависимый результат",
+                blocking=True,
+                requirement_ids=[requirement.id],
+                sources=requirement.sources,
+                mandatory_conflict=requirement.normalized_text,
+            )
+        ],
         [],
         ModelProfile("test", StructuredMode.JSON_TEXT, 4800, 512, 128),
     )
@@ -309,3 +321,40 @@ async def test_source_restatement_cannot_remove_an_established_contradiction() -
     assert len(result.questions) == 1
     assert result.questions[0].mandatory_conflict == requirement.normalized_text
     assert result.questions[0].blocks_completion
+
+
+async def test_extraction_contradiction_hypothesis_can_be_refuted_by_authentic_source() -> None:
+    fragment: DocumentFragment = DocumentFragment(
+        uuid4(),
+        "Доступ требует уточнения. При отказе отклонить запрос.",
+        SourceLocator(LocatorKind.LINES, 1, 1),
+    )
+    document: ParsedDocument = ParsedDocument(
+        uuid4(),
+        uuid4(),
+        "a" * 64,
+        "test",
+        fragment.text,
+        (fragment,),
+    )
+    requirement: RequirementView = referenced_requirement(document, fragment)
+    requirement.category = RequirementCategory.CONTRADICTION
+    context: ClarificationContext = ClarificationContextBuilder().build(
+        (document,),
+        [requirement],
+        [],
+        [],
+        ModelProfile("test", StructuredMode.JSON_TEXT, 4800, 512, 128),
+    )
+    generator: StructuredOutputGenerator = StructuredOutputGenerator(
+        CrossSectionModel(),
+        GenerationPolicy(1, 60, 0, 100, 0, 1000),
+        LangChainTokenCounter(2, chat_prompt=False),
+    )
+    result: ClarificationReviewResult = await ClarificationReview(
+        ClarificationAgent(generator)
+    ).run(
+        context,
+        ExecutionBudget(100, monotonic() + 60, 10, correction_retries=0),
+    )
+    assert result.questions == []

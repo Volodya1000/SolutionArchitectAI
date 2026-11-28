@@ -5,6 +5,7 @@ from hashlib import sha256
 
 import httpx
 from dishka import Scope, provide
+from dishka.dependency_source import CompositeDependencySource
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
@@ -40,6 +41,16 @@ from solution_architect_ai.application.services.structured_output_generator impo
     StructuredOutputGenerator,
 )
 from solution_architect_ai.application.workflows.clarification_workflow import ClarificationWorkflow
+from solution_architect_ai.application.workflows.extraction_budget_builder import (
+    ExtractionBudgetBuilder,
+)
+from solution_architect_ai.application.workflows.extraction_context_assembler import (
+    ExtractionContextAssembler,
+)
+from solution_architect_ai.application.workflows.extraction_finalizer import ExtractionFinalizer
+from solution_architect_ai.application.workflows.extraction_part_extractor import (
+    ExtractionPartExtractor,
+)
 from solution_architect_ai.application.workflows.extraction_steps import (
     ExtractionSteps,
 )
@@ -62,22 +73,26 @@ def profile_digest(settings: Settings) -> str:
 
 
 class ExtractionProvider(ClarificationProvider):
+    extraction_budget_builder: CompositeDependencySource = provide(
+        ExtractionBudgetBuilder, scope=Scope.APP
+    )
+    extraction_context_assembler: CompositeDependencySource = provide(
+        ExtractionContextAssembler, scope=Scope.APP
+    )
+    extraction_part_extractor: CompositeDependencySource = provide(
+        ExtractionPartExtractor, scope=Scope.APP
+    )
+    extraction_finalizer: CompositeDependencySource = provide(ExtractionFinalizer, scope=Scope.APP)
+
     @provide(scope=Scope.APP)
     def clarification_agent(
         self, structured_output_generator: StructuredOutputGenerator
     ) -> ClarificationAgent:
         return ClarificationAgent(structured_output_generator)
 
-    @provide(scope=Scope.APP)
-    def clarification_workflow(
-        self,
-        clarification_store_context: StoreContext[ClarificationStore],
-        extraction_steps: ExtractionSteps,
-        clarification_agent: ClarificationAgent,
-    ) -> ClarificationWorkflow:
-        return ClarificationWorkflow(
-            clarification_store_context, extraction_steps, clarification_agent
-        )
+    clarification_workflow: CompositeDependencySource = provide(
+        ClarificationWorkflow, scope=Scope.APP
+    )
 
     @provide(scope=Scope.APP)
     def extraction_store_context(
@@ -166,22 +181,7 @@ class ExtractionProvider(ClarificationProvider):
             profile.retry.validation_retries,
         )
 
-    @provide(scope=Scope.APP)
-    def extraction_steps(
-        self,
-        extraction_store_context: StoreContext[ExtractionStore],
-        documents_service: DocumentService,
-        extraction_context_builder: ExtractionContextBuilder,
-        requirements_extraction_agent: RequirementsExtractionAgent,
-        extraction_policy: ExtractionPolicy,
-    ) -> ExtractionSteps:
-        return ExtractionSteps(
-            extraction_store_context,
-            documents_service,
-            extraction_context_builder,
-            requirements_extraction_agent,
-            extraction_policy,
-        )
+    extraction_steps: CompositeDependencySource = provide(ExtractionSteps, scope=Scope.APP)
 
     @provide(scope=Scope.APP)
     async def extraction_graph(

@@ -63,11 +63,13 @@ def answer(question: ClarificationQuestion, *, assumption: bool = False) -> Answ
     return AnswerClarification(
         operation_id=uuid4(),
         expected_question_revision=question.revision,
-        source_versions=[
-            SourceVersion(version_id=source.version_id, sha256=source.sha256)
-            for source in question.sources
-            if source.version_id and source.sha256
-        ],
+        source_versions=list(
+            {
+                source.version_id: SourceVersion(version_id=source.version_id, sha256=source.sha256)
+                for source in question.sources
+                if source.version_id and source.sha256
+            }.values()
+        ),
         kind="assumption" if assumption else "answer",
         text="Сохранить условие архитектора",
         basis="Решение архитектора",

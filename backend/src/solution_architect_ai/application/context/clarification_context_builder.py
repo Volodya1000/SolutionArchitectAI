@@ -23,6 +23,10 @@ from solution_architect_ai.application.models.structured_models import (
     StructuredMessage,
 )
 from solution_architect_ai.application.prompts.clarification_prompt import SYSTEM_PROMPT
+from solution_architect_ai.application.validation.markdown_structure import (
+    separator_fragment_ids,
+    table_header,
+)
 from solution_architect_ai.domain.documents import ParsedDocument
 from solution_architect_ai.domain.messages import MessageRole
 
@@ -46,9 +50,12 @@ class ClarificationContextBuilder:
                 fragment.text,
                 0,
                 len(fragment.text),
+                table_header(document, fragment),
             )
             for document in documents
+            for separator_ids in (separator_fragment_ids(document),)
             for fragment in document.fragments
+            if str(fragment.fragment_id) not in separator_ids
         )
         return self.build_fragments(fragments, requirements, history, decisions, profile)
 
@@ -83,7 +90,9 @@ class ClarificationContextBuilder:
         payload: ClarificationPayload = ClarificationPayload(
             fragments=[
                 ContextSource(
-                    fragment_id=source_keys[str(fragment.fragment_id)], text=fragment.text
+                    fragment_id=source_keys[str(fragment.fragment_id)],
+                    text=fragment.text,
+                    table_header=fragment.table_header,
                 )
                 for fragment in fragments
             ],

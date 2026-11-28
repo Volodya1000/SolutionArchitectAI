@@ -1,3 +1,4 @@
+from collections.abc import Sequence
 from datetime import datetime
 from typing import Annotated, Literal, Self
 from uuid import UUID
@@ -5,6 +6,9 @@ from uuid import UUID
 from pydantic import Field, StringConstraints, model_validator
 
 from solution_architect_ai.application.models.chat_dto import DTO
+from solution_architect_ai.application.models.extraction_pipeline_models import (
+    ExtractionPipelineVersions,
+)
 from solution_architect_ai.application.models.structured_models import StructuredMode
 from solution_architect_ai.application.validation.source_language import validate_source_language
 from solution_architect_ai.domain.requirements import EvidenceStatus, RequirementCategory
@@ -58,19 +62,31 @@ class RequirementsExtraction(DTO):
     @model_validator(mode="after")
     def preserve_source_language(self) -> Self:
         requirement: ExtractedRequirement
-        for requirement in self.requirements:
+        index: int
+        for index, requirement in enumerate(self.requirements):
             source: str = " ".join(evidence.quote for evidence in requirement.evidence)
-            validate_source_language(source, requirement.original_text)
-            validate_source_language(source, requirement.normalized_text)
-        issue: ExtractedGap | ExtractedContradiction
-        issues: tuple[ExtractedGap | ExtractedContradiction, ...] = (
-            *self.gaps,
-            *self.contradictions,
-        )
-        for issue in issues:
             validate_source_language(
-                " ".join(evidence.quote for evidence in issue.evidence), issue.description
+                source, requirement.original_text, field_path=f"requirements.{index}.original_text"
             )
+            validate_source_language(
+                source,
+                requirement.normalized_text,
+                field_path=f"requirements.{index}.normalized_text",
+            )
+        issue: ExtractedGap | ExtractedContradiction
+        groups: tuple[tuple[str, Sequence[ExtractedGap | ExtractedContradiction]], ...] = (
+            ("gaps", self.gaps),
+            ("contradictions", self.contradictions),
+        )
+        collection: str
+        issues: Sequence[ExtractedGap | ExtractedContradiction]
+        for collection, issues in groups:
+            for index, issue in enumerate(issues):
+                validate_source_language(
+                    " ".join(evidence.quote for evidence in issue.evidence),
+                    issue.description,
+                    field_path=f"{collection}.{index}.description",
+                )
         return self
 
 
@@ -161,6 +177,8 @@ class ExtractionSummary(DTO):
     version_ids: list[UUID] = Field(default_factory=list)
     analysis_scope: str = ""
     configuration_current: bool = False
+    pipeline_versions: ExtractionPipelineVersions | None = None
+    current_pipeline_versions: ExtractionPipelineVersions | None = None
 
 
 class StoredExtractionSummary(ExtractionSummary):

@@ -7,6 +7,7 @@ import pytest
 from pydantic import BaseModel, ConfigDict
 
 from solution_architect_ai.application.errors.structured_errors import (
+    EvidenceValidationFailure,
     StructuredErrorCode,
     StructuredGenerationFailure,
 )
@@ -88,6 +89,30 @@ def budget(*, requests: int = 4, network: int = 1, corrections: int = 1) -> Exec
 
 
 @pytest.mark.anyio
+async def test_evidence_repair_names_the_field_and_reason_without_echoing_source() -> None:
+    model: ScriptedModel = ScriptedModel(['{"count":1}', '{"count":2}'])
+    generator: StructuredOutputGenerator = StructuredOutputGenerator(
+        model, policy(), ContentLengthCounter()
+    )
+
+    def evidence_validator(value: Answer) -> None:
+        if value.count == 1:
+            raise EvidenceValidationFailure(
+                "requirements.0.evidence.0.quote", "quote_not_in_context"
+            )
+
+    execution: ExecutionBudget = budget()
+    assert (
+        await generator.generate(
+            structured_request(), Answer, execution, validator=evidence_validator
+        )
+    ).count == 2
+    assert execution.requests == 2
+    feedback: str = model.requests[1].messages[-1].content
+    assert "requirements.0.evidence.0.quote: quote_not_in_context" in feedback
+
+
+@pytest.mark.anyio
 async def test_strict_schema_repair_keeps_model_and_mode_and_reports_no_source_content() -> None:
     model: ScriptedModel = ScriptedModel(['{"count":"sensitive source value"}', '{"count":2}'])
     generator: StructuredOutputGenerator = StructuredOutputGenerator(
@@ -102,6 +127,8 @@ async def test_strict_schema_repair_keeps_model_and_mode_and_reports_no_source_c
     feedback: str = model.requests[1].messages[-1].content
     assert "sensitive source value" not in feedback
     assert "schema" in feedback
+    assert "count" in feedback
+    assert "int_type" in feedback
 
 
 @pytest.mark.anyio

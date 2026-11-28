@@ -6,6 +6,9 @@ from uuid import UUID, uuid4
 from pydantic import BaseModel
 from sqlalchemy import Select, and_, or_, select, text
 
+from solution_architect_ai.application.context.mandatory_conflict_questions import (
+    uncovered_conflicts,
+)
 from solution_architect_ai.application.errors.chat_errors import Missing
 from solution_architect_ai.application.errors.clarification_errors import (
     ClarificationConflict as Conflict,
@@ -105,20 +108,22 @@ class ClarificationCommands:
         revision: QuestionRevisionRow = await self.clarification_queries.question(
             run_id, question_id, lock=True
         )
-        if revision.revision != command.expected_question_revision or revision.status != "open":
-            raise Conflict("stale_question_revision")
+        bound_question: ClarificationQuestion = await self.clarification_queries.bound_question(
+            run_id, question_id
+        )
+        self.check_answer_revision(bound_question, command)
         extraction: ExtractionRow = await self.clarification_queries.extraction(run_id)
         if extraction.status in {RunStatus.CANCELLED, RunStatus.CANCELLING, RunStatus.FAILED}:
             raise Conflict("extraction_not_resumable")
+        self.check_sources(bound_question, command.source_versions)
+        if bound_question.status == "assumed":
+            await self.replace_blocked_assumption(run_id, bound_question, extraction)
+            revision = await self.clarification_queries.question(run_id, question_id, lock=True)
         question: ClarificationQuestion = read_stored_json(
             ClarificationQuestion,
             revision.snapshot_json,
             failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
         )
-        bound_question: ClarificationQuestion = await self.clarification_queries.bound_question(
-            run_id, question_id
-        )
-        self.check_sources(bound_question, command.source_versions)
         decision: DecisionResult = DecisionResult(
             operation_id=command.operation_id,
             run_id=run_id,
@@ -167,14 +172,10 @@ class ClarificationCommands:
                 previous,
                 failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
             )
-        revision: QuestionRevisionRow = await self.clarification_queries.question(
-            run_id, question_id
-        )
-        if revision.revision != command.expected_question_revision or revision.status != "open":
-            raise Conflict("stale_question_revision")
         question: ClarificationQuestion = await self.clarification_queries.bound_question(
             run_id, question_id
         )
+        self.check_answer_revision(question, command)
         self.check_sources(question, command.source_versions)
         selected: ExtractionStart = read_stored_json(
             ExtractionStart,
@@ -186,6 +187,35 @@ class ClarificationCommands:
         ):
             raise Conflict("source_versions_changed")
         return None
+
+    @staticmethod
+    def check_answer_revision(
+        question: ClarificationQuestion, command: AnswerClarification
+    ) -> None:
+        replacement: bool = (
+            question.status == "assumed"
+            and question.mandatory_conflict is not None
+            and command.kind == "answer"
+        )
+        if question.revision != command.expected_question_revision or (
+            question.status != "open" and not replacement
+        ):
+            raise Conflict("stale_question_revision")
+
+    async def replace_blocked_assumption(
+        self, run_id: UUID, question: ClarificationQuestion, extraction: ExtractionRow
+    ) -> None:
+        view: ClarificationView = await self.clarification_queries.get(run_id)
+        decision: DecisionResult = next(
+            item
+            for item in view.decisions
+            if item.question_id == question.id and item.question_revision == question.revision
+        )
+        await self.reopen(
+            decision,
+            f"Допущение не устраняет противоречие обязательному правилу. {question.mandatory_conflict}",
+            [extraction],
+        )
 
     async def preflight_resume(self, run_id: UUID, command: ResumeRun) -> CommandResult | None:
         await self.clarification_queries.extraction(run_id)
@@ -235,7 +265,9 @@ class ClarificationCommands:
             )
         state: ClarificationRunRow = await self.clarification_queries.run(run_id, lock=True)
         view: ClarificationView = await self.clarification_queries.get(run_id)
-        if any(question.blocks_completion for question in view.questions):
+        if any(question.blocks_completion for question in view.questions) or uncovered_conflicts(
+            view.conflict_assessments, view.questions
+        ):
             raise Conflict("blocking_questions_open")
         if command.question_revisions != {
             question.id: question.revision for question in view.questions
@@ -310,7 +342,10 @@ class ClarificationCommands:
         risk.status = "closed" if command.resolution == "confirm" else "realized"
         risk.resolution_reason = command.reason
         risk_row.snapshot_json = risk.model_dump_json()
-        if command.resolution == "reject":
+        question: ClarificationQuestion = await self.clarification_queries.bound_question(
+            decision.run_id, decision.question_id
+        )
+        if command.resolution == "reject" or question.mandatory_conflict is not None:
             await self.reopen(decision, command.reason, extractions)
         result: DecisionResult = decision.model_copy(update={"operation_id": command.operation_id})
         self.record("resolve", decision_id, command, result)
@@ -358,6 +393,8 @@ class ClarificationCommands:
         old: QuestionRevisionRow = await self.clarification_queries.question(
             decision.run_id, decision.question_id, lock=True
         )
+        if old.revision != decision.question_revision:
+            return
         if identity is None:
             raise Missing("question")
         question: ClarificationQuestion = read_stored_json(

@@ -7,6 +7,7 @@ from typing import Final, Literal, TypedDict
 
 LISTEN_HOST: Final[str] = "0.0.0.0"  # nosec B104
 MODEL: Final[str] = "fake-chat"
+MANDATORY_CONFLICT_MARKER: Final[str] = "[clarification:mandatory-conflict]"
 type FinishReason = Literal["length", "stop"]
 
 
@@ -76,7 +77,32 @@ def text_fragment(value: object) -> dict[str, str] | None:
     return None
 
 
+def controlled_conflict_evidence(fragments: list[dict[str, str]]) -> list[dict[str, str]]:
+    if not any(MANDATORY_CONFLICT_MARKER in fragment["text"] for fragment in fragments):
+        return []
+    return [
+        {"fragment_id": fragment["fragment_id"], "quote": fragment["text"][:2000]}
+        for fragment in fragments
+        if fragment["text"].strip() and MANDATORY_CONFLICT_MARKER not in fragment["text"]
+    ][:2]
+
+
 def extracted_requirements(body: object) -> str:
+    evidence: list[dict[str, str]] = controlled_conflict_evidence(document_fragments(body))
+    if len(evidence) == 2:
+        return json.dumps(
+            {
+                "requirements": [],
+                "gaps": [],
+                "contradictions": [
+                    {
+                        "description": "Требование противоречит обязательному правилу",
+                        "evidence": evidence,
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        )
     requirements: list[dict[str, object]] = []
     fragment: dict[str, str]
     for fragment in document_fragments(body):
@@ -128,6 +154,20 @@ def clarification_payload(body: object) -> dict[str, object] | None:
 
 
 def structured_answer(body: object) -> str:
+    if any(payload.get("role") == "conflict_assessment" for payload in request_payloads(body)):
+        conflict_evidence: list[dict[str, str]] = controlled_conflict_evidence(
+            document_fragments(body)
+        )
+        return json.dumps(
+            {
+                "status": "confirmed" if len(conflict_evidence) == 2 else "candidate",
+                "reason": "Требование противоречит обязательному правилу. Требуется фактическое урегулирование."
+                if len(conflict_evidence) == 2
+                else "Недостаточно исходных утверждений для подтверждения конфликта",
+                "evidence": conflict_evidence if len(conflict_evidence) == 2 else [],
+            },
+            ensure_ascii=False,
+        )
     if any(payload.get("role") == "clarification_review" for payload in request_payloads(body)):
         evidence: list[dict[str, str]] = [
             {"fragment_id": fragment["fragment_id"], "quote": fragment["text"]}
@@ -152,6 +192,12 @@ def structured_answer(body: object) -> str:
 
 def clarification_questions(body: object, payload: dict[str, object]) -> str:
     fragments: list[dict[str, str]] = document_fragments(body)
+    if any(MANDATORY_CONFLICT_MARKER in fragment["text"] for fragment in fragments):
+        return json.dumps({"questions": []})
+    return source_questions(fragments, payload)
+
+
+def source_questions(fragments: list[dict[str, str]], payload: dict[str, object]) -> str:
     source_text: str = " ".join(fragment["text"] for fragment in fragments)
     questions: list[dict[str, object]] = []
     incomplete: bool = (
@@ -241,6 +287,9 @@ def discussion_citation(fragment: object, analysis_id: object) -> str | None:
     version_id: object = fragment.get("version_id")
     fragment_id: object = fragment.get("fragment_id")
     quote: object = fragment.get("quote")
+    if isinstance(fragment_id, str) and fragment_id.startswith("f") and isinstance(quote, str):
+        labels: list[str] = [label for label in ("R-03", "R-04") if label in quote]
+        return " ".join(f"[{label}](ref:{fragment_id})" for label in labels)
     if (
         not isinstance(version_id, str)
         or not isinstance(fragment_id, str)
@@ -248,7 +297,7 @@ def discussion_citation(fragment: object, analysis_id: object) -> str | None:
     ):
         return None
     suffix: str = f"&run={analysis_id}" if isinstance(analysis_id, str) else ""
-    labels: list[str] = [label for label in ("R-03", "R-04") if label in quote]
+    labels = [label for label in ("R-03", "R-04") if label in quote]
     return " ".join(
         f"[{label}](/documents?version={version_id}&fragment={fragment_id}{suffix})"
         for label in labels
@@ -318,7 +367,7 @@ class Handler(BaseHTTPRequestHandler):
         try:
             self.wfile.write(json.dumps(payload, ensure_ascii=False).encode())
         except (BrokenPipeError, ConnectionResetError):
-            return
+            self.close_connection = True
 
     def write_completion(self, prompt: str, body: object = None) -> None:
         answer: str = (

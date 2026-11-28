@@ -8,6 +8,7 @@ import {
 import { recordExtraction } from '../../shared/api/use-extraction-history';
 import { errorText } from '../../shared/api/resource-client';
 import { Button } from '../../shared/ui/button';
+import { PipelineChanges } from '../../shared/ui/pipeline-changes';
 
 const statusText: Readonly<Record<Extraction['status'], string>> = {
   queued: 'Извлечение в очереди',
@@ -78,6 +79,7 @@ export function RunStatus({
           {errorText(run.error_code)}
         </p>
       )}
+      <PipelineChanges run={run} />
       {cancel.isError && (
         <p className="notice error-text" role="alert">
           {cancel.error.message}

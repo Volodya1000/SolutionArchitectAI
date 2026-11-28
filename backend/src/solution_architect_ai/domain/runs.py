@@ -17,6 +17,8 @@ class RunErrorCode(StrEnum):
     UNSUPPORTED_STREAM_LIFECYCLE = "unsupported_stream_lifecycle"
     DISCUSSION_SOURCE_UNAVAILABLE = "discussion_source_unavailable"
     DISCUSSION_SUBJECT_UNAVAILABLE = "discussion_subject_unavailable"
+    STORED_DATA_CORRUPT = "stored_data_corrupt"
+    TRANSACTION_CONFLICT = "transaction_conflict"
 
 
 class RunStatus(StrEnum):

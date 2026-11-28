@@ -6,10 +6,8 @@ from typing import Final
 from uuid import UUID, uuid4
 
 from pydantic import TypeAdapter, ValidationError
-from sqlalchemy import ScalarResult, Select, and_, cast, func, or_, select, text
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import ScalarResult, Select, and_, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.sql.selectable import Exists
 
 from solution_architect_ai.application.agents.extraction_result_merger import (
     merge_extraction_results,
@@ -31,6 +29,9 @@ from solution_architect_ai.application.models.extraction_models import (
     StoredModelProfile,
 )
 from solution_architect_ai.application.models.structured_models import BudgetUsage
+from solution_architect_ai.application.prompts.extraction_pipeline import (
+    current_extraction_pipeline_versions,
+)
 from solution_architect_ai.application.prompts.extraction_prompt import (
     CONTRACT_VERSION,
     PROMPT_VERSION,
@@ -45,8 +46,6 @@ from solution_architect_ai.domain.runs import (
 from solution_architect_ai.persistence.clarifications.clarification_execution import active_elapsed
 from solution_architect_ai.persistence.clarifications.clarification_models import (
     ClarificationRunRow,
-    QuestionLinkRow,
-    QuestionRevisionRow,
 )
 from solution_architect_ai.persistence.extractions.extraction_models import (
     ExtractionPartRow,
@@ -54,12 +53,17 @@ from solution_architect_ai.persistence.extractions.extraction_models import (
     ExtractionSourceRow,
     RequirementRow,
 )
+from solution_architect_ai.persistence.extractions.extraction_progress_queries import (
+    read_part_progress,
+)
+from solution_architect_ai.persistence.extractions.extraction_question_guards import (
+    blocked_question_runs,
+)
 from solution_architect_ai.persistence.extractions.extraction_summary_queries import (
     extraction_summary_query,
     get_matching_extractions,
 )
 from solution_architect_ai.persistence.queries import DEFAULT_TASK_ID
-from solution_architect_ai.persistence.sql_json import guarded_json
 from solution_architect_ai.persistence.stored_data import (
     read_stored_json,
     read_stored_model,
@@ -145,6 +149,7 @@ class SqlAlchemyExtractionStore:
             prompt_version=PROMPT_VERSION,
             version_ids=command.version_ids,
             analysis_scope=command.analysis_scope,
+            pipeline_versions=current_extraction_pipeline_versions(),
         )
         self.session.add(
             ExtractionRow(
@@ -172,6 +177,8 @@ class SqlAlchemyExtractionStore:
             return
         if command.answer_history_mode == "new":
             raise Conflict("answer_history_selection_conflict")
+        if command.answer_history_id == self.task_id:
+            return
         owner: UUID | None = await self.session.scalar(
             select(ClarificationRunRow.run_id)
             .join(ExtractionRow, ExtractionRow.id == ClarificationRunRow.run_id)
@@ -187,6 +194,10 @@ class SqlAlchemyExtractionStore:
     async def _describe_extraction(self, row: ExtractionRow) -> ExtractionView:
         view: ExtractionView = extraction_view(row)
         budget: ClarificationRunRow | None = await self.session.get(ClarificationRunRow, row.id)
+        if view.pipeline_versions is None or (
+            budget is not None and budget.metadata_json is not None
+        ):
+            view.pipeline_versions = (await self.get_status(row.id)).pipeline_versions
         if budget is not None:
             view.elapsed_seconds = max(view.elapsed_seconds, active_elapsed(budget))
         return view
@@ -271,37 +282,6 @@ class SqlAlchemyExtractionStore:
         return [extraction_view(row) for row in rows]
 
     async def pending(self) -> list[ExtractionView]:
-        open_blockers: Exists = (
-            select(QuestionLinkRow.run_id)
-            .join(
-                QuestionRevisionRow,
-                and_(
-                    QuestionRevisionRow.question_id == QuestionLinkRow.question_id,
-                    QuestionRevisionRow.revision == QuestionLinkRow.revision,
-                ),
-            )
-            .where(
-                QuestionLinkRow.run_id == ExtractionRow.id,
-                or_(
-                    func.jsonb_typeof(
-                        guarded_json(QuestionRevisionRow.snapshot_json)["blocking"]
-                    ).is_distinct_from("boolean"),
-                    and_(
-                        QuestionRevisionRow.status == "open",
-                        guarded_json(QuestionRevisionRow.snapshot_json)[
-                            "blocking"
-                        ].is_distinct_from(cast(False, JSONB)),
-                    ),
-                    and_(
-                        QuestionRevisionRow.status.in_(("open", "assumed")),
-                        guarded_json(QuestionRevisionRow.snapshot_json)["mandatory_conflict"]
-                        .as_string()
-                        .is_not(None),
-                    ),
-                ),
-            )
-            .exists()
-        )
         rows: ScalarResult[ExtractionRow] = await self.session.scalars(
             select(ExtractionRow)
             .outerjoin(ClarificationRunRow, ClarificationRunRow.run_id == ExtractionRow.id)
@@ -312,20 +292,24 @@ class SqlAlchemyExtractionStore:
                     (
                         ClarificationRunRow.resume_pending.is_(True)
                         & ExtractionRow.status.in_((RunStatus.WAITING_INPUT, RunStatus.COMPLETED))
-                        & ~open_blockers
                     ),
                     and_(
                         ExtractionRow.status == RunStatus.WAITING_INPUT,
                         ClarificationRunRow.initialized.is_(True),
-                        ~open_blockers,
                     ),
                 ),
             )
             .order_by(ExtractionRow.created_at)
         )
+        candidates: list[ExtractionRow] = list(rows)
+        blocked: set[UUID] = await blocked_question_runs(
+            self.session, [row.id for row in candidates if row.status not in ACTIVE_STATUSES]
+        )
         pending: list[ExtractionView] = []
         row: ExtractionRow
-        for row in rows:
+        for row in candidates:
+            if row.id in blocked:
+                continue
             try:
                 pending.append(extraction_view(row))
             except StoredExtractionCorrupt:
@@ -370,7 +354,7 @@ class SqlAlchemyExtractionStore:
         try:
             view.requirements = merge_extraction_results(await self.parts(row.id))
         except StoredExtractionCorrupt:
-            parts: list[PartResult] = await self.read_parts(row.id, strict=False)
+            parts: list[PartResult] = await self._read_parts(row.id, strict=False)
             view.requirements = merge_extraction_results(parts)
             view.progress.completed_parts = len(parts)
             view.coverage.processed_fragments = len(
@@ -422,37 +406,47 @@ class SqlAlchemyExtractionStore:
             != RunStatus.RUNNING
         ):
             raise Conflict("extraction_not_running")
-        existing: ExtractionPartRow | None = await self.session.scalar(
-            select(ExtractionPartRow).where(
-                ExtractionPartRow.run_id == run_id, ExtractionPartRow.part_id == part.part_id
-            )
-        )
-        if existing is None:
-            self.session.add(
-                ExtractionPartRow(
-                    id=uuid4(),
-                    run_id=run_id,
-                    part_id=part.part_id,
-                    result_json=part.model_dump_json(),
-                )
-            )
-            await self.session.flush()
-        parts: list[PartResult] = await self.parts(run_id)
         view: ExtractionView = read_stored_json(
             ExtractionView,
             row.snapshot_json,
             failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
         )
-        view.progress.completed_parts = len(parts)
-        view.coverage.processed_fragments = len(
-            {fragment_id for result in parts for fragment_id in result.fragment_ids}
+        if await self._read_part(run_id, part.part_id) is not None:
+            return
+        self.session.add(
+            ExtractionPartRow(
+                id=uuid4(), run_id=run_id, part_id=part.part_id, result_json=part.model_dump_json()
+            )
+        )
+        await self.session.flush()
+        view.progress.completed_parts, view.coverage.processed_fragments = await read_part_progress(
+            self.session, run_id
         )
         row.snapshot_json = view.model_dump_json()
 
-    async def parts(self, run_id: UUID) -> list[PartResult]:
-        return await self.read_parts(run_id, strict=True)
+    async def get_part(self, run_id: UUID, part_id: str) -> PartResult | None:
+        await self._get_extraction_row(run_id)
+        return await self._read_part(run_id, part_id)
 
-    async def read_parts(self, run_id: UUID, *, strict: bool) -> list[PartResult]:
+    async def _read_part(self, run_id: UUID, part_id: str) -> PartResult | None:
+        payload: str | None = await self.session.scalar(
+            select(ExtractionPartRow.result_json).where(
+                ExtractionPartRow.run_id == run_id, ExtractionPartRow.part_id == part_id
+            )
+        )
+        if payload is None:
+            return None
+        part: PartResult = read_stored_json(
+            PartResult, payload, failure=StoredExtractionCorrupt("stored_result_corrupt")
+        )
+        if part.part_id != part_id:
+            raise StoredExtractionCorrupt("stored_result_corrupt")
+        return part
+
+    async def parts(self, run_id: UUID) -> list[PartResult]:
+        return await self._read_parts(run_id, strict=True)
+
+    async def _read_parts(self, run_id: UUID, *, strict: bool) -> list[PartResult]:
         await self._get_extraction_row(run_id)
         rows: ScalarResult[ExtractionPartRow] = await self.session.scalars(
             select(ExtractionPartRow)

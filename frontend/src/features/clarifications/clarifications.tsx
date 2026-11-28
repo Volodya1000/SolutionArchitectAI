@@ -5,6 +5,7 @@ import { AnswerForm } from './answer-form';
 import { HumanDecision } from './decision';
 import { QuestionDetails } from './question-details';
 import { ClarificationRisks } from './risks';
+import { ConflictDiagnostics } from './conflict-diagnostics';
 
 export function Clarifications({ runId }: { runId: string }) {
   const query = useClarifications(runId);
@@ -70,6 +71,7 @@ export function ClarificationQuestions({
         {view.resume_pending ? ' · Продолжение поставлено в очередь' : ''}
       </p>
       {questions.length === 0 && <p className="notice">Открытых вопросов нет.</p>}
+      <ConflictDiagnostics view={view} />
       {questions.map((question) => (
         <section
           className="surface-card clarification-card"
@@ -86,9 +88,15 @@ export function ClarificationQuestions({
           {view.decisions
             .filter((decision) => decision.question_id === question.id)
             .map((decision) => (
-              <HumanDecision key={decision.decision_id} decision={decision} tabbed={tabbed} />
+              <HumanDecision
+                key={decision.decision_id}
+                decision={decision}
+                tabbed={tabbed}
+                displayRunId={view.run_id}
+              />
             ))}
-          {question.status === 'open' && (
+          {(question.status === 'open' ||
+            (question.status === 'assumed' && question.mandatory_conflict)) && (
             <AnswerForm
               question={question}
               runId={view.run_id}

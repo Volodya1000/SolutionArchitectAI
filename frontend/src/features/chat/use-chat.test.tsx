@@ -1,3 +1,4 @@
+import { fixtureId } from '@/shared/api/test-network-fixtures';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
@@ -8,13 +9,29 @@ import { scopeKey, type Snapshot } from '../../shared/api/client';
 import { useChat } from './use-chat';
 
 const active: Snapshot = {
-  chat: { id: 'a', task_id: 'task', title: 'Чат', created_at: '2026-11-26T00:00:00Z' },
-  messages: [{ id: 'answer', role: 'assistant', content: 'Начало', position: 2, incomplete: true }],
+  chat: {
+    id: fixtureId('a'),
+    task_id: fixtureId('task'),
+    title: 'Чат',
+    created_at: '2026-11-26T00:00:00Z',
+  },
+  messages: [
+    {
+      id: fixtureId('answer'),
+      role: 'assistant',
+      content: 'Начало',
+      position: 2,
+      incomplete: true,
+    },
+  ],
   runs: [
     {
-      id: 'run',
-      chat_id: 'a',
-      assistant_message_id: 'answer',
+      config_digest: 'test-config',
+      created_at: '2026-01-01T00:00:00Z',
+
+      id: fixtureId('run'),
+      chat_id: fixtureId('a'),
+      assistant_message_id: fixtureId('answer'),
       status: 'running',
       sequence: 1,
       content: 'Начало',
@@ -39,7 +56,9 @@ class TestEventSource {
     this.closed = true;
   }
 }
-const server = setupServer(http.get('/api/chats/a', () => HttpResponse.json(snapshot)));
+const server = setupServer(
+  http.get(`/api/chats/${fixtureId('a')}`, () => HttpResponse.json(snapshot)),
+);
 beforeAll(() => server.listen({ onUnhandledFrame: 'error' }));
 afterEach(() => {
   server.resetHandlers();
@@ -53,7 +72,7 @@ afterAll(() => server.close());
 function show() {
   vi.stubGlobal('EventSource', TestEventSource);
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const view = renderHook(() => useChat('a'), {
+  const view = renderHook(() => useChat(fixtureId('a')), {
     wrapper: ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={client}>{children}</QueryClientProvider>
     ),
@@ -63,14 +82,14 @@ function show() {
 
 it('opens a new stream after a closed connection with the same active run', async () => {
   const { result } = show();
-  await waitFor(() => expect(result.current.run?.id).toBe('run'));
+  await waitFor(() => expect(result.current.run?.id).toBe(fixtureId('run')));
   act(() => sources[0]!.onerror?.());
   await waitFor(() => expect(sources).toHaveLength(2), { timeout: 3000 });
   act(() =>
     sources[1]!.onmessage?.(
       new MessageEvent('message', {
         data: JSON.stringify({
-          run_id: 'run',
+          run_id: fixtureId('run'),
           sequence: 2,
           kind: 'snapshot',
           payload: {
@@ -91,7 +110,7 @@ it('opens a new stream after a closed connection with the same active run', asyn
 
 it('clears the warning when history confirms completion without another stream event', async () => {
   const { result } = show();
-  await waitFor(() => expect(result.current.run?.id).toBe('run'));
+  await waitFor(() => expect(result.current.run?.id).toBe(fixtureId('run')));
   snapshot = {
     ...active,
     messages: [{ ...active.messages[0]!, content: 'Конец', incomplete: false }],
@@ -107,7 +126,7 @@ it('clears the warning when history confirms completion without another stream e
 
 it('recovers malformed stream JSON and closes connections when unmounted', async () => {
   const { result, unmount } = show();
-  await waitFor(() => expect(result.current.run?.id).toBe('run'));
+  await waitFor(() => expect(result.current.run?.id).toBe(fixtureId('run')));
   act(() => sources[0]!.onmessage?.(new MessageEvent('message', { data: '{broken' })));
   await waitFor(() => expect(sources).toHaveLength(2), { timeout: 3000 });
   unmount();
@@ -117,7 +136,7 @@ it('recovers malformed stream JSON and closes connections when unmounted', async
 it('lets slow history recovery finish while repeated stream connections fail', async () => {
   let reads = 0;
   server.use(
-    http.get('/api/chats/a', async () => {
+    http.get(`/api/chats/${fixtureId('a')}`, async () => {
       if (++reads === 1) return HttpResponse.json(active);
       await new Promise((resolve) => setTimeout(resolve, 1400));
       return HttpResponse.json({
@@ -145,26 +164,26 @@ it('lets slow history recovery finish while repeated stream connections fail', a
 
 it('does not carry a failed connection warning into the next run', async () => {
   const view = show();
-  await waitFor(() => expect(view.result.current.run?.id).toBe('run'));
+  await waitFor(() => expect(view.result.current.run?.id).toBe(fixtureId('run')));
   snapshot = { ...active, runs: [{ ...active.runs[0]!, status: 'completed', sequence: 2 }] };
   act(() => sources[0]!.onerror?.());
   await waitFor(() => expect(view.result.current.run).toBeUndefined());
-  snapshot = { ...active, runs: [{ ...active.runs[0]!, id: 'next-run' }] };
+  snapshot = { ...active, runs: [{ ...active.runs[0]!, id: fixtureId('next-run') }] };
   await act(() => view.result.current.query.refetch());
-  await waitFor(() => expect(view.result.current.run?.id).toBe('next-run'));
+  await waitFor(() => expect(view.result.current.run?.id).toBe(fixtureId('next-run')));
   expect(view.result.current.connectionError).toBe(false);
 });
 
 it('keeps newer SSE text and completion when an older HTTP refresh arrives later', async () => {
   const { result, client } = show();
-  await waitFor(() => expect(result.current.run?.id).toBe('run'));
+  await waitFor(() => expect(result.current.run?.id).toBe(fixtureId('run')));
   let release = () => {};
   const response = new Promise<void>((resolve) => {
     release = resolve;
   });
   let started = false;
   server.use(
-    http.get('/api/chats/a', async () => {
+    http.get(`/api/chats/${fixtureId('a')}`, async () => {
       started = true;
       await response;
       return HttpResponse.json(active);
@@ -179,7 +198,7 @@ it('keeps newer SSE text and completion when an older HTTP refresh arrives later
     sources[0]!.onmessage?.(
       new MessageEvent('message', {
         data: JSON.stringify({
-          run_id: 'run',
+          run_id: fixtureId('run'),
           sequence: 2,
           kind: 'snapshot',
           payload: {
@@ -198,7 +217,9 @@ it('keeps newer SSE text and completion when an older HTTP refresh arrives later
   await act(async () => {
     await refresh;
   });
-  expect(client.getQueryData<Snapshot>([...scopeKey, 'chat', 'a'])?.runs[0]?.sequence).toBe(2);
+  expect(
+    client.getQueryData<Snapshot>([...scopeKey, 'chat', fixtureId('a')])?.runs[0]?.sequence,
+  ).toBe(2);
   expect(result.current.query.data?.messages[0]?.content).toBe('Новый ответ');
   expect(result.current.query.data?.runs[0]?.sequence).toBe(2);
   expect(result.current.run).toBeUndefined();

@@ -1,3 +1,4 @@
+import { fixtureId } from '@/shared/api/test-network-fixtures';
 import { http, HttpResponse } from 'msw';
 import { extractionActive, extractionSchema, extractionSummarySchema } from './extractions';
 
@@ -6,8 +7,12 @@ export function mockExtractions(values: unknown[]) {
   return [
     http.get('/api/extractions/:id/clarifications', ({ params }) =>
       HttpResponse.json({
+        ...{ conflict_assessments: [] },
+        metadata: null,
+        resume_version: 0,
+
         run_id: params.id,
-        history_id: 'legacy',
+        history_id: fixtureId('legacy'),
         cycle: 0,
         initialized: false,
         resume_pending: false,

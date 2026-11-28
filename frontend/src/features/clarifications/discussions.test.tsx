@@ -1,3 +1,4 @@
+import { fixtureId } from '@/shared/api/test-network-fixtures';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -16,8 +17,8 @@ const server = setupServer(
     return fail
       ? new HttpResponse(null, { status: 503 })
       : HttpResponse.json({
-          id: 'chat',
-          task_id: 'task',
+          id: fixtureId('chat'),
+          task_id: fixtureId('task'),
           title: 'Обсуждение',
           created_at: '2026-11-27T00:00:00Z',
         });
@@ -39,8 +40,8 @@ function show(analysisId: string | null = null) {
         <DiscussButton
           subject={{
             kind: 'source',
-            version_id: 'v1',
-            fragment_id: 'fragment',
+            version_id: fixtureId('v1'),
+            fragment_id: fixtureId('fragment'),
             analysis_id: analysisId,
           }}
         />
@@ -66,12 +67,12 @@ it('creates separate intentional discussions and replays the original uncertain 
 
 it('recovers a saved discussion operation after reopening the source', async () => {
   fail = true;
-  const first = show('analysis-a');
+  const first = show(fixtureId('analysis-a'));
   await userEvent.click(screen.getByRole('button', { name: 'Обсудить' }));
   await screen.findByRole('alert');
   first.unmount();
   fail = false;
-  show('analysis-a');
+  show(fixtureId('analysis-a'));
   const retry = await screen.findByRole('button', { name: 'Повторить обсуждение' });
   await waitFor(() => expect(retry).toBeEnabled());
   await userEvent.click(retry);
@@ -87,8 +88,8 @@ it('keeps uncertain operations separate when one source switches between analysi
         <DiscussButton
           subject={{
             kind: 'source',
-            version_id: 'v1',
-            fragment_id: 'fragment',
+            version_id: fixtureId('v1'),
+            fragment_id: fixtureId('fragment'),
             analysis_id: analysisId,
           }}
         />
@@ -96,25 +97,29 @@ it('keeps uncertain operations separate when one source switches between analysi
     </QueryClientProvider>
   );
   fail = true;
-  const view = render(content('analysis-a'));
+  const view = render(content(fixtureId('analysis-a')));
   await userEvent.click(screen.getByRole('button', { name: 'Обсудить' }));
   await screen.findByRole('alert');
-  view.rerender(content('analysis-b'));
+  view.rerender(content(fixtureId('analysis-b')));
   fail = false;
   await userEvent.click(screen.getByRole('button', { name: 'Обсудить' }));
   await waitFor(() => expect(commands).toHaveLength(2));
-  expect(commands[1]).toMatchObject({ subject: { analysis_id: 'analysis-b' } });
-  view.rerender(content('analysis-a'));
+  expect(commands[1]).toMatchObject({ subject: { analysis_id: fixtureId('analysis-b') } });
+  view.rerender(content(fixtureId('analysis-a')));
   expect(screen.getByRole('button', { name: 'Повторить обсуждение' })).toBeInTheDocument();
 });
-it.each([null, 'analysis-a', 'analysis-b'])(
+it.each([null, fixtureId('analysis-a'), fixtureId('analysis-b')])(
   'pins the explicit source history %s',
   async (analysisId) => {
     show(analysisId);
     await userEvent.click(screen.getByRole('button', { name: 'Обсудить' }));
     await waitFor(() => expect(commands).toHaveLength(1));
     expect(commands[0]).toMatchObject({
-      subject: { version_id: 'v1', fragment_id: 'fragment', analysis_id: analysisId },
+      subject: {
+        version_id: fixtureId('v1'),
+        fragment_id: fixtureId('fragment'),
+        analysis_id: analysisId,
+      },
     });
   },
 );

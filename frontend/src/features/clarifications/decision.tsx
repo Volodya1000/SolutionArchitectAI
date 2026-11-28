@@ -14,12 +14,14 @@ import { savedValue } from './saved-command';
 export function HumanDecision({
   decision,
   tabbed = false,
+  displayRunId,
 }: {
   decision: Decision;
   tabbed?: boolean;
+  displayRunId?: string;
 }) {
   return (
-    <article className="human-decision" id={`decision-${decision.decision_id}`}>
+    <article className="human-decision" id={`decision-${decision.decision_id}`} tabIndex={-1}>
       <strong>
         {decision.kind === 'assumption'
           ? assumptionHeadline[decision.resolution]
@@ -60,7 +62,7 @@ export function HumanDecision({
         <>
           <Link
             className="text-link"
-            to={`${tabbed ? `/requirements?run=${encodeURIComponent(decision.run_id)}&tab=risks` : ''}#risk-${decision.risk_id ?? ''}`}
+            to={`${tabbed ? `/requirements?run=${encodeURIComponent(displayRunId ?? decision.run_id)}&tab=risks` : ''}#risk-${decision.risk_id ?? ''}`}
           >
             Риск A-07
           </Link>

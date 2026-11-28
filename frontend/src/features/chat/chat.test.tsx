@@ -1,3 +1,4 @@
+import { fixtureId } from '@/shared/api/test-network-fixtures';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -9,16 +10,24 @@ import { Chat } from './chat';
 import { sessionStore } from '../../shared/ui/session-storage';
 
 const empty: Snapshot = {
-  chat: { id: 'a', task_id: 'task', title: 'Чат', created_at: '2026-11-26T00:00:00Z' },
+  chat: {
+    id: fixtureId('a'),
+    task_id: fixtureId('task'),
+    title: 'Чат',
+    created_at: '2026-11-26T00:00:00Z',
+  },
   messages: [],
   runs: [],
 };
 let snapshot = empty;
 function acceptQuestion() {
   const run = {
-    id: 'run',
-    chat_id: 'a',
-    assistant_message_id: 'answer',
+    config_digest: 'test-config',
+    created_at: '2026-01-01T00:00:00Z',
+
+    id: fixtureId('run'),
+    chat_id: fixtureId('a'),
+    assistant_message_id: fixtureId('answer'),
     status: 'completed' as const,
     sequence: 2,
     content: 'Сохранённый ответ',
@@ -29,9 +38,15 @@ function acceptQuestion() {
   snapshot = {
     ...empty,
     messages: [
-      { id: 'question', role: 'user', content: 'Вопрос', position: 1, incomplete: false },
       {
-        id: 'answer',
+        id: fixtureId('question'),
+        role: 'user',
+        content: 'Вопрос',
+        position: 1,
+        incomplete: false,
+      },
+      {
+        id: fixtureId('answer'),
         role: 'assistant',
         content: 'Сохранённый ответ',
         position: 2,
@@ -44,7 +59,7 @@ function acceptQuestion() {
 }
 
 const server = setupServer(
-  http.get('/api/chats/a', () => HttpResponse.json(snapshot)),
+  http.get(`/api/chats/${fixtureId('a')}`, () => HttpResponse.json(snapshot)),
   http.get('/api/chats/:id/discussion', () => HttpResponse.json(null)),
 );
 beforeAll(() => server.listen({ onUnhandledFrame: 'error' }));
@@ -61,8 +76,10 @@ it('keeps the conversation and composer visible after a background history error
   await screen.findByText('Сохранённый ответ');
   const input = screen.getByRole('textbox', { name: 'Сообщение' });
   await userEvent.type(input, 'Черновик');
-  server.use(http.get('/api/chats/a', () => new HttpResponse(null, { status: 503 })));
-  await client.invalidateQueries({ queryKey: [...scopeKey, 'chat', 'a'] });
+  server.use(
+    http.get(`/api/chats/${fixtureId('a')}`, () => new HttpResponse(null, { status: 503 })),
+  );
+  await client.invalidateQueries({ queryKey: [...scopeKey, 'chat', fixtureId('a')] });
   expect(await screen.findByRole('alert')).toHaveTextContent('Не удалось обновить историю');
   expect(screen.getByText('Сохранённый ответ')).toBeVisible();
   expect(input).toHaveValue('Черновик');
@@ -74,7 +91,9 @@ it.each(['getItem', 'setItem', 'removeItem'] as const)(
     vi.spyOn(Storage.prototype, method).mockImplementation(() => {
       throw new Error('Storage denied');
     });
-    server.use(http.post('/api/chats/a/runs', () => HttpResponse.json(acceptQuestion())));
+    server.use(
+      http.post(`/api/chats/${fixtureId('a')}/runs`, () => HttpResponse.json(acceptQuestion())),
+    );
     const view = show();
     const input = await screen.findByRole('textbox', { name: 'Сообщение' });
     await userEvent.type(input, 'Вопрос');
@@ -94,7 +113,7 @@ function show() {
   });
   const view = render(
     <QueryClientProvider client={client}>
-      <Chat chatId="a" />
+      <Chat chatId={fixtureId('a')} />
     </QueryClientProvider>,
   );
   return { client, ...view };
@@ -117,12 +136,12 @@ it('preserves unsent input when server history is refreshed', async () => {
   const { client } = show();
   const input = await screen.findByRole('textbox', { name: 'Сообщение' });
   await userEvent.type(input, 'Несохранённый вопрос');
-  await client.invalidateQueries({ queryKey: [...scopeKey, 'chat', 'a'] });
+  await client.invalidateQueries({ queryKey: [...scopeKey, 'chat', fixtureId('a')] });
   expect(input).toHaveValue('Несохранённый вопрос');
 });
 
 it('restores the draft when a chat is reopened', async () => {
-  sessionStorage.setItem('draft:a', 'Сохранённый черновик');
+  sessionStorage.setItem(`draft:${fixtureId('a')}`, 'Сохранённый черновик');
   show();
   expect(await screen.findByRole('textbox', { name: 'Сообщение' })).toHaveValue(
     'Сохранённый черновик',
@@ -133,14 +152,14 @@ it.each(['unchanged', 'before retry', 'during retry'])(
   'retries the same command and preserves a draft edited %s',
   async (edit) => {
     const saved = { command_id: crypto.randomUUID(), content: 'Вопрос' };
-    sessionStorage.setItem('pending:a', JSON.stringify(saved));
+    sessionStorage.setItem(`pending:${fixtureId('a')}`, JSON.stringify(saved));
     const commands: unknown[] = [];
     let confirm = () => {};
     const confirmation = new Promise<void>((resolve) => {
       confirm = resolve;
     });
     server.use(
-      http.post('/api/chats/a/runs', async ({ request }) => {
+      http.post(`/api/chats/${fixtureId('a')}/runs`, async ({ request }) => {
         const command: unknown = await request.json();
         commands.push(command);
         if (commands.length === 1) return HttpResponse.error();
@@ -171,7 +190,7 @@ it.each(['unchanged', 'before retry', 'during retry'])(
     expect(commands[0]).toEqual(commands[1]);
     const expectedDraft = edit === 'unchanged' ? '' : 'Новый вопрос';
     await waitFor(() => expect(input).toHaveValue(expectedDraft));
-    expect(sessionStorage.getItem('draft:a') ?? '').toBe(expectedDraft);
+    expect(sessionStorage.getItem(`draft:${fixtureId('a')}`) ?? '').toBe(expectedDraft);
     expect(screen.getAllByText('Вопрос', { exact: true })).toHaveLength(1);
   },
 );
@@ -179,9 +198,12 @@ it.each(['unchanged', 'before retry', 'during retry'])(
 it('keeps cancellation attached to its answer after a later completed run', async () => {
   const runs: Snapshot['runs'] = [
     {
-      id: 'cancelled',
-      chat_id: 'a',
-      assistant_message_id: 'partial',
+      config_digest: 'test-config',
+      created_at: '2026-01-01T00:00:00Z',
+
+      id: fixtureId('cancelled'),
+      chat_id: fixtureId('a'),
+      assistant_message_id: fixtureId('partial'),
       status: 'cancelled',
       sequence: 3,
       content: 'Неполный список рисков',
@@ -190,9 +212,12 @@ it('keeps cancellation attached to its answer after a later completed run', asyn
       model: 'fake-chat',
     },
     {
-      id: 'completed',
-      chat_id: 'a',
-      assistant_message_id: 'complete',
+      config_digest: 'test-config',
+      created_at: '2026-01-01T00:00:00Z',
+
+      id: fixtureId('completed'),
+      chat_id: fixtureId('a'),
+      assistant_message_id: fixtureId('complete'),
       status: 'completed',
       sequence: 8,
       content: 'Полный ответ',
@@ -230,7 +255,7 @@ it.each(['Я', '😀'])('accepts exactly 16000 Unicode characters (%s)', async (
 it('keeps oversized input and explains the limit before sending', async () => {
   let requests = 0;
   server.use(
-    http.post('/api/chats/a/runs', () => {
+    http.post(`/api/chats/${fixtureId('a')}/runs`, () => {
       requests++;
       return HttpResponse.json({}, { status: 422 });
     }),
@@ -243,13 +268,13 @@ it('keeps oversized input and explains the limit before sending', async () => {
   expect(screen.getByRole('button', { name: 'Отправить сообщение' })).toBeDisabled();
   expect(screen.getByRole('alert')).toHaveTextContent('16 000');
   expect(input).toHaveValue(text);
-  expect(sessionStorage.getItem('draft:a')).toBe(text);
+  expect(sessionStorage.getItem(`draft:${fixtureId('a')}`)).toBe(text);
   expect(requests).toBe(0);
 });
 
 it('explains server validation without losing the question', async () => {
   server.use(
-    http.post('/api/chats/a/runs', () =>
+    http.post(`/api/chats/${fixtureId('a')}/runs`, () =>
       HttpResponse.json(
         {
           detail: [
@@ -266,7 +291,7 @@ it('explains server validation without losing the question', async () => {
   await userEvent.click(screen.getByRole('button', { name: 'Отправить сообщение' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('16 000');
   expect(input).toHaveValue('Сохранить мой вопрос');
-  expect(sessionStorage.getItem('draft:a')).toBe('Сохранить мой вопрос');
+  expect(sessionStorage.getItem(`draft:${fixtureId('a')}`)).toBe('Сохранить мой вопрос');
 });
 
 it.each(['unchanged', 'edited'])(
@@ -278,7 +303,7 @@ it.each(['unchanged', 'edited'])(
       confirm = resolve;
     });
     server.use(
-      http.post('/api/chats/a/runs', async () => {
+      http.post(`/api/chats/${fixtureId('a')}/runs`, async () => {
         if (++count === 1) return HttpResponse.error();
         await confirmation;
         return HttpResponse.json(acceptQuestion());
@@ -297,7 +322,7 @@ it.each(['unchanged', 'edited'])(
     await waitFor(() => expect(count).toBe(2));
     view.unmount();
     confirm();
-    await waitFor(() => expect(sessionStorage.getItem('pending:a')).toBeNull());
+    await waitFor(() => expect(sessionStorage.getItem(`pending:${fixtureId('a')}`)).toBeNull());
     show();
     expect(await screen.findByRole('textbox', { name: 'Сообщение' })).toHaveValue(
       edit === 'edited' ? 'Новый черновик' : '',

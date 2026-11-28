@@ -1,3 +1,4 @@
+import { fixtureId, fixtureHash } from '@/shared/api/test-network-fixtures';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
@@ -7,7 +8,7 @@ import { afterAll, afterEach, beforeAll, expect, it } from 'vitest';
 import { DiscussionHeader } from './discussion-header';
 
 const requirement = {
-  id: 'r1',
+  id: fixtureId('r1'),
   category: 'functional',
   original_text: 'Правило отчёта',
   normalized_text: 'Выбранное требование',
@@ -15,7 +16,13 @@ const requirement = {
   status: 'needs_review',
 };
 const question = {
-  id: 'q1',
+  source_fingerprints: {},
+  requirement_fingerprints: {},
+  requirement_basis_fingerprints: {},
+  previous_sources: [],
+  mandatory_conflict: null,
+
+  id: fixtureId('q1'),
   gap_key: 'retention',
   revision: 1,
   text: 'Выбранный вопрос',
@@ -23,13 +30,17 @@ const question = {
   dependent_decision: 'Хранилище',
   blocking: true,
   status: 'open',
-  requirement_ids: ['r1'],
+  requirement_ids: [fixtureId('r1')],
   sources: [],
   previous_basis: null,
 };
 const scoped = {
-  run_id: 'run',
-  history_id: 'history',
+  ...{ conflict_assessments: [] },
+  metadata: null,
+  resume_version: 0,
+
+  run_id: fixtureId('run'),
+  history_id: fixtureId('history'),
   initialized: true,
   cycle: 0,
   resume_pending: false,
@@ -40,37 +51,45 @@ const scoped = {
   completed_cycles: [],
 };
 const binding = {
-  chat_id: 'chat',
+  chat_id: fixtureId('chat'),
   kind: 'source',
   title: 'Полное название предмета обсуждения',
-  analysis_id: 'run',
+  analysis_id: fixtureId('run'),
   requirement_id: null,
-  version_id: 'v1',
-  fragment_id: 'fragment',
-  version_ids: ['v1'],
-  history_id: 'history',
-  backlink: '/documents?version=v1&fragment=fragment&run=run',
+  version_id: fixtureId('v1'),
+  fragment_id: fixtureId('fragment'),
+  version_ids: [fixtureId('v1')],
+  history_id: fixtureId('history'),
+  backlink: `/documents?version=${fixtureId('v1')}&fragment=${fixtureId('fragment')}&run=${fixtureId('run')}`,
 };
 let fullAnalysisReads = 0;
 const server = setupServer(
-  http.get('/api/chats/chat/discussion', () => HttpResponse.json(binding)),
-  http.get('/api/chats/chat/discussion/clarifications', () => HttpResponse.json(scoped)),
-  http.get('/api/extractions/run/clarifications', () => {
+  http.get(`/api/chats/${fixtureId('chat')}/discussion`, () => HttpResponse.json(binding)),
+  http.get(`/api/chats/${fixtureId('chat')}/discussion/clarifications`, () =>
+    HttpResponse.json(scoped),
+  ),
+  http.get(`/api/extractions/${fixtureId('run')}/clarifications`, () => {
     fullAnalysisReads++;
     return HttpResponse.json({
       ...scoped,
       requirements: [
         requirement,
-        { ...requirement, id: 'r2', normalized_text: 'Постороннее требование' },
+        { ...requirement, id: fixtureId('r2'), normalized_text: 'Постороннее требование' },
       ],
       questions: [
         question,
-        { ...question, id: 'q2', text: 'Посторонний вопрос', requirement_ids: ['r2'] },
+        {
+          ...question,
+          id: fixtureId('q2'),
+          text: 'Посторонний вопрос',
+          requirement_ids: [fixtureId('r2')],
+        },
       ],
       risks: [
         {
-          id: 'risk2',
-          decision_id: 'd2',
+          resolution_reason: null,
+          id: fixtureId('risk2'),
+          decision_id: fixtureId('d2'),
           consequences: 'Посторонний риск',
           mitigation: 'Мера',
           status: 'open',
@@ -78,17 +97,17 @@ const server = setupServer(
       ],
     });
   }),
-  http.get('/api/document-versions/v1/parsed', () =>
+  http.get(`/api/document-versions/${fixtureId('v1')}/parsed`, () =>
     HttpResponse.json({
-      file_id: 'f1',
-      version_id: 'v1',
-      sha256: 'abc',
+      file_id: fixtureId('f1'),
+      version_id: fixtureId('v1'),
+      sha256: fixtureHash('abc'),
       parser_version: 'text-v1',
       text: 'Источник',
       warnings: [],
       fragments: [
         {
-          fragment_id: 'fragment',
+          fragment_id: fixtureId('fragment'),
           text: 'Точный исходный текст',
           locator: { kind: 'lines', start: 1, end: 1, section: '' },
         },
@@ -109,7 +128,7 @@ function show() {
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
       <MemoryRouter>
-        <DiscussionHeader chatId="chat" />
+        <DiscussionHeader chatId={fixtureId('chat')} />
       </MemoryRouter>
     </QueryClientProvider>,
   );
@@ -126,10 +145,10 @@ it('renders the server-selected source scope without fetching unrelated analysis
 
 it('renders a scoped legacy requirement without fetching a whole extraction fallback', async () => {
   server.use(
-    http.get('/api/chats/chat/discussion', () =>
-      HttpResponse.json({ ...binding, kind: 'requirement', requirement_id: 'r1' }),
+    http.get(`/api/chats/${fixtureId('chat')}/discussion`, () =>
+      HttpResponse.json({ ...binding, kind: 'requirement', requirement_id: fixtureId('r1') }),
     ),
-    http.get('/api/chats/chat/discussion/clarifications', () =>
+    http.get(`/api/chats/${fixtureId('chat')}/discussion/clarifications`, () =>
       HttpResponse.json({ ...scoped, initialized: false, questions: [] }),
     ),
   );
@@ -142,5 +161,5 @@ it('shows technical identifiers only inside a disclosure', async () => {
   show();
   await screen.findByText('Точный исходный текст');
   const panel = screen.getByRole('complementary', { name: 'Предмет и источники обсуждения' });
-  expect(within(panel).getByText(/SHA-256: abc/)).not.toBeVisible();
+  expect(within(panel).getByText(new RegExp(`SHA-256: ${fixtureHash('abc')}`))).not.toBeVisible();
 });

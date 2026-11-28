@@ -257,7 +257,7 @@ class SqlAlchemyDocumentStore:
             ParsedDocumentRow(
                 version_id=parsed.document.version_id,
                 parser_version=parsed.document.parser_version,
-                body=PARSED_DOCUMENT.dump_json(parsed.document).decode(),
+                body=PARSED_DOCUMENT.dump_json(parsed.document, exclude={"structure"}).decode(),
                 digest=parsed.digest,
             )
         )

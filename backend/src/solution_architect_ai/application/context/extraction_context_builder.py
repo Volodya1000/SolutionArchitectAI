@@ -26,7 +26,11 @@ from solution_architect_ai.application.prompts.structured_prompt import (
     token_messages,
 )
 from solution_architect_ai.application.protocols.chat_protocols import TokenCounter
-from solution_architect_ai.application.validation.markdown_structure import structural_fragment_ids
+from solution_architect_ai.application.validation.markdown_structure import (
+    separator_fragment_ids,
+    structural_fragment_ids,
+    table_header,
+)
 from solution_architect_ai.domain.documents import DocumentFragment, ParsedDocument
 from solution_architect_ai.domain.messages import MessageRole
 from solution_architect_ai.domain.requirements import CoverageWarning
@@ -54,9 +58,14 @@ class ExtractionContextBuilder:
             scope,
             [
                 PromptFragment(
-                    str(item.fragment_id), item.text, item.locator.section, item.locator.path
+                    f"f{index}",
+                    item.text,
+                    " | ".join(
+                        value for value in (item.locator.section, item.table_header) if value
+                    ),
+                    item.locator.path,
                 )
-                for item in fragments
+                for index, item in enumerate(fragments)
             ],
         )
         return (
@@ -143,6 +152,7 @@ class ExtractionContextBuilder:
             fragment.text[offset : offset + length],
             fragment.offset + offset,
             fragment.total_length,
+            fragment.table_header,
         )
 
     def build(self, documents: tuple[ParsedDocument, ...], scope: str) -> ContextPack:
@@ -167,7 +177,7 @@ class ExtractionContextBuilder:
         return ContextPack(
             identity,
             parts,
-            len({piece.fragment_id for piece in pieces}),
+            sum(len(document.fragments) for document in documents),
             warnings,
         )
 
@@ -176,7 +186,10 @@ class ExtractionContextBuilder:
         document: ParsedDocument
         fragment: DocumentFragment
         for document in documents:
+            separator_ids: frozenset[str] = separator_fragment_ids(document)
             for fragment in document.fragments:
+                if str(fragment.fragment_id) in separator_ids:
+                    continue
                 source: ContextFragment = ContextFragment(
                     document.file_id,
                     document.version_id,
@@ -186,6 +199,7 @@ class ExtractionContextBuilder:
                     fragment.text,
                     0,
                     len(fragment.text),
+                    table_header(document, fragment),
                 )
                 pieces.extend(
                     [source] if self.fits((source,), scope) else self.split(source, scope)

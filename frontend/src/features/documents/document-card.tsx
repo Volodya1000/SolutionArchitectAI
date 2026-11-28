@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import { useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { scopeKey } from '../../shared/api/client';
 import { documentVersions, type Document, type DocumentVersion } from '../../shared/api/documents';
 import { Button } from '../../shared/ui/button';
@@ -101,6 +101,10 @@ function VersionRow({
   toggle: (id: string) => void;
 }) {
   const id = version.version_id;
+  const [search] = useSearchParams();
+  const destination = new URLSearchParams(search);
+  destination.set('version', id);
+  destination.delete('fragment');
   return (
     <tr>
       <td>
@@ -112,7 +116,7 @@ function VersionRow({
         />
       </td>
       <td>
-        <Link className="text-link" to={`/documents?version=${encodeURIComponent(id)}`}>
+        <Link className="text-link" to={`/documents?${destination.toString()}`}>
           {version.original_name} · {id.slice(0, 8)}
         </Link>
       </td>

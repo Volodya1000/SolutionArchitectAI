@@ -6,13 +6,18 @@ import {
   type Requirement,
 } from '../../shared/api/extractions';
 import { RequirementTable } from './requirement-table';
+import type { Decision, Question } from '../../shared/api/clarifications';
 
 export function ExtractionResult({
   candidates,
   runId,
+  questions = [],
+  decisions = [],
 }: {
   candidates: Requirement[];
   runId: string;
+  questions?: Question[];
+  decisions?: Decision[];
 }) {
   const [category, setCategory] = useState<Category | 'all'>('all');
   const requirements = candidates.filter(
@@ -41,7 +46,12 @@ export function ExtractionResult({
         </label>
         <span className="notice">Кандидатов: {requirements.length}</span>
       </div>
-      <RequirementTable requirements={requirements} runId={runId} />
+      <RequirementTable
+        requirements={requirements}
+        runId={runId}
+        questions={questions}
+        decisions={decisions}
+      />
     </>
   );
 }

@@ -1,10 +1,13 @@
 import json
+import warnings
 from dataclasses import replace
 from time import monotonic
-from typing import ClassVar
+from typing import ClassVar, Literal, Protocol, cast
 
 import httpx
 import pytest
+from langchain_core.language_models import LanguageModelInput
+from langchain_core.runnables import Runnable
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, ConfigDict
 
@@ -20,6 +23,18 @@ from solution_architect_ai.application.models.structured_models import (
     StructuredMode,
     StructuredRequest,
     StructuredResponse,
+)
+from solution_architect_ai.application.prompts.clarification_prompt import (
+    SYSTEM_PROMPT as CLARIFICATION_INSTRUCTIONS,
+)
+from solution_architect_ai.application.prompts.clarification_review_prompt import (
+    SOURCE_REVIEW_PROMPT,
+)
+from solution_architect_ai.application.prompts.conflict_assessment_prompt import (
+    CONFLICT_ASSESSMENT_PROMPT,
+)
+from solution_architect_ai.application.prompts.extraction_prompt import (
+    SYSTEM_PROMPT as EXTRACTION_INSTRUCTIONS,
 )
 from solution_architect_ai.application.prompts.structured_prompt import (
     CORRECTION_PROMPT,
@@ -118,10 +133,23 @@ async def test_explicit_modes_use_schema_or_json_text_and_never_tools(mode: Stru
 
 @pytest.mark.anyio
 @pytest.mark.parametrize("mode", list(StructuredMode))
+@pytest.mark.parametrize(
+    "instructions",
+    [
+        EXTRACTION_INSTRUCTIONS,
+        CLARIFICATION_INSTRUCTIONS,
+        SOURCE_REVIEW_PROMPT,
+        CONFLICT_ASSESSMENT_PROMPT,
+    ],
+)
+@pytest.mark.parametrize(
+    "source", ["Система должна сохранять журнал аудита.", "The system shall persist the audit log."]
+)
 async def test_cyrillic_source_guidance_reaches_actual_adapter_messages(
     mode: StructuredMode,
+    instructions: str,
+    source: str,
 ) -> None:
-    source: str = "Система должна сохранять журнал аудита."
     received: list[dict[str, object]] = []
 
     def respond(incoming: httpx.Request) -> httpx.Response:
@@ -130,7 +158,7 @@ async def test_cyrillic_source_guidance_reaches_actual_adapter_messages(
 
     current: StructuredRequest = StructuredRequest(
         (
-            StructuredMessage(MessageRole.SYSTEM, "Extract facts."),
+            StructuredMessage(MessageRole.SYSTEM, instructions),
             StructuredMessage(
                 MessageRole.USER,
                 json.dumps({"fragments": [{"fragment_id": "f1", "text": source}]}),
@@ -154,13 +182,26 @@ async def test_cyrillic_source_guidance_reaches_actual_adapter_messages(
 
     transmitted: object = received[0]["messages"]
     assert isinstance(transmitted, list)
-    guidance: object = transmitted[-1]
+    guidance: object = next(
+        item
+        for item in transmitted
+        if isinstance(item, dict)
+        and item.get("role") == "system"
+        and "source language" in str(item.get("content"))
+    )
     assert isinstance(guidance, dict)
     assert guidance["role"] == "system"
-    assert "normalized_text" in str(guidance["content"])
-    assert "evidence.quote" in str(guidance["content"])
+    assert "source language" in str(guidance["content"])
     assert source not in str(guidance["content"])
-    source_message: object = transmitted[-2]
+    assert not any("\u0400" <= character <= "\u04ff" for character in str(guidance["content"]))
+    assert all(
+        not any("\u0400" <= character <= "\u04ff" for character in str(item.get("content")))
+        for item in transmitted
+        if isinstance(item, dict) and item.get("role") == "system"
+    )
+    source_message: object = next(
+        item for item in transmitted if isinstance(item, dict) and item.get("role") == "user"
+    )
     assert isinstance(source_message, dict)
     assert source_message["role"] == "user"
     assert source_message["content"] == current.messages[-1].content
@@ -255,6 +296,76 @@ async def test_langchain_fallback_to_tools_is_rejected_before_network() -> None:
             )
     assert error.value.reason == StructuredErrorCode.UNSUPPORTED
     assert not requests
+
+
+class StructuredModelFactory(Protocol):
+    def __call__(
+        self,
+        model: ChatOpenAI,
+        schema: dict[str, object],
+        *,
+        method: Literal["json_schema"],
+        include_raw: bool,
+        strict: bool,
+        max_completion_tokens: int,
+    ) -> Runnable[LanguageModelInput, object]: ...
+
+
+@pytest.mark.anyio
+async def test_unrelated_native_warning_does_not_reject_a_supported_request(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original: StructuredModelFactory = cast(
+        StructuredModelFactory, ChatOpenAI.with_structured_output
+    )
+
+    def with_warning(
+        model: ChatOpenAI,
+        schema: dict[str, object],
+        *,
+        method: str,
+        include_raw: bool,
+        strict: bool,
+        max_completion_tokens: int,
+    ) -> Runnable[LanguageModelInput, object]:
+        assert method == "json_schema"
+        warnings.warn("Unrelated library deprecation", DeprecationWarning, stacklevel=2)
+        return original(
+            model,
+            schema,
+            method="json_schema",
+            include_raw=include_raw,
+            strict=strict,
+            max_completion_tokens=max_completion_tokens,
+        )
+
+    monkeypatch.setattr(ChatOpenAI, "with_structured_output", with_warning)
+    received: list[dict[str, object]] = []
+
+    def respond(incoming: httpx.Request) -> httpx.Response:
+        received.append(json.loads(incoming.content))
+        return httpx.Response(200, json=completion('{"count":2}'))
+
+    client: httpx.AsyncClient
+    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+        model: ChatOpenAI = ChatOpenAI(
+            model="test",
+            api_key="local-test",
+            base_url="http://local.test/v1",
+            http_async_client=client,
+            max_retries=0,
+            streaming=False,
+            http_socket_options=(),
+        )
+        with pytest.warns(DeprecationWarning, match="Unrelated library deprecation"):
+            assert (
+                await validated(
+                    LangChainStructuredModel(model), request(StructuredMode.NATIVE_JSON_SCHEMA)
+                )
+            ).count == 2
+    assert len(received) == 1
+    assert "json_schema" in str(received[0]["response_format"])
+    assert "tools" not in received[0]
 
 
 @pytest.mark.anyio
@@ -401,10 +512,13 @@ async def test_corrective_http_requests_never_exceed_the_context_budget() -> Non
         return httpx.Response(200, json=completion("not JSON"))
 
     initial: StructuredRequest = request(StructuredMode.JSON_TEXT)
-    counter: ContentLengthCounter = ContentLengthCounter()
-    allowed: int = counter.count(
-        token_messages(render_messages(initial, Answer, reserve_corrections=1))
+    feedback: str = CORRECTION_PROMPT + " Validation diagnostic: $: invalid JSON (JSONDecodeError)"
+    corrected: StructuredRequest = replace(
+        initial,
+        messages=(*initial.messages, StructuredMessage(MessageRole.USER, feedback)),
     )
+    counter: ContentLengthCounter = ContentLengthCounter()
+    allowed: int = counter.count(token_messages(render_messages(corrected, Answer)))
     initial = replace(
         initial, profile=ModelProfile("test", StructuredMode.JSON_TEXT, allowed + 512 + 13, 512, 13)
     )
@@ -430,10 +544,7 @@ async def test_corrective_http_requests_never_exceed_the_context_budget() -> Non
             await generator.generate(initial, Answer, execution)
     assert error.value.reason == StructuredErrorCode.CONTEXT_TOO_LARGE
     assert len(received) == execution.requests == 2
-    corrected: StructuredRequest = replace(
-        initial,
-        messages=(*initial.messages, StructuredMessage(MessageRole.USER, CORRECTION_PROMPT)),
-    )
+    corrected = replace(initial, messages=corrected.messages)
     assert received[1]["messages"] == [
         {"role": message.role.value, "content": message.content}
         for message in render_messages(corrected, Answer)

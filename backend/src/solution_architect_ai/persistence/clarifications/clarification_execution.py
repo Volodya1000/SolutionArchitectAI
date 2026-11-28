@@ -4,6 +4,9 @@ from uuid import UUID
 from pydantic import TypeAdapter
 from sqlalchemy import select, update
 
+from solution_architect_ai.application.context.mandatory_conflict_questions import (
+    uncovered_conflicts,
+)
 from solution_architect_ai.application.errors.clarification_errors import ClarificationConflict
 from solution_architect_ai.application.errors.extraction_errors import StoredExtractionCorrupt
 from solution_architect_ai.application.models.clarification_models import (
@@ -77,7 +80,9 @@ class ClarificationExecution:
         )
         if snapshot.status in {RunStatus.CANCELLED, RunStatus.CANCELLING, RunStatus.FAILED}:
             return
-        if any(question.blocks_completion for question in view.questions):
+        if any(question.blocks_completion for question in view.questions) or uncovered_conflicts(
+            view.conflict_assessments, view.questions
+        ):
             raise ClarificationConflict("blocking_questions_open")
         if (
             view.metadata is not None
@@ -101,10 +106,25 @@ class ClarificationExecution:
             )
             state.completed_json = TypeAdapter(list[CompletedCycle]).dump_json(cycles).decode()
         snapshot.status, snapshot.elapsed_seconds = RunStatus.COMPLETED, active_elapsed(state)
+        snapshot.error_code = None
         extraction.status, extraction.snapshot_json = (
             snapshot.status.value,
             snapshot.model_dump_json(),
         )
+
+    async def fail_continuation(self, run_id: UUID, expected_version: int, code: str) -> None:
+        state: ClarificationRunRow = await self.clarification_queries.run(run_id, lock=True)
+        extraction: ExtractionRow = await self.clarification_queries.extraction(run_id)
+        if extraction.status != RunStatus.COMPLETED or state.resume_version != expected_version:
+            return
+        snapshot: ExtractionView = read_stored_json(
+            ExtractionView,
+            extraction.snapshot_json,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+        )
+        snapshot.error_code = code
+        extraction.snapshot_json = snapshot.model_dump_json()
+        state.resume_pending = False
 
     async def recover_waiting(self) -> None:
         await self.clarification_queries.session.execute(

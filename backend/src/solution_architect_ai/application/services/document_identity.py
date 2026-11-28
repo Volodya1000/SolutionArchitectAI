@@ -12,7 +12,8 @@ PARSED_DOCUMENT: Final[TypeAdapter[ParsedDocument]] = TypeAdapter(ParsedDocument
 
 
 def parse_digest(document: ParsedDocument) -> str:
-    return sha256(PARSED_DOCUMENT.dump_json(document)).hexdigest()
+    # Derived syntax metadata must not change historical saved-parse hashes.
+    return sha256(PARSED_DOCUMENT.dump_json(document, exclude={"structure"})).hexdigest()
 
 
 def upload_digest(command: UploadDocument, staged_file: StagedFile) -> str:

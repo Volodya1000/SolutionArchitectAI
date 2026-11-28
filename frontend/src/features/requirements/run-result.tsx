@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useSearchParams } from 'react-router';
+import { useLocation, useSearchParams } from 'react-router';
 import { questionBlocksCompletion, type ClarificationView } from '../../shared/api/clarifications';
 import { type Extraction, type Requirement } from '../../shared/api/extractions';
 import { useClarifications } from '../../shared/api/use-clarifications';
@@ -10,7 +10,7 @@ import { ExtractionResult } from './extraction-result';
 import { ResultTabs, type ResultTab } from './result-tabs';
 
 export function RunResult({ run }: { run: Extraction }) {
-  const query = useClarifications(run.id);
+  const query = useClarifications(run.id, true, run.status);
   const [search, setSearch] = useSearchParams();
   const openOnly = search.get('questions') === 'blocking';
   const tab = selectedTab(search.get('tab'));
@@ -26,10 +26,17 @@ export function RunResult({ run }: { run: Extraction }) {
     void setSearch(parameters);
   }
   const firstBlocker = blockers[0]?.id;
+  const location = useLocation();
   useEffect(() => {
+    const target = location.hash ? document.getElementById(location.hash.slice(1)) : null;
+    if (target) {
+      target.scrollIntoView?.({ block: 'center' });
+      target.focus();
+      return;
+    }
     if (tab === 'clarifications' && openOnly && firstBlocker)
       document.getElementById(`question-${firstBlocker}`)?.focus();
-  }, [tab, openOnly, firstBlocker]);
+  }, [tab, openOnly, firstBlocker, location.hash, view]);
   return (
     <div className="run-result">
       <WaitingNotice
@@ -119,7 +126,15 @@ function ResultPanel({
   openOnly: boolean;
   showAll: () => void;
 }) {
-  if (tab === 'requirements') return <ExtractionResult runId={run.id} candidates={requirements} />;
+  if (tab === 'requirements')
+    return (
+      <ExtractionResult
+        runId={run.id}
+        candidates={requirements}
+        questions={query.data?.questions ?? []}
+        decisions={query.data?.decisions ?? []}
+      />
+    );
   if (query.isPending) return <p role="status">Загружаем уточнения…</p>;
   if (!query.data) return null;
   if (tab === 'risks') return <ClarificationRisks view={query.data} tabbed />;

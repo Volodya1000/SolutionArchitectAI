@@ -13,9 +13,8 @@ from solution_architect_ai.application.models.clarification_context_models impor
     ClarificationContext,
 )
 from solution_architect_ai.application.models.clarification_models import ClarificationQuestion
-from solution_architect_ai.application.models.extraction_models import RequirementView, SourceRef
+from solution_architect_ai.application.models.extraction_models import SourceRef
 from solution_architect_ai.application.validation.clarification_validation import resolve_evidence
-from solution_architect_ai.domain.requirements import RequirementCategory
 
 
 def canonical_gap_key(
@@ -46,14 +45,6 @@ def build_question(
         UUID(context.requirement_aliases.get(identifier, identifier))
         for identifier in candidate.requirement_ids
     ]
-    requirements: list[RequirementView] = [
-        requirement for requirement in context.requirements if requirement.id in identifiers
-    ]
-    conflict: str = "\n".join(
-        requirement.normalized_text
-        for requirement in requirements
-        if requirement.category == RequirementCategory.CONTRADICTION
-    )
     question: ClarificationQuestion = ClarificationQuestion(
         id=previous.id if previous else uuid4(),
         gap_key=key,
@@ -62,7 +53,6 @@ def build_question(
         dependent_decision=candidate.dependent_decision,
         blocking=candidate.blocking,
         requirement_ids=identifiers,
-        mandatory_conflict=conflict or None,
         sources=sources,
         source_fingerprints={
             source.fragment_id: matcher.source_fingerprints[source.fragment_id]
@@ -88,6 +78,19 @@ def build_question(
     )
     if previous is None:
         return question
+    if (
+        previous.mandatory_conflict is not None
+        and previous.sources
+        and {
+            (source.file_id, source.version_id, source.sha256, source.fragment_id)
+            for source in previous.sources
+        }
+        <= {
+            (source.file_id, source.version_id, source.sha256, source.fragment_id)
+            for source in question.sources
+        }
+    ):
+        question.mandatory_conflict = previous.mandatory_conflict
     question.revision, question.status = previous.revision, previous.status
     if has_changed_clarification_basis(previous, question):
         question.previous_basis, question.status = previous.basis, "open"

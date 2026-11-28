@@ -1,4 +1,5 @@
 import json
+from functools import partial
 from typing import Final
 from uuid import uuid4
 
@@ -6,6 +7,11 @@ import pytest
 
 from solution_architect_ai.application.context.clarification_context_builder import (
     ClarificationContextBuilder,
+)
+from solution_architect_ai.application.errors.structured_errors import (
+    EvidenceValidationFailure,
+    StructuredErrorCode,
+    StructuredGenerationFailure,
 )
 from solution_architect_ai.application.models.clarification_agent_models import (
     ClarificationSet,
@@ -19,9 +25,16 @@ from solution_architect_ai.application.models.extraction_models import (
     RequirementView,
     SourceRef,
 )
-from solution_architect_ai.application.models.structured_models import ModelProfile, StructuredMode
+from solution_architect_ai.application.models.structured_models import (
+    ModelProfile,
+    StructuredMode,
+    StructuredResponse,
+)
 from solution_architect_ai.application.validation.clarification_validation import (
     validate_clarifications,
+)
+from solution_architect_ai.application.validation.structured_response_validator import (
+    validate_response,
 )
 from solution_architect_ai.domain.documents import ParsedDocument
 from solution_architect_ai.domain.requirements import EvidenceStatus, RequirementCategory
@@ -114,5 +127,15 @@ def test_relabeling_candidate_evidence_does_not_accept_false_source_quotes() -> 
         evidence=[Evidence(fragment_id="f0", quote=FALSE_QUOTE)],
     )
 
-    with pytest.raises(ValueError, match="Unverified clarification evidence"):
+    with pytest.raises(EvidenceValidationFailure) as evidence_error:
         validate_clarifications(ClarificationSet(questions=[candidate]), context)
+    assert evidence_error.value.field_path == "questions.0.evidence.0"
+    assert evidence_error.value.reason == "quote_not_in_context"
+    with pytest.raises(StructuredGenerationFailure) as response_error:
+        validate_response(
+            StructuredResponse(ClarificationSet(questions=[candidate]).model_dump_json(), "stop"),
+            ClarificationSet,
+            partial(validate_clarifications, context=context),
+        )
+    assert response_error.value.reason == StructuredErrorCode.EVIDENCE_INVALID
+    assert response_error.value.diagnostic == "questions.0.evidence.0: quote_not_in_context"

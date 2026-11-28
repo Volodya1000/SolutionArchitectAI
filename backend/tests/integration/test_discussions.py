@@ -414,6 +414,8 @@ async def test_worker_supplies_pinned_source_and_fails_visibly_if_it_disappears(
     assert tokens.count(llm.requests[0]) <= policy.input_budget
     assert "R03 Reports" in llm.requests[0][1].content
     assert "R04 Reports" in llm.requests[0][1].content
+    assert str(version.version_id) not in llm.requests[0][1].content
+    assert version.sha256 not in llm.requests[0][1].content
     assert "Explain R03 and R04" in llm.requests[0][-1].content
     async with stores.open() as store:
         completed: RunView = await store.queries.get_run(started.id)

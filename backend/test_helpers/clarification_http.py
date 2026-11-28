@@ -13,6 +13,7 @@ from backend.test_helpers.extraction_resources import ExtractionResources
 from backend.test_helpers.sql_store_setup import SqlStoreSetup, clarification_store_setup
 from solution_architect_ai.application.errors.chat_errors import ChatError
 from solution_architect_ai.application.errors.document_errors import DocumentFailure
+from solution_architect_ai.application.errors.extraction_errors import StoredExtractionCorrupt
 from solution_architect_ai.application.models.clarification_models import (
     ActorContext,
     AnswerClarification,
@@ -37,6 +38,7 @@ from solution_architect_ai.persistence.clarifications.clarification_store import
 )
 from solution_architect_ai.presentation.clarification_routes import router
 from solution_architect_ai.presentation.document_routes import document_error
+from solution_architect_ai.presentation.extraction_routes import extraction_error
 
 
 @dataclass(frozen=True)
@@ -88,6 +90,7 @@ def application(container: AsyncContainer) -> FastAPI:
     app.include_router(router)
     app.add_exception_handler(ChatError, chat_error)
     app.add_exception_handler(DocumentFailure, document_error)
+    app.add_exception_handler(StoredExtractionCorrupt, extraction_error)
     setup_dishka(container, app)
     return app
 

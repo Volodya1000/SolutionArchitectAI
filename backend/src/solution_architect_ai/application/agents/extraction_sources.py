@@ -10,8 +10,9 @@ from solution_architect_ai.domain.requirements import EvidenceStatus
 
 
 def verify_evidence(evidence: Evidence, part: ContextPart) -> SourceRef:
+    identifier: str = part.resolve_source_label(evidence.fragment_id)
     fragments: list[ContextFragment] = [
-        item for item in part.fragments if str(item.fragment_id) == evidence.fragment_id
+        item for item in part.fragments if str(item.fragment_id) == identifier
     ]
     if not fragments:
         return SourceRef(
@@ -32,7 +33,7 @@ def verify_evidence(evidence: Evidence, part: ContextPart) -> SourceRef:
         file_id=source.file_id,
         version_id=source.version_id,
         sha256=source.sha256,
-        fragment_id=evidence.fragment_id,
+        fragment_id=identifier,
         locator=LocatorView(
             kind=source.locator.kind.value,
             start=source.locator.start,

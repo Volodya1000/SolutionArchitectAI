@@ -1,45 +1,60 @@
-import re
-from typing import Final
-
-from solution_architect_ai.domain.documents import DocumentFragment, LocatorKind, ParsedDocument
-
-_ALIGNMENT_CELL: Final[re.Pattern[str]] = re.compile(r":?-{3,}:?")
-
-
-def table_cells(text: str) -> list[str]:
-    if "|" not in text or "\n" in text:
-        return []
-    return [cell.strip() for cell in re.split(r"(?<!\\)\|", text.strip().strip("|"))]
-
-
-def is_preceding_header(
-    header: DocumentFragment, delimiter: DocumentFragment, cell_count: int
-) -> bool:
-    return (
-        delimiter.locator.kind == header.locator.kind == LocatorKind.LINES
-        and header.locator.end + 1 == delimiter.locator.start
-        and len(table_cells(header.text)) == cell_count
-    )
-
-
-def table_alignment_cells(text: str) -> list[str]:
-    cells: list[str] = table_cells(text)
-    return cells if cells and all(_ALIGNMENT_CELL.fullmatch(cell) for cell in cells) else []
+from solution_architect_ai.domain.documents import (
+    DocumentFragment,
+    LocatorKind,
+    MarkdownTable,
+    ParsedDocument,
+)
 
 
 def structural_fragment_ids(document: ParsedDocument) -> frozenset[str]:
-    """Recognize table presentation from the complete source before windowing it."""
-    structural: set[str] = set()
-    index: int
-    fragment: DocumentFragment
-    for index, fragment in enumerate(document.fragments):
-        cells: list[str] = table_alignment_cells(fragment.text)
-        if not cells:
-            continue
-        structural.add(str(fragment.fragment_id))
-        if index == 0:
-            continue
-        previous: DocumentFragment = document.fragments[index - 1]
-        if is_preceding_header(previous, fragment, len(cells)):
-            structural.add(str(previous.fragment_id))
-    return frozenset(structural)
+    """Use parser-recognized syntax; literal TXT and fenced code have no tables."""
+    return frozenset(
+        str(fragment.fragment_id)
+        for fragment in document.fragments
+        if document.structure is not None
+        and fragment.locator.kind == LocatorKind.LINES
+        and any(
+            fragment.locator.start in (table.header_line, table.delimiter_line)
+            for table in document.structure.tables
+        )
+    )
+
+
+def separator_fragment_ids(document: ParsedDocument) -> frozenset[str]:
+    return frozenset(
+        str(fragment.fragment_id)
+        for fragment in document.fragments
+        if document.structure is not None
+        and fragment.locator.kind == LocatorKind.LINES
+        and any(
+            fragment.locator.start == table.delimiter_line for table in document.structure.tables
+        )
+    )
+
+
+def table_header(document: ParsedDocument, fragment: DocumentFragment) -> str:
+    if document.structure is None or fragment.locator.kind != LocatorKind.LINES:
+        return ""
+    table: MarkdownTable
+    for table in document.structure.tables:
+        if table.delimiter_line < fragment.locator.start <= table.end_line:
+            return table.header_text
+    return ""
+
+
+def table_header_fragments(
+    document: ParsedDocument,
+    fragment: DocumentFragment,
+) -> tuple[DocumentFragment, ...]:
+    if document.structure is None or fragment.locator.kind != LocatorKind.LINES:
+        return ()
+    header_lines: set[int] = {
+        table.header_line
+        for table in document.structure.tables
+        if table.delimiter_line < fragment.locator.start <= table.end_line
+    }
+    return tuple(
+        item
+        for item in document.fragments
+        if item.locator.kind == LocatorKind.LINES and item.locator.start in header_lines
+    )

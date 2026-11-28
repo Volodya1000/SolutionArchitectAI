@@ -6,6 +6,7 @@ import pytest
 from backend.test_helpers.clarification_graph import answer
 from backend.test_helpers.clarification_history import (
     answer_command,
+    establish_conflict,
     prepare_questions,
     seed_analysis,
 )
@@ -70,6 +71,7 @@ async def test_known_conflict_cannot_complete_with_legacy_nonblocking_flag(
     requirement: RequirementView = referenced_requirement(source, source.fragments[0])
     requirement.category = RequirementCategory.CONTRADICTION
     run_id: UUID = await seed_analysis(decision_stores, source, requirement)
+    await establish_conflict(decision_stores, run_id, requirement)
     await prepare_questions(decision_stores, run_id, source, requirement)
     store: SqlAlchemyClarificationStore
     async with decision_stores.open() as store:

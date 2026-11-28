@@ -1,14 +1,20 @@
 import json
+import re
 from collections.abc import Callable
 from typing import Never
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
+from pydantic_core import ErrorDetails
 
 from solution_architect_ai.application.errors.structured_errors import (
+    EvidenceValidationFailure,
     StructuredErrorCode,
     StructuredGenerationFailure,
 )
 from solution_architect_ai.application.models.structured_models import StructuredResponse
+from solution_architect_ai.application.validation.source_language import (
+    SourceLanguageValidationFailure,
+)
 
 
 def unique_object(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -39,9 +45,11 @@ def validate_response[T: BaseModel](
         raise StructuredGenerationFailure(StructuredErrorCode.EMPTY_RESPONSE)
     try:
         json.loads(response.text, object_pairs_hook=unique_object, parse_constant=reject_constant)
-    except (ValueError, RecursionError):
+    except (ValueError, RecursionError) as error:
         raise StructuredGenerationFailure(
-            StructuredErrorCode.JSON_INVALID, retryable=True
+            StructuredErrorCode.JSON_INVALID,
+            retryable=True,
+            diagnostic=f"$: invalid JSON ({type(error).__name__})",
         ) from None
     return validate_payload(response.text, schema, validator)
 
@@ -54,7 +62,39 @@ def validate_payload[T: BaseModel](
         if validator is not None:
             validator(value)
         return value
+    except ValidationError as error:
+        raise StructuredGenerationFailure(
+            StructuredErrorCode.SCHEMA_INVALID,
+            retryable=True,
+            diagnostic=schema_validation_diagnostic(error),
+        ) from None
+    except SourceLanguageValidationFailure as error:
+        raise StructuredGenerationFailure(
+            StructuredErrorCode.SCHEMA_INVALID,
+            retryable=True,
+            diagnostic=error.diagnostic,
+        ) from None
+    except EvidenceValidationFailure as error:
+        raise StructuredGenerationFailure(
+            StructuredErrorCode.EVIDENCE_INVALID,
+            retryable=True,
+            diagnostic=f"{error.field_path}: {error.reason}"[:200],
+        ) from None
     except ValueError:
         raise StructuredGenerationFailure(
-            StructuredErrorCode.SCHEMA_INVALID, retryable=True
+            StructuredErrorCode.SCHEMA_INVALID,
+            retryable=True,
+            diagnostic="$: application validation failed; preserve the source language",
         ) from None
+
+
+def schema_validation_diagnostic(error: ValidationError) -> str:
+    first: ErrorDetails = error.errors(include_input=False, include_url=False)[0]
+    cause: object = first.get("ctx", {}).get("error")
+    if isinstance(cause, SourceLanguageValidationFailure):
+        return cause.diagnostic
+    path: str = ".".join(
+        str(segment) if re.fullmatch(r"[A-Za-z_0-9]+", str(segment)) else "field"
+        for segment in first["loc"]
+    )[:100]
+    return f"{path or '$'}: {first['type']}"

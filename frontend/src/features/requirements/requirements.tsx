@@ -4,6 +4,7 @@ import { scopeKey } from '../../shared/api/client';
 import {
   extractionActive,
   readExtraction,
+  type Extraction,
   type ExtractionSummary,
 } from '../../shared/api/extractions';
 import { useExtractionHistory, useExtractionStatus } from '../../shared/api/use-extraction-history';
@@ -134,7 +135,11 @@ function RunPanel({ id, initial }: { id: string; initial: ExtractionSummary | un
           }}
         />
       )}
-      {run.data && <RunResult run={run.data} />}
+      {run.data && <RunResult run={withCurrentStatus(run.data, status.data)} />}
     </>
   );
+}
+
+function withCurrentStatus(run: Extraction, status: ExtractionSummary | undefined): Extraction {
+  return { ...run, status: status?.status ?? run.status };
 }

@@ -36,6 +36,7 @@ class ContextFragment:
     text: str
     offset: int
     total_length: int = 0
+    table_header: str = ""
 
 
 @dataclass(frozen=True)
@@ -45,6 +46,12 @@ class ContextPart:
     messages: tuple[StructuredMessage, ...]
     token_estimate: int
     structural_fragment_ids: frozenset[str] = field(default_factory=frozenset)
+
+    def resolve_source_label(self, identifier: str) -> str:
+        labels: dict[str, str] = {
+            f"f{index}": str(fragment.fragment_id) for index, fragment in enumerate(self.fragments)
+        }
+        return labels.get(identifier, identifier)
 
 
 @dataclass(frozen=True)

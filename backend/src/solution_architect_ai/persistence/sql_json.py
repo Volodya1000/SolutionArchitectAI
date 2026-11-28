@@ -3,7 +3,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql.elements import ColumnElement, Grouping
 
 
-def guarded_json(column: SQLColumnExpression[str]) -> ColumnElement[object]:
+def guarded_json(column: SQLColumnExpression[str | None]) -> ColumnElement[object]:
     # TEXT records predate JSONB columns. Invalid JSON becomes null for the typed
     # read boundary instead of aborting the transaction before decoding runs.
     return Grouping(

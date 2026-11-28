@@ -20,7 +20,7 @@ from solution_architect_ai.application.models.structured_models import (
     StructuredMessage,
     StructuredRequest,
 )
-from solution_architect_ai.application.prompts.structured_prompt import CORRECTION_PROMPT
+from solution_architect_ai.application.prompts.structured_prompt import CORRECTION_RESERVATION
 from solution_architect_ai.application.services.structured_output_generator import (
     StructuredOutputGenerator,
 )
@@ -39,7 +39,7 @@ class ClarificationContextPlanner:
 
     async def fits(self, context: ClarificationContext) -> bool:
         corrections: tuple[StructuredMessage, ...] = (
-            StructuredMessage(MessageRole.USER, CORRECTION_PROMPT),
+            StructuredMessage(MessageRole.USER, CORRECTION_RESERVATION),
         ) * self.correction_retries
         try:
             await self.structured_output_generator.check_context(
@@ -98,8 +98,9 @@ class ClarificationContextPlanner:
         original: ClarificationContext,
         fragments: tuple[ContextFragment, ...],
         requirements: list[RequirementView],
+        history: list[ClarificationQuestion] | None = None,
     ) -> list[ClarificationContext]:
-        context: ClarificationContext = self.build(original, fragments, requirements, [])
+        context: ClarificationContext = self.build(original, fragments, requirements, history or [])
         if await self.fits(context):
             return [context]
         if len(fragments) > 1:
@@ -113,13 +114,13 @@ class ClarificationContextPlanner:
                     for item in requirements
                     if any(source.fragment_id in identifiers for source in item.sources)
                 ]
-                result.extend(await self.source_windows(original, segment, relevant))
+                result.extend(await self.source_windows(original, segment, relevant, history))
             return result
         if len(requirements) > 1:
             middle = len(requirements) // 2
             return [
-                *await self.source_windows(original, fragments, requirements[:middle]),
-                *await self.source_windows(original, fragments, requirements[middle:]),
+                *await self.source_windows(original, fragments, requirements[:middle], history),
+                *await self.source_windows(original, fragments, requirements[middle:], history),
             ]
         fragment: ContextFragment = fragments[0]
         if len(fragment.text) < 256:
@@ -127,12 +128,13 @@ class ClarificationContextPlanner:
         middle = len(fragment.text) // 2
         return [
             *await self.source_windows(
-                original, (replace(fragment, text=fragment.text[:middle]),), requirements
+                original, (replace(fragment, text=fragment.text[:middle]),), requirements, history
             ),
             *await self.source_windows(
                 original,
                 (replace(fragment, text=fragment.text[middle:], offset=fragment.offset + middle),),
                 requirements,
+                history,
             ),
         ]
 
@@ -152,7 +154,7 @@ class ClarificationContextPlanner:
         if await self.fits(context):
             return [context]
         if len(history) <= 1:
-            raise StructuredGenerationFailure(StructuredErrorCode.CONTEXT_TOO_LARGE)
+            return await self.source_windows(original, window.part.fragments, requirements, history)
         middle: int = len(history) // 2
         return [
             *await self.history_windows(original, window, history[:middle]),

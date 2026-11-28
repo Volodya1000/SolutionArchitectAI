@@ -20,7 +20,14 @@ from solution_architect_ai.application.agents.extraction_sources import (
 from solution_architect_ai.application.agents.requirements_extraction_agent import (
     RequirementsExtractionAgent,
 )
-from solution_architect_ai.application.context.context_models import ContextFragment, ContextPart
+from solution_architect_ai.application.context.context_models import (
+    ContextFragment,
+    ContextPart,
+    ContextPolicy,
+)
+from solution_architect_ai.application.context.extraction_context_builder import (
+    ExtractionContextBuilder,
+)
 from solution_architect_ai.application.errors.structured_errors import (
     StructuredErrorCode,
     StructuredGenerationFailure,
@@ -95,6 +102,30 @@ def context_part() -> ContextPart:
         StructuredMessage(MessageRole.USER, SOURCE_TEXT),
     )
     return ContextPart("part-one", (fragment,), messages, 100)
+
+
+def test_context_labels_do_not_confuse_equal_text_in_different_versions(part: ContextPart) -> None:
+    first: ContextFragment = part.fragments[0]
+    second: ContextFragment = replace(
+        first, file_id=uuid4(), version_id=uuid4(), fragment_id=uuid4()
+    )
+    combined: ContextPart = replace(part, fragments=(first, second))
+    builder: ExtractionContextBuilder = ExtractionContextBuilder(
+        LangChainTokenCounter(2), ContextPolicy(16000, 2048, 128)
+    )
+    payload: str = builder.messages(combined.fragments, "")[-1].content
+    assert str(first.fragment_id) not in payload
+    assert str(second.fragment_id) not in payload
+    assert '"fragment_id": "f0"' in payload
+    assert '"fragment_id": "f1"' in payload
+    resolved: SourceRef = verify_evidence(Evidence(fragment_id="f1", quote=SOURCE_TEXT), combined)
+    assert resolved.status == EvidenceStatus.VERIFIED
+    assert resolved.version_id == second.version_id
+    assert resolved.fragment_id == str(second.fragment_id)
+    assert (
+        verify_evidence(Evidence(fragment_id="f99", quote=SOURCE_TEXT), combined).status
+        == EvidenceStatus.UNVERIFIED
+    )
 
 
 def candidate(part: ContextPart, text: str = "Сохранять отчёты.") -> ExtractedRequirement:

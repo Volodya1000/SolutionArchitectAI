@@ -210,9 +210,7 @@ async def test_obsolete_cycle_completion_does_not_revalidate_source(
     async def forbidden_read(_version_id: UUID) -> bytes:
         raise AssertionError("Obsolete completion must stop before source access")
 
-    monkeypatch.setattr(
-        cycle_case.workflow.extraction_steps.documents_service, "read", forbidden_read
-    )
+    monkeypatch.setattr(cycle_case.workflow.documents_service, "read", forbidden_read)
     await cycle_case.workflow.complete(cycle_case.run_id, 0)
     assert await cycle_case.service.get(cycle_case.run_id) == before
     assert (await cycle_case.resources.view(cycle_case.run_id)).status == RunStatus.WAITING_INPUT

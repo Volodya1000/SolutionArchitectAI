@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import AsyncIterator
+from dataclasses import replace
 from uuid import UUID
 
 from solution_architect_ai.application.errors.chat_errors import StorageUnavailable
@@ -91,11 +92,12 @@ class DocumentService:
         version: DocumentVersionView
         content: bytes
         version, content = await self._load_version_content(version_id)
+        parsed: ParsedDocument | None = None
         store: DocumentStore
         async with self.document_store_context.open() as store:
             saved: StoredParse | None = await store.get_parse(version_id)
         if saved is None:
-            parsed: ParsedDocument = await asyncio.to_thread(
+            parsed = await asyncio.to_thread(
                 self.document_parser.parse,
                 version.file_id,
                 version_id,
@@ -114,7 +116,18 @@ class DocumentService:
             or saved.document.sha256 != version.sha256
         ):
             raise DocumentFailure(DocumentErrorCode.CORRUPT_PARSE)
-        return saved.document
+        if version.mime_type != "text/markdown":
+            return replace(saved.document, structure=None)
+        if parsed is None:
+            parsed = await asyncio.to_thread(
+                self.document_parser.parse,
+                version.file_id,
+                version_id,
+                content,
+                version.original_name,
+                version.mime_type,
+            )
+        return replace(saved.document, structure=parsed.structure)
 
     async def get_upload_operation(self, operation_id: UUID) -> UploadOperationView:
         store: DocumentStore

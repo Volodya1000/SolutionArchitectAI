@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from uuid import UUID
 
 from solution_architect_ai.application.agents.requirements_extraction_agent import (
@@ -20,32 +21,13 @@ from solution_architect_ai.application.workflows.extraction_part_extractor impor
 )
 
 
+@dataclass
 class ExtractionSteps:
-    """Expose the graph's checkpoint-compatible phases through focused collaborators."""
+    """Expose graph phases using collaborators assembled by dependency injection."""
 
-    def __init__(
-        self,
-        extraction_store_context: StoreContext[ExtractionStore],
-        documents_service: DocumentService,
-        extraction_context_builder: ExtractionContextBuilder,
-        requirements_extraction_agent: RequirementsExtractionAgent,
-        extraction_policy: ExtractionPolicy,
-    ) -> None:
-        self.extraction_context_assembler: ExtractionContextAssembler = ExtractionContextAssembler(
-            extraction_store_context,
-            documents_service,
-            extraction_context_builder,
-            extraction_policy,
-        )
-        self.extraction_part_extractor: ExtractionPartExtractor = ExtractionPartExtractor(
-            extraction_store_context,
-            self.extraction_context_assembler,
-            requirements_extraction_agent,
-            extraction_policy,
-        )
-        self.extraction_finalizer: ExtractionFinalizer = ExtractionFinalizer(
-            extraction_store_context, self.extraction_context_assembler
-        )
+    extraction_context_assembler: ExtractionContextAssembler
+    extraction_part_extractor: ExtractionPartExtractor
+    extraction_finalizer: ExtractionFinalizer
 
     @property
     def extraction_store_context(self) -> StoreContext[ExtractionStore]:
@@ -66,11 +48,6 @@ class ExtractionSteps:
     @property
     def extraction_policy(self) -> ExtractionPolicy:
         return self.extraction_context_assembler.extraction_policy
-
-    @extraction_policy.setter
-    def extraction_policy(self, extraction_policy: ExtractionPolicy) -> None:
-        self.extraction_context_assembler.extraction_policy = extraction_policy
-        self.extraction_part_extractor.extraction_policy = extraction_policy
 
     def release_context(self, run_id: UUID) -> None:
         self.extraction_context_assembler.release_context(run_id)

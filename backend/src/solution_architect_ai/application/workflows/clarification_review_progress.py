@@ -19,6 +19,12 @@ class ClarificationReviewProgress:
     coverage: ClarificationReviewCoverage = field(init=False)
     completed: set[int] = field(default_factory=set)
     reviewed_history: set[UUID] = field(default_factory=set)
+    prior_requests: int = 0
+    cumulative_usage: bool = False
+
+    def restore_requests(self, requests: int) -> None:
+        if not self.cumulative_usage:
+            self.prior_requests += requests
 
     def __post_init__(self) -> None:
         fragments: set[str] = {str(item.fragment_id) for item in self.original.part.fragments}
@@ -51,6 +57,6 @@ class ClarificationReviewProgress:
         self.coverage.complete = complete and not (
             self.coverage.unreviewed_fragment_ids or self.coverage.unreviewed_question_ids
         )
-        self.coverage.model_requests = budget.requests - self.start_requests
+        self.coverage.model_requests = self.prior_requests + budget.requests - self.start_requests
         if self.on_progress is not None:
             await self.on_progress(self.coverage)

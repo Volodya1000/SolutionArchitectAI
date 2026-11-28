@@ -22,6 +22,16 @@ class ClarificationRunRow(Base):
     active_seconds: Mapped[float] = mapped_column(default=0.0)
     active_started: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     heartbeat_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    assessments_json: Mapped[str] = mapped_column(default="[]")
+
+
+class ClarificationStepRow(Base):
+    __tablename__: str = "clarification_review_steps"
+    run_id: Mapped[UUID] = mapped_column(
+        ForeignKey("requirements_extractions.id"), primary_key=True
+    )
+    step_key: Mapped[str] = mapped_column(primary_key=True)
+    result_json: Mapped[str]
 
 
 class QuestionRow(Base):

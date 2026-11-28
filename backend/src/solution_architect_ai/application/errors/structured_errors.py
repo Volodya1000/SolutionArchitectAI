@@ -11,6 +11,7 @@ class StructuredErrorCode(StrEnum):
     TIMEOUT = "timeout"
     JSON_INVALID = "json_invalid"
     SCHEMA_INVALID = "schema_invalid"
+    EVIDENCE_INVALID = "evidence_invalid"
     EMPTY_RESPONSE = "empty_response"
     TRUNCATED_RESPONSE = "truncated_response"
     REFUSAL = "refusal"
@@ -25,10 +26,23 @@ class StructuredErrorCode(StrEnum):
 
 class StructuredGenerationFailure(GenerationFailure):
     def __init__(
-        self, reason: StructuredErrorCode, *, retryable: bool = False, retry_after: float = 0
+        self,
+        reason: StructuredErrorCode,
+        *,
+        retryable: bool = False,
+        retry_after: float = 0,
+        diagnostic: str | None = None,
     ) -> None:
         super().__init__(
             RunErrorCode.LLM_INVALID_RESPONSE, retryable=retryable, retry_after=retry_after
         )
         self.reason: StructuredErrorCode = reason
+        self.diagnostic: str | None = diagnostic
         self.args = (reason,)
+
+
+class EvidenceValidationFailure(ValueError):
+    def __init__(self, field_path: str, reason: str) -> None:
+        super().__init__(reason)
+        self.field_path: str = field_path
+        self.reason: str = reason

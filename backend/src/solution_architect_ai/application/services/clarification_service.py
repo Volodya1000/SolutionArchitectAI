@@ -1,7 +1,5 @@
 from uuid import UUID
 
-from pydantic import TypeAdapter
-
 from solution_architect_ai.application.errors.clarification_errors import ClarificationConflict
 from solution_architect_ai.application.models.clarification_models import (
     AnswerClarification,
@@ -75,5 +73,4 @@ class ClarificationService:
     async def operation(self, operation_id: UUID) -> DecisionResult | CommandResult:
         store: ClarificationStore
         async with self.clarification_store_context.open() as store:
-            payload: str = await store.operation(operation_id)
-        return TypeAdapter(DecisionResult | CommandResult).validate_json(payload)
+            return await store.operation(operation_id)

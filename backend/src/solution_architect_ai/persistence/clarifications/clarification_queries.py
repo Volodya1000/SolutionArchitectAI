@@ -1,10 +1,14 @@
 import json
+from typing import Annotated
 from uuid import UUID
 
-from pydantic import TypeAdapter
-from sqlalchemy import ScalarResult, Select, select
+from pydantic import Field, TypeAdapter
+from sqlalchemy import Result, ScalarResult, Select, and_, select, tuple_
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from solution_architect_ai.application.context.mandatory_conflict_questions import (
+    bind_confirmed_conflicts,
+)
 from solution_architect_ai.application.context.source_fingerprints import (
     has_changed_clarification_basis,
     requirement_basis_fingerprint,
@@ -22,13 +26,13 @@ from solution_architect_ai.application.models.clarification_models import (
     QuestionStatus,
     RiskView,
 )
+from solution_architect_ai.application.models.conflict_assessment_models import ConflictAssessment
 from solution_architect_ai.application.models.extraction_models import (
     ExtractionStart,
     ExtractionView,
     RequirementView,
     SourceRef,
 )
-from solution_architect_ai.domain.requirements import RequirementCategory
 from solution_architect_ai.persistence.clarifications.clarification_models import (
     ClarificationRunRow,
     DecisionRow,
@@ -92,7 +96,7 @@ class ClarificationQueries:
         )
         if command.answer_history_mode == "new":
             return extraction.id
-        if command.answer_history_id is None:
+        if command.answer_history_id is None or command.answer_history_id == self.actor.task_id:
             return self.actor.task_id
         owner: ClarificationRunRow | None = await self.session.scalar(
             select(ClarificationRunRow)
@@ -162,51 +166,37 @@ class ClarificationQueries:
                 state.completed_json,
                 failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
             ),
+            conflict_assessments=read_stored_json_value(
+                TypeAdapter(list[ConflictAssessment]),
+                state.assessments_json,
+                failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+            ),
             requirements=read_stored_json(
                 ExtractionView,
                 extraction.snapshot_json,
                 failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
             ).requirements,
         )
+        links: list[QuestionLinkRow] = await self.links(run_id)
+        revisions: dict[tuple[UUID, int], QuestionRevisionRow] = await self._read_revisions(links)
+        decisions: dict[UUID, list[tuple[DecisionRow, RiskRow | None]]] = (
+            await self._read_decisions(run_id) if links else {}
+        )
         link: QuestionLinkRow
-        for link in await self.links(run_id):
-            revision: QuestionRevisionRow = await self.question(run_id, link.question_id)
-            question: ClarificationQuestion = read_stored_json(
-                ClarificationQuestion,
-                revision.snapshot_json,
-                failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+        for link in links:
+            question: ClarificationQuestion = self._question_view(
+                link, revisions.get((link.question_id, link.revision))
             )
-            question.requirement_ids = read_stored_json_value(
-                TypeAdapter(list[UUID]),
-                link.requirement_ids_json,
-                failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
-            )
-            if link.sources_json is not None:
-                question.sources = read_stored_json_value(
-                    TypeAdapter(list[SourceRef]),
-                    link.sources_json,
-                    failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
-                )
             view.questions.append(question)
-            decisions: ScalarResult[DecisionRow] = await self.session.scalars(
-                select(DecisionRow)
-                .where(
-                    DecisionRow.question_id == question.id,
-                    DecisionRow.question_revision <= question.revision,
-                )
-                .order_by(DecisionRow.question_revision)
-            )
             decision: DecisionRow
-            for decision in decisions:
+            risk: RiskRow | None
+            for decision, risk in decisions.get(question.id, []):
                 item: DecisionResult = read_stored_json(
                     DecisionResult,
                     decision.snapshot_json,
                     failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
                 )
                 view.decisions.append(item)
-                risk: RiskRow | None = await self.session.scalar(
-                    select(RiskRow).where(RiskRow.decision_id == decision.id)
-                )
                 if risk is not None:
                     view.risks.append(
                         read_stored_json(
@@ -217,6 +207,68 @@ class ClarificationQueries:
                     )
         self.apply_decisions(view)
         return view
+
+    @staticmethod
+    def _question_view(
+        link: QuestionLinkRow,
+        revision: QuestionRevisionRow | None,
+    ) -> ClarificationQuestion:
+        if revision is None:
+            raise Missing("question_revision")
+        question: ClarificationQuestion = read_stored_json(
+            ClarificationQuestion,
+            revision.snapshot_json,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+        )
+        question.requirement_ids = read_stored_json_value(
+            TypeAdapter(Annotated[list[UUID], Field(min_length=1)]),
+            link.requirement_ids_json,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+        )
+        if link.sources_json is not None:
+            question.sources = read_stored_json_value(
+                TypeAdapter(list[SourceRef]),
+                link.sources_json,
+                failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+            )
+        return question
+
+    async def _read_revisions(
+        self, links: list[QuestionLinkRow]
+    ) -> dict[tuple[UUID, int], QuestionRevisionRow]:
+        if not links:
+            return {}
+        revisions: ScalarResult[QuestionRevisionRow] = await self.session.scalars(
+            select(QuestionRevisionRow).where(
+                tuple_(QuestionRevisionRow.question_id, QuestionRevisionRow.revision).in_(
+                    [(link.question_id, link.revision) for link in links]
+                )
+            )
+        )
+        return {(revision.question_id, revision.revision): revision for revision in revisions}
+
+    async def _read_decisions(
+        self, run_id: UUID
+    ) -> dict[UUID, list[tuple[DecisionRow, RiskRow | None]]]:
+        rows: Result[DecisionRow, RiskRow | None] = await self.session.execute(
+            select(DecisionRow, RiskRow)
+            .join(
+                QuestionLinkRow,
+                and_(
+                    QuestionLinkRow.question_id == DecisionRow.question_id,
+                    DecisionRow.question_revision <= QuestionLinkRow.revision,
+                ),
+            )
+            .outerjoin(RiskRow, RiskRow.decision_id == DecisionRow.id)
+            .where(QuestionLinkRow.run_id == run_id)
+            .order_by(DecisionRow.question_revision)
+        )
+        decisions: dict[UUID, list[tuple[DecisionRow, RiskRow | None]]] = {}
+        decision: DecisionRow
+        risk: RiskRow | None
+        for decision, risk in rows:
+            decisions.setdefault(decision.question_id, []).append((decision, risk))
+        return decisions
 
     @staticmethod
     def apply_decisions(view: ClarificationView) -> None:
@@ -245,6 +297,18 @@ class ClarificationQueries:
         state: ClarificationRunRow = await self.run(run_id, lock=True)
         if state.initialized:
             return
+        extraction: ExtractionRow = await self.extraction(run_id)
+        requirements: list[RequirementView] = read_stored_json(
+            ExtractionView,
+            extraction.snapshot_json,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+        ).requirements
+        assessments: list[ConflictAssessment] = read_stored_json_value(
+            TypeAdapter(list[ConflictAssessment]),
+            state.assessments_json,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+        )
+        questions = bind_confirmed_conflicts(requirements, questions, assessments)
         question: ClarificationQuestion
         for question in questions:
             await self.save_question(state, question)
@@ -260,15 +324,6 @@ class ClarificationQueries:
             extraction.snapshot_json,
             failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
         )
-        conflicts: list[str] = [
-            requirement.normalized_text
-            for requirement in snapshot.requirements
-            if requirement.id in question.requirement_ids
-            and requirement.category == RequirementCategory.CONTRADICTION
-        ]
-        if conflicts:
-            question.mandatory_conflict = "\n".join(conflicts)
-            question.blocking = True
         question.requirement_basis_fingerprints = {
             requirement.id: requirement_basis_fingerprint(requirement)
             for requirement in snapshot.requirements
@@ -344,7 +399,7 @@ class ClarificationQueries:
         if link is None:
             raise Missing("question")
         question.requirement_ids = read_stored_json_value(
-            TypeAdapter(list[UUID]),
+            TypeAdapter(Annotated[list[UUID], Field(min_length=1)]),
             link.requirement_ids_json,
             failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
         )

@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal, Self
 from uuid import UUID
 
@@ -14,6 +14,7 @@ from solution_architect_ai.application.models.clarification_models import (
     ClarificationQuestion,
     ClarificationReviewCoverage,
 )
+from solution_architect_ai.application.models.conflict_assessment_models import ConflictAssessment
 from solution_architect_ai.application.models.extraction_models import Evidence
 
 
@@ -48,3 +49,4 @@ class SourceReviewVerdict(DTO):
 class ClarificationReviewResult:
     questions: list[ClarificationQuestion]
     coverage: ClarificationReviewCoverage
+    assessments: list[ConflictAssessment] = field(default_factory=list)

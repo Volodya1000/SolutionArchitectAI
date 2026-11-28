@@ -72,5 +72,12 @@ export default ts.config(
       ],
     },
   },
+  {
+    files: ['src/shared/api/generated/**/*.ts'],
+    rules: {
+      // Preserve OpenAPI's documented enum alongside its forward-compatible string union.
+      '@typescript-eslint/no-redundant-type-constituents': 'off',
+    },
+  },
   prettier,
 );

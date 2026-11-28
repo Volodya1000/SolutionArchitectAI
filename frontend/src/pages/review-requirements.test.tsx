@@ -1,3 +1,9 @@
+import {
+  fixtureId,
+  storedModelProfileFixture,
+  fixtureHash,
+  clarificationModelProfileFixture,
+} from '@/shared/api/test-network-fixtures';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -12,7 +18,7 @@ import { sessionStore } from '../shared/ui/session-storage';
 import { WorkspaceHeading } from './workspace-content';
 
 const requirement = {
-  id: 'r1',
+  id: fixtureId('r1'),
   category: 'functional',
   original_text: 'Правило',
   normalized_text: 'Хранить отчёты',
@@ -20,43 +26,69 @@ const requirement = {
   status: 'needs_review',
 };
 const run = {
-  id: 'selected-run',
+  pipeline_versions: null,
+  current_pipeline_versions: null,
+  model_profile: storedModelProfileFixture,
+  contract_version: 'requirements-1',
+  prompt_version: 'extract-3',
+
+  id: fixtureId('selected-run'),
   status: 'waiting_input',
   progress: { completed_parts: 1, total_parts: 1 },
   error_code: null,
   created_at: '2026-11-27T00:00:00Z',
   model: 'fake',
-  version_ids: ['v1'],
+  version_ids: [fixtureId('v1')],
   analysis_scope: '',
   configuration_current: true,
-  coverage: { complete: true, total_fragments: 1, processed_fragments: 1 },
+  coverage: {
+    warnings: [],
+    complete: true,
+    total_fragments: 1,
+    processed_fragments: 1,
+  },
   requirements: [requirement],
 };
 const question = {
-  id: 'q1',
+  source_fingerprints: {},
+  requirement_fingerprints: {},
+  requirement_basis_fingerprints: {},
+  previous_basis: null,
+  previous_sources: [],
+  mandatory_conflict: null,
+
+  id: fixtureId('q1'),
   gap_key: 'retention',
   revision: 1,
   text: 'Каков срок?',
   basis: 'Нет срока',
   dependent_decision: 'Хранилище',
   blocking: true,
-  requirement_ids: ['r1'],
+  requirement_ids: [fixtureId('r1')],
   sources: [],
   status: 'open',
 };
 const view = {
+  ...{ conflict_assessments: [] },
+  metadata: null,
+  resume_version: 0,
+
   run_id: run.id,
-  history_id: 'selected-history',
+  history_id: fixtureId('selected-history'),
   cycle: 0,
   initialized: true,
   resume_pending: false,
   requirements: [requirement],
-  questions: [question, { ...question, id: 'q2', text: 'Предпочтение?', blocking: false }],
+  questions: [
+    question,
+    { ...question, id: fixtureId('q2'), text: 'Предпочтение?', blocking: false },
+  ],
   decisions: [],
   risks: [
     {
-      id: 'risk',
-      decision_id: 'decision',
+      resolution_reason: null,
+      id: fixtureId('risk'),
+      decision_id: fixtureId('decision'),
       consequences: 'Переполнение',
       mitigation: 'Квоты',
       status: 'open',
@@ -65,10 +97,12 @@ const view = {
   completed_cycles: [],
 };
 const version = {
-  file_id: 'f1',
-  task_id: 'task',
-  version_id: 'v1',
-  sha256: 'hash',
+  storage_key: 'fixture-key',
+
+  file_id: fixtureId('f1'),
+  task_id: fixtureId('task'),
+  version_id: fixtureId('v1'),
+  sha256: fixtureHash('hash'),
   mime_type: 'text/markdown',
   size: 10,
   original_name: 'BRD.md',
@@ -77,12 +111,14 @@ const version = {
 const commands: unknown[] = [];
 const matching: URLSearchParams[] = [];
 const server = setupServer(
-  http.get('/api/extractions/selected-run/clarifications', () => HttpResponse.json(view)),
+  http.get(`/api/extractions/${fixtureId('selected-run')}/clarifications`, () =>
+    HttpResponse.json(view),
+  ),
   http.get('/api/documents', () =>
     HttpResponse.json([
       {
-        file_id: 'f1',
-        task_id: 'task',
+        file_id: fixtureId('f1'),
+        task_id: fixtureId('task'),
         name: 'BRD.md',
         created_at: version.uploaded_at,
         latest_version: version,
@@ -96,7 +132,7 @@ const server = setupServer(
   http.get('/api/extraction-operations/:id', () => new HttpResponse(null, { status: 404 })),
   http.post('/api/extractions', async ({ request }) => {
     commands.push(await request.json());
-    return HttpResponse.json({ ...run, id: 'new-run', status: 'queued' });
+    return HttpResponse.json({ ...run, id: fixtureId('new-run'), status: 'queued' });
   }),
   ...mockExtractions([run]),
 );
@@ -114,7 +150,7 @@ function show() {
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
-      <MemoryRouter initialEntries={['/requirements?run=selected-run']}>
+      <MemoryRouter initialEntries={[`/requirements?run=${fixtureId('selected-run')}`]}>
         <Routes>
           <Route path="/requirements" element={<Requirements />} />
           <Route path="/documents" element={<Documents />} />
@@ -159,7 +195,7 @@ it('supports keyboard tab navigation without losing the selected analysis', asyn
   expect(screen.getByRole('tab', { name: 'Уточнения 2' })).toHaveAttribute('aria-selected', 'true');
   expect(
     screen.getByRole('link', { name: 'Выбрать документы для нового анализа' }),
-  ).toHaveAttribute('href', '/documents?run=selected-run');
+  ).toHaveAttribute('href', `/documents?run=${fixtureId('selected-run')}`);
 });
 
 it('returns from a risk to all clarification decisions after the blocker-only view', async () => {
@@ -173,7 +209,7 @@ it('returns from a risk to all clarification decisions after the blocker-only vi
 
 it('keeps an assumed mandatory conflict in the waiting notice and explains the blocker', async () => {
   server.use(
-    http.get('/api/extractions/selected-run/clarifications', () =>
+    http.get(`/api/extractions/${fixtureId('selected-run')}/clarifications`, () =>
       HttpResponse.json({
         ...view,
         questions: [
@@ -199,14 +235,25 @@ it.each(['running', 'failed'] as const)(
   'reports incomplete clarification coverage above the result (%s)',
   async (status) => {
     server.use(
-      http.get('/api/extractions/selected-run/status', () => HttpResponse.json({ ...run, status })),
-      http.get('/api/extractions/selected-run', () => HttpResponse.json({ ...run, status })),
-      http.get('/api/extractions/selected-run/clarifications', () =>
+      http.get(`/api/extractions/${fixtureId('selected-run')}/status`, () =>
+        HttpResponse.json({ ...run, status }),
+      ),
+      http.get(`/api/extractions/${fixtureId('selected-run')}`, () =>
+        HttpResponse.json({ ...run, status }),
+      ),
+      http.get(`/api/extractions/${fixtureId('selected-run')}/clarifications`, () =>
         HttpResponse.json({
           ...view,
           initialized: false,
           questions: [],
           metadata: {
+            ...{ conflict_assessment_prompt_version: null, review_start_requests: null },
+            context_digest: 'test-context',
+            model_profile: clarificationModelProfileFixture,
+            contract_version: 'clarification-1',
+            prompt_version: 'clarify-4',
+            review_prompt_version: 'clarify-review-1',
+
             coverage: {
               total_fragments: 10,
               reviewed_fragments: 4,
@@ -214,8 +261,8 @@ it.each(['running', 'failed'] as const)(
               reviewed_history: 3,
               model_requests: 2,
               complete: false,
-              unreviewed_fragment_ids: ['fragment'],
-              unreviewed_question_ids: ['question'],
+              unreviewed_fragment_ids: [fixtureId('fragment')],
+              unreviewed_question_ids: [fixtureId('question')],
             },
           },
         }),
@@ -253,9 +300,11 @@ it.each([false, true])(
     expect(commands).toHaveLength(1);
     expect(commands[0]).toMatchObject({
       answer_history_mode: newHistory ? 'new' : 'reuse',
-      answer_history_id: newHistory ? null : 'selected-history',
+      answer_history_id: newHistory ? null : fixtureId('selected-history'),
     });
-    expect(matching.at(-1)?.get('answer_history_id')).toBe(newHistory ? null : 'selected-history');
+    expect(matching.at(-1)?.get('answer_history_id')).toBe(
+      newHistory ? null : fixtureId('selected-history'),
+    );
   },
 );
 

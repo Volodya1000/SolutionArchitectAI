@@ -8,6 +8,7 @@ from uuid import UUID
 from pydantic import Field, StringConstraints, model_validator
 
 from solution_architect_ai.application.models.chat_dto import DTO, Text
+from solution_architect_ai.application.models.conflict_assessment_models import ConflictAssessment
 from solution_architect_ai.application.models.extraction_models import RequirementView, SourceRef
 from solution_architect_ai.application.models.structured_models import ModelProfile
 
@@ -157,10 +158,13 @@ class ClarificationReviewCoverage(DTO):
 
 class ClarificationMetadata(DTO):
     prompt_version: str
+    review_prompt_version: str | None = None
     contract_version: str = "clarification-1"
     context_digest: str
     model_profile: ModelProfile
     coverage: ClarificationReviewCoverage | None = None
+    review_start_requests: int | None = Field(default=None, ge=0)
+    conflict_assessment_prompt_version: str | None = None
 
 
 class ClarificationView(DTO):
@@ -176,6 +180,7 @@ class ClarificationView(DTO):
     risks: list[RiskView] = Field(default_factory=list)
     requirements: list[RequirementView] = Field(default_factory=list)
     completed_cycles: list[CompletedCycle] = Field(default_factory=list)
+    conflict_assessments: list[ConflictAssessment] = Field(default_factory=list)
 
 
 class CommandResult(DTO):

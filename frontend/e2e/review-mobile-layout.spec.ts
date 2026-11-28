@@ -1,10 +1,22 @@
 import { expect, test } from '@playwright/test';
+import {
+  zClarificationView,
+  zExtractionHistory,
+  zExtractionSummary,
+  zExtractionView,
+} from '../src/shared/api/generated/zod.gen';
+import {
+  clarificationModelProfileFixture,
+  fixtureHash,
+  fixtureId,
+  storedModelProfileFixture,
+} from '../src/shared/api/test-network-fixtures';
 
 const source = {
-  file_id: 'layout-file',
-  version_id: 'immutable-version',
-  sha256: 'source-hash',
-  fragment_id: 'source-fragment',
+  file_id: fixtureId('layout-file'),
+  version_id: fixtureId('immutable-version'),
+  sha256: fixtureHash('source-hash'),
+  fragment_id: fixtureId('source-fragment'),
   locator: {
     kind: 'lines',
     start: 28,
@@ -15,19 +27,34 @@ const source = {
   status: 'verified',
   reason: null,
 };
-const run = {
-  id: 'layout-run',
+const pipelineVersions = {
+  clarification_contract_version: 'clarification-1',
+  clarification_prompt_version: 'clarify-4',
+  clarification_review_prompt_version: 'clarification-review-1',
+  conflict_assessment_prompt_version: 'conflict-assessment-1',
+  extraction_context_contract_version: 'source-aliases-1',
+  extraction_contract_version: 'extraction-1',
+  extraction_prompt_version: 'extract-4',
+  structured_prompt_version: 'structured-3',
+};
+const run = zExtractionView.parse({
+  id: fixtureId('layout-run'),
   status: 'failed',
   progress: { completed_parts: 4, total_parts: 4 },
   error_code: 'json_invalid',
   created_at: '2026-11-27T00:00:00Z',
   model: 'layout-readonly',
-  version_ids: ['immutable-version'],
+  version_ids: [source.version_id],
   analysis_scope: '',
   configuration_current: true,
-  coverage: { complete: true, total_fragments: 62, processed_fragments: 62 },
+  pipeline_versions: pipelineVersions,
+  current_pipeline_versions: pipelineVersions,
+  contract_version: pipelineVersions.extraction_contract_version,
+  prompt_version: pipelineVersions.extraction_prompt_version,
+  model_profile: { ...storedModelProfileFixture, model: 'layout-readonly' },
+  coverage: { complete: true, total_fragments: 62, processed_fragments: 62, warnings: [] },
   requirements: Array.from({ length: 50 }, (_, index) => ({
-    id: `layout-requirement-${index}`,
+    id: fixtureId(`layout-requirement-${index}`),
     category: 'functional',
     original_text: source.quote,
     normalized_text:
@@ -37,10 +64,12 @@ const run = {
     sources: [source],
     status: 'needs_review',
   })),
-};
-const clarifications = {
+});
+const summary = zExtractionSummary.parse(run);
+const history = zExtractionHistory.parse({ items: [summary], has_more: false });
+const clarifications = zClarificationView.parse({
   run_id: run.id,
-  history_id: 'layout-history',
+  history_id: fixtureId('layout-history'),
   cycle: 0,
   initialized: false,
   resume_pending: false,
@@ -49,7 +78,15 @@ const clarifications = {
   risks: [],
   requirements: [],
   completed_cycles: [],
+  conflict_assessments: [],
   metadata: {
+    conflict_assessment_prompt_version: pipelineVersions.conflict_assessment_prompt_version,
+    context_digest: fixtureHash('layout-context'),
+    contract_version: pipelineVersions.clarification_contract_version,
+    model_profile: { ...clarificationModelProfileFixture, name: 'layout-readonly' },
+    prompt_version: pipelineVersions.clarification_prompt_version,
+    review_prompt_version: pipelineVersions.clarification_review_prompt_version,
+    review_start_requests: 0,
     coverage: {
       total_fragments: 62,
       reviewed_fragments: 0,
@@ -57,11 +94,11 @@ const clarifications = {
       reviewed_history: 0,
       model_requests: 0,
       complete: false,
-      unreviewed_fragment_ids: ['source-fragment'],
+      unreviewed_fragment_ids: [source.fragment_id],
       unreviewed_question_ids: [],
     },
   },
-};
+});
 
 test('a narrow results workspace keeps warning and tabs fixed while the table scrolls to source evidence', async ({
   page,
@@ -70,10 +107,10 @@ test('a narrow results workspace keeps warning and tabs fixed while the table sc
     '/api/chats': [],
     '/api/model': { model: 'layout-readonly', available: true },
     '/api/preferences': { theme: 'light' },
-    '/api/extractions/history': { items: [run], has_more: false },
-    '/api/extractions/layout-run/status': run,
-    '/api/extractions/layout-run': run,
-    '/api/extractions/layout-run/clarifications': clarifications,
+    '/api/extractions/history': history,
+    [`/api/extractions/${run.id}/status`]: summary,
+    [`/api/extractions/${run.id}`]: run,
+    [`/api/extractions/${run.id}/clarifications`]: clarifications,
   };
   await page.route(
     (url) => url.pathname.startsWith('/api/'),
@@ -86,7 +123,7 @@ test('a narrow results workspace keeps warning and tabs fixed while the table sc
     },
   );
   await page.setViewportSize({ width: 390, height: 844 });
-  await page.goto('/requirements?run=layout-run');
+  await page.goto(`/requirements?run=${run.id}`);
   const table = page.getByRole('table', { name: 'Кандидаты требований' });
   await expect(table).toBeVisible();
   const workspace = page.locator('.workspace-content');
@@ -97,7 +134,7 @@ test('a narrow results workspace keeps warning and tabs fixed while the table sc
   await expect(warning).toContainText('проверено 0 из 62 фрагментов');
   const tabs = page.getByRole('tablist', { name: 'Результаты анализа' });
   await tabs.scrollIntoViewIfNeeded();
-  const row = page.locator('#requirement-layout-requirement-0');
+  const row = page.locator(`#requirement-${run.requirements[0]!.id}`);
   const sourceLink = row.getByRole('link', { name: /^Источник/ });
   await row.getByRole('button', { name: 'Обсудить', exact: true }).focus();
   await page.keyboard.press('Tab');
@@ -116,7 +153,7 @@ test('a narrow results workspace keeps warning and tabs fixed while the table sc
   }
   await expect(sourceLink).toHaveAttribute(
     'href',
-    '/documents?version=immutable-version&fragment=source-fragment&run=layout-run',
+    `/documents?version=${source.version_id}&fragment=${source.fragment_id}&run=${run.id}`,
   );
   await page.screenshot({ path: testInfo.outputPath('narrow-source-evidence.png') });
 });

@@ -32,7 +32,8 @@ class ContextIdentity:
 
 def part_digest(fragments: tuple[ContextFragment, ...]) -> str:
     identity: str = "|".join(
-        f"{item.version_id}:{item.sha256}:{item.fragment_id}:{item.offset}:{item.locator}:{item.text}"
+        f"{item.version_id}:{item.sha256}:{item.fragment_id}:{item.offset}:"
+        f"{item.locator}:{item.text}:{item.table_header}"
         for item in fragments
     )
     return sha256(identity.encode()).hexdigest()
@@ -54,7 +55,7 @@ def context_digest(
                 [(item.role.value, item.content) for item in rendered], ensure_ascii=False
             ).encode()
         ).hexdigest(),
-        "context-6",
+        "context-7",
         [(str(doc.version_id), doc.parser_version) for doc in documents],
         schema,
         sha256(CORRECTION_PROMPT.encode()).hexdigest(),

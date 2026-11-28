@@ -1,4 +1,21 @@
+import re
+from typing import Literal
 from unicodedata import name
+
+
+class SourceLanguageValidationFailure(ValueError):
+    def __init__(self, field_path: str, expected_script: Literal["Cyrillic", "Latin"]) -> None:
+        super().__init__("Keep the source language in every statement; do not translate it")
+        self.field_path: str = field_path
+        self.expected_script: Literal["Cyrillic", "Latin"] = expected_script
+
+    @property
+    def diagnostic(self) -> str:
+        path: str = self.field_path if re.fullmatch(r"[A-Za-z_0-9.$]+", self.field_path) else "$"
+        return (
+            f"{path}: preserve the {self.expected_script} source language in every human-readable "
+            "field; do not translate source prose"
+        )[:200]
 
 
 def script_counts(text: str) -> tuple[int, int]:
@@ -14,7 +31,7 @@ def script_counts(text: str) -> tuple[int, int]:
     return cyrillic, latin
 
 
-def validate_source_language(source: str, text: str) -> None:
+def validate_source_language(source: str, text: str, *, field_path: str = "$") -> None:
     """Reject clear Cyrillic/Latin prose translation; allow names and mixed sources.
 
     This checks scripts, not arbitrary natural languages. Short identifiers and
@@ -43,4 +60,6 @@ def validate_source_language(source: str, text: str) -> None:
         and text_cyrillic > 2 * text_latin
     )
     if translated_to_latin or translated_to_cyrillic:
-        raise ValueError("Keep the source language in every statement; do not translate it")
+        raise SourceLanguageValidationFailure(
+            field_path, "Cyrillic" if translated_to_latin else "Latin"
+        )

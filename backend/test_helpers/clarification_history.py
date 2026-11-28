@@ -18,6 +18,7 @@ from solution_architect_ai.application.models.clarification_models import (
     DecisionResult,
     SourceVersion,
 )
+from solution_architect_ai.application.models.conflict_assessment_models import ConflictAssessment
 from solution_architect_ai.application.models.extraction_models import (
     CoverageView,
     ExtractionProgress,
@@ -159,3 +160,21 @@ def answer_command(
         text=text,
         basis="Решение архитектора",
     )
+
+
+async def establish_conflict(
+    stores: SqlStoreSetup[SqlAlchemyClarificationStore], run_id: UUID, requirement: RequirementView
+) -> None:
+    store: SqlAlchemyClarificationStore
+    async with stores.open() as store:
+        await store.save_conflict_assessments(
+            run_id,
+            [
+                ConflictAssessment(
+                    requirement_id=requirement.id,
+                    status="confirmed",
+                    reason=requirement.normalized_text,
+                    sources=requirement.sources,
+                )
+            ],
+        )

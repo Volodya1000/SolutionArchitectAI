@@ -2,7 +2,7 @@ import { useSearchParams } from 'react-router';
 import { useClarifications } from '../../shared/api/use-clarifications';
 export function useAnalysisContext(newHistory: boolean) {
   const [search] = useSearchParams();
-  const runId = search.get('run');
+  const runId = search.get('historyRun') ?? search.get('run');
   const query = useClarifications(runId ?? '', Boolean(runId));
   return {
     query,

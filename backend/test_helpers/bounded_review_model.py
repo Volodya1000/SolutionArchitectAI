@@ -28,6 +28,30 @@ class CrossSectionModel:
         self.requests.append(request)
         self.schemas.append(_schema)
         payload: RequestPayload = RequestPayload.model_validate_json(request.messages[-1].content)
+        if payload.role == "conflict_assessment":
+            resolving: ContextSource | None = next(
+                (item for item in payload.fragments if "При отказе отклонить запрос." in item.text),
+                None,
+            )
+            return StructuredResponse(
+                json.dumps(
+                    {
+                        "status": "refuted" if resolving else "candidate",
+                        "reason": "Источник содержит разрешающее условие"
+                        if resolving
+                        else "Нет доказанного обязательного противоречия",
+                        "evidence": [
+                            {
+                                "fragment_id": resolving.fragment_id,
+                                "quote": "При отказе отклонить запрос.",
+                            }
+                        ]
+                        if resolving
+                        else [],
+                    }
+                ),
+                "stop",
+            )
         if payload.role == "clarification_review":
             fragments: list[ContextSource] = payload.fragments
             answer: ContextSource | None = next(

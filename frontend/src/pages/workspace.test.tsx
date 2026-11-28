@@ -1,3 +1,4 @@
+import { fixtureId } from '@/shared/api/test-network-fixtures';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -9,8 +10,8 @@ import { ThemeProvider } from '../shared/ui/theme-provider';
 import { Workspace } from './workspace';
 
 const savedChat = {
-  id: 'saved',
-  task_id: 'task',
+  id: fixtureId('saved'),
+  task_id: fixtureId('task'),
   title: 'Обсуждение сервиса',
   created_at: '2026-11-26T00:00:00Z',
 };

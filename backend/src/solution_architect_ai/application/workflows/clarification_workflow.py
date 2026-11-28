@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from hashlib import sha256
 from uuid import UUID
 
@@ -20,27 +21,40 @@ from solution_architect_ai.application.models.clarification_review_models import
     ClarificationReviewResult,
 )
 from solution_architect_ai.application.models.extraction_models import ExtractionView
+from solution_architect_ai.application.models.extraction_policy import ExtractionPolicy
 from solution_architect_ai.application.models.structured_models import BudgetUsage, ExecutionBudget
 from solution_architect_ai.application.prompts.clarification_prompt import PROMPT_VERSION
+from solution_architect_ai.application.prompts.clarification_review_prompt import (
+    PROMPT_VERSION as REVIEW_PROMPT_VERSION,
+)
+from solution_architect_ai.application.prompts.conflict_assessment_prompt import (
+    CONFLICT_ASSESSMENT_PROMPT_VERSION,
+)
 from solution_architect_ai.application.protocols.clarification_protocols import ClarificationStore
 from solution_architect_ai.application.protocols.extraction_protocols import ExtractionStore
 from solution_architect_ai.application.protocols.store_context_protocols import StoreContext
+from solution_architect_ai.application.services.document_service import DocumentService
 from solution_architect_ai.application.workflows.clarification_review import ClarificationReview
-from solution_architect_ai.application.workflows.extraction_steps import ExtractionSteps
+from solution_architect_ai.application.workflows.clarification_review_cache import (
+    ClarificationReviewCache,
+)
+from solution_architect_ai.application.workflows.extraction_budget_builder import (
+    ExtractionBudgetBuilder,
+)
+from solution_architect_ai.application.workflows.extraction_context_assembler import (
+    ExtractionContextAssembler,
+)
 
 
+@dataclass
 class ClarificationWorkflow:
-    def __init__(
-        self,
-        clarification_store_context: StoreContext[ClarificationStore],
-        extraction_steps: ExtractionSteps,
-        clarification_agent: ClarificationAgent,
-    ) -> None:
-        self.clarification_store_context: StoreContext[ClarificationStore] = (
-            clarification_store_context
-        )
-        self.extraction_steps: ExtractionSteps = extraction_steps
-        self.clarification_agent: ClarificationAgent = clarification_agent
+    clarification_store_context: StoreContext[ClarificationStore]
+    extraction_store_context: StoreContext[ExtractionStore]
+    extraction_context_assembler: ExtractionContextAssembler
+    extraction_budget_builder: ExtractionBudgetBuilder
+    extraction_policy: ExtractionPolicy
+    clarification_agent: ClarificationAgent
+    documents_service: DocumentService
 
     async def get(self, run_id: UUID) -> ClarificationView:
         store: ClarificationStore
@@ -53,17 +67,40 @@ class ClarificationWorkflow:
             return
         context: ClarificationContext = await self.build_context(run_id, view)
         extraction_store: ExtractionStore
-        async with self.extraction_steps.extraction_store_context.open() as extraction_store:
+        async with self.extraction_store_context.open() as extraction_store:
             extraction: ExtractionView = await extraction_store.get(run_id)
             usage: BudgetUsage = await extraction_store.usage(run_id)
-        budget: ExecutionBudget = self.extraction_steps.extraction_part_extractor.budget(
+        budget: ExecutionBudget = self.extraction_budget_builder.build_budget(
             run_id, extraction, usage
         )
         metadata: ClarificationMetadata = ClarificationMetadata(
             prompt_version=PROMPT_VERSION,
+            review_prompt_version=REVIEW_PROMPT_VERSION,
             context_digest=sha256(context.part.messages[-1].content.encode()).hexdigest(),
             model_profile=context.profile,
+            review_start_requests=usage.requests,
+            conflict_assessment_prompt_version=CONFLICT_ASSESSMENT_PROMPT_VERSION,
         )
+
+        if (
+            view.metadata is not None
+            and view.metadata.review_start_requests is not None
+            and (
+                view.metadata.context_digest,
+                view.metadata.model_profile,
+                view.metadata.prompt_version,
+                view.metadata.review_prompt_version,
+                view.metadata.conflict_assessment_prompt_version,
+            )
+            == (
+                metadata.context_digest,
+                metadata.model_profile,
+                metadata.prompt_version,
+                metadata.review_prompt_version,
+                metadata.conflict_assessment_prompt_version,
+            )
+        ):
+            metadata.review_start_requests = view.metadata.review_start_requests
 
         async def record_progress(coverage: ClarificationReviewCoverage) -> None:
             metadata.coverage = coverage
@@ -71,11 +108,13 @@ class ClarificationWorkflow:
             async with self.clarification_store_context.open() as clarification_store:
                 await clarification_store.set_review_metadata(run_id, metadata)
 
-        result: ClarificationReviewResult = await ClarificationReview(self.clarification_agent).run(
-            context, budget, record_progress
-        )
+        result: ClarificationReviewResult = await ClarificationReview(
+            self.clarification_agent,
+            ClarificationReviewCache(run_id, self.clarification_store_context),
+        ).run(context, budget, record_progress, metadata.review_start_requests)
         store: ClarificationStore
         async with self.clarification_store_context.open() as store:
+            await store.save_conflict_assessments(run_id, result.assessments)
             await store.save_questions(run_id, result.questions, metadata)
 
     async def build_context(self, run_id: UUID, view: ClarificationView) -> ClarificationContext:
@@ -83,7 +122,7 @@ class ClarificationWorkflow:
         async with self.clarification_store_context.open() as store:
             history: list[ClarificationQuestion] = await store.history(run_id)
             decisions: list[DecisionResult] = await store.history_decisions(run_id)
-        pack: ContextPack = await self.extraction_steps.context(run_id)
+        pack: ContextPack = await self.extraction_context_assembler.context(run_id)
         fragments: tuple[ContextFragment, ...] = tuple(
             fragment for part in pack.parts for fragment in part.fragments
         )
@@ -92,7 +131,7 @@ class ClarificationWorkflow:
             view.requirements,
             history,
             decisions,
-            self.extraction_steps.extraction_policy.profile,
+            self.extraction_policy.profile,
         )
 
     async def waiting(self, run_id: UUID) -> None:
@@ -105,11 +144,11 @@ class ClarificationWorkflow:
             return
         # Check immutable originals again after an arbitrarily long human pause.
         store: ExtractionStore
-        async with self.extraction_steps.extraction_store_context.open() as store:
+        async with self.extraction_store_context.open() as store:
             versions: list[UUID] = (await store.command(run_id)).version_ids
         version_id: UUID
         for version_id in versions:
-            await self.extraction_steps.documents_service.read(version_id)
+            await self.documents_service.read(version_id)
         clarification_store: ClarificationStore
         async with self.clarification_store_context.open() as clarification_store:
             await clarification_store.complete_cycle(run_id, expected_cycle)

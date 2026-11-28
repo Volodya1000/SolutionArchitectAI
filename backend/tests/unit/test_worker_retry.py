@@ -21,6 +21,9 @@ from solution_architect_ai.application.models.chat_dto import (
     RunView,
 )
 from solution_architect_ai.application.protocols.chat_protocols import ChatStore, Chunk
+from solution_architect_ai.application.protocols.transaction_protocols import (
+    TransactionRetriesExhausted,
+)
 from solution_architect_ai.application.retry import GenerationPolicy
 from solution_architect_ai.domain.messages import MessageRole
 from solution_architect_ai.domain.runs import RunErrorCode, RunStatus, resolve_transition
@@ -153,6 +156,33 @@ async def test_transient_empty_attempt_can_be_retried_to_completion() -> None:
     worker: RunWorker = RunWorker(stores, llm, POLICY, LangChainTokenCounter(1))
     await worker.execute(stores.pending())
     assert llm.attempts == 2
+    assert stores.record.status == RunStatus.COMPLETED
+    assert stores.record.content == "answer"
+
+
+async def test_exhausted_recovery_for_one_run_does_not_starve_queued_neighbors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stores: MemoryRun = MemoryRun()
+    worker: RunWorker = RunWorker(
+        stores, ScriptedLLM([(Chunk("answer", "stop"),)]), POLICY, LangChainTokenCounter(1)
+    )
+    poison: PendingRun = PendingRun(
+        id=uuid4(), status=RunStatus.RUNNING, created_at=stores.record.created_at
+    )
+    stores.store.queries.pending = AsyncMock(return_value=[poison, stores.pending()])
+
+    async def blocked_recovery(
+        run_id: UUID, _status: RunStatus, _error: RunErrorCode | None = None
+    ) -> None:
+        assert run_id == poison.id
+        raise TransactionRetriesExhausted("transaction_conflict")
+
+    monkeypatch.setattr(worker, "finish", blocked_recovery)
+    group: asyncio.TaskGroup
+    async with asyncio.TaskGroup() as group:
+        await worker.dispatch(group)
+        monkeypatch.undo()
     assert stores.record.status == RunStatus.COMPLETED
     assert stores.record.content == "answer"
 

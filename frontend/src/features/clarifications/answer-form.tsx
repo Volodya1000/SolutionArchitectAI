@@ -29,8 +29,9 @@ export function AnswerForm({
   sourceVersions: { version_id: string; sha256: string }[];
 }) {
   const store = savedValue(`draft:${runId}:${question.id}`, draftSchema);
+  const factualResolution = requiresFactualResolution(question);
   const [draft, setDraft] = useState(() => store.read() ?? pinDraft(question, sourceVersions));
-  const assumption = draft.kind === 'assumption';
+  const assumption = !factualResolution && draft.kind === 'assumption';
   const current = draftIsCurrent(draft, question, sourceVersions);
   const [recoveredEarlierRevision, setRecoveredEarlierRevision] = useState(false);
   const invalidate = useInvalidateClarifications();
@@ -40,7 +41,7 @@ export function AnswerForm({
     recover: recoverDecision,
     execute: (command) => answerQuestion(runId, question.id, command),
     onSuccess: async (result) => {
-      const earlierRevision = result.question_revision !== question.revision;
+      const earlierRevision = result.question_revision < question.revision;
       setRecoveredEarlierRevision(earlierRevision);
       if (!earlierRevision) store.clear();
       await invalidate();
@@ -88,7 +89,12 @@ export function AnswerForm({
           transfer={() => update(pinDraft(question, sourceVersions, draft))}
         />
       )}
-      <AnswerFields draft={draft} update={update} disabled={!current} />
+      <CurrentAnswerFields
+        factualResolution={factualResolution}
+        draft={draft}
+        update={update}
+        disabled={!current}
+      />
       <Button disabled={disabled || (!current && state.pending === null)}>
         {state.pending
           ? 'Повторить сохранённый ответ'
@@ -101,14 +107,49 @@ export function AnswerForm({
   );
 }
 
-function AnswerFields({
+function requiresFactualResolution(question: Question) {
+  return question.status === 'assumed' && Boolean(question.mandatory_conflict);
+}
+
+function CurrentAnswerFields({
+  factualResolution,
   draft,
   update,
   disabled,
 }: {
+  factualResolution: boolean;
   draft: AnswerDraft;
   update: (draft: AnswerDraft) => void;
   disabled: boolean;
+}) {
+  return (
+    <>
+      {factualResolution && (
+        <p className="notice" role="status">
+          Допущение не устраняет обязательный конфликт. Сохраните фактическое урегулирование;
+          прежнее решение и риск останутся в истории.
+        </p>
+      )}
+      <AnswerFields
+        draft={factualResolution ? { ...draft, kind: 'answer' } : draft}
+        update={update}
+        disabled={disabled}
+        allowAssumption={!factualResolution}
+      />
+    </>
+  );
+}
+
+function AnswerFields({
+  draft,
+  update,
+  disabled,
+  allowAssumption,
+}: {
+  draft: AnswerDraft;
+  update: (draft: AnswerDraft) => void;
+  disabled: boolean;
+  allowAssumption: boolean;
 }) {
   return (
     <fieldset disabled={disabled} className="answer-fields">
@@ -130,16 +171,18 @@ function AnswerFields({
           onChange={(event) => update({ ...draft, basis: event.target.value })}
         />
       </label>
-      <label className="checkbox-label">
-        <input
-          type="checkbox"
-          checked={draft.kind === 'assumption'}
-          onChange={(event) =>
-            update({ ...draft, kind: event.target.checked ? 'assumption' : 'answer' })
-          }
-        />
-        Принять как допущение
-      </label>
+      {allowAssumption && (
+        <label className="checkbox-label">
+          <input
+            type="checkbox"
+            checked={draft.kind === 'assumption'}
+            onChange={(event) =>
+              update({ ...draft, kind: event.target.checked ? 'assumption' : 'answer' })
+            }
+          />
+          Принять как допущение
+        </label>
+      )}
       {draft.kind === 'assumption' &&
         Object.entries(assumptionLabels).map(([field, label]) => (
           <label className="field-label" key={field}>

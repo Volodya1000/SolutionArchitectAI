@@ -11,6 +11,9 @@ from solution_architect_ai.application.models.extraction_models import (
     StoredExtractionSummary,
     StoredModelProfile,
 )
+from solution_architect_ai.application.prompts.extraction_pipeline import (
+    current_extraction_pipeline_versions,
+)
 from solution_architect_ai.application.prompts.extraction_prompt import (
     CONTRACT_VERSION,
     PROMPT_VERSION,
@@ -99,13 +102,19 @@ class RequirementsExtractionService:
     def summarize(self, view: StoredExtractionSummary) -> ExtractionSummary:
         return ExtractionSummary.model_validate(
             view.model_dump(exclude={"model_profile", "contract_version", "prompt_version"})
-        ).model_copy(update={"configuration_current": self.configuration_current(view)})
+        ).model_copy(
+            update={
+                "configuration_current": self.configuration_current(view),
+                "current_pipeline_versions": current_extraction_pipeline_versions(),
+            }
+        )
 
     def configuration_current(self, view: StoredExtractionSummary) -> bool:
         return (
             view.model_profile == self.model_profile
             and view.prompt_version == PROMPT_VERSION
             and view.contract_version == CONTRACT_VERSION
+            and view.pipeline_versions == current_extraction_pipeline_versions()
         )
 
     async def cancel(self, run_id: UUID) -> ExtractionView:
@@ -114,4 +123,9 @@ class RequirementsExtractionService:
             return self.describe(await store.set_status(run_id, RunStatus.CANCELLING))
 
     def describe(self, view: ExtractionView) -> ExtractionView:
-        return view.model_copy(update={"configuration_current": (self.configuration_current(view))})
+        return view.model_copy(
+            update={
+                "configuration_current": self.configuration_current(view),
+                "current_pipeline_versions": current_extraction_pipeline_versions(),
+            }
+        )

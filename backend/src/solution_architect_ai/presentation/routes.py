@@ -4,7 +4,7 @@ from uuid import UUID
 
 from dishka.integrations.fastapi import DishkaRoute, FromDishka
 from fastapi import APIRouter, Request
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from solution_architect_ai.application.models.chat_dto import (
     APIError,
@@ -23,6 +23,10 @@ from solution_architect_ai.application.protocols.store_context_protocols import 
 from solution_architect_ai.application.services.chat_service import ChatService
 
 router: APIRouter = APIRouter(prefix="/api", route_class=DishkaRoute)
+
+
+class EventStreamResponse(StreamingResponse):
+    media_type: str = "text/event-stream"
 
 
 @router.get("/model")
@@ -98,7 +102,12 @@ async def events(
         await asyncio.sleep(0.15)
 
 
-@router.get("/runs/{run_id}/events", responses={404: {"model": APIError}, 503: {"model": APIError}})
+@router.get(
+    "/runs/{run_id}/events",
+    response_class=EventStreamResponse,
+    response_model=RunSnapshotEvent,
+    responses={404: {"model": APIError}, 503: {"model": APIError}},
+)
 async def stream(
     run_id: UUID, request: Request, service: FromDishka[ChatService]
 ) -> StreamingResponse:
@@ -126,8 +135,11 @@ async def save_preferences(
         return await store.update_preferences(body)
 
 
-@router.get("/health/ready", responses={503: {"model": APIError}})
-async def ready(service: FromDishka[ChatService]) -> HealthStatus:
+@router.get("/health/ready", response_model=HealthStatus, responses={503: {"model": APIError}})
+async def ready(service: FromDishka[ChatService], request: Request) -> HealthStatus | JSONResponse:
+    tasks: list[asyncio.Task[None]] = getattr(request.app.state, "worker_tasks", [])
+    if any(task.done() for task in tasks):
+        return JSONResponse(status_code=503, content={"code": "required_worker_unavailable"})
     await service.ready()
     return HealthStatus(status="ready")
 

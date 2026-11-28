@@ -16,8 +16,9 @@ from solution_architect_ai.application.validation.source_message_language import
 )
 from solution_architect_ai.domain.messages import MessageRole
 
+PROMPT_VERSION: Final[str] = "structured-3"
 CORRECTION_PROMPT: Final[str] = (
-    "Previous response failed JSON or schema validation. Return only a complete JSON object "
+    "Previous response failed JSON, schema or evidence validation. Return only a complete JSON object "
     "matching the exact schema; do not invent additional source evidence."
     " Preserve the source language in all text fields. Normalization must not translate "
     "requirements, unresolved questions or contradictions."
@@ -26,22 +27,13 @@ _SCHEMA_PROMPT: Final[str] = (
     "Return exactly one JSON object matching this JSON Schema. "
     "Do not use Markdown fences or add prose. Schema: "
 )
+CORRECTION_RESERVATION: Final[str] = CORRECTION_PROMPT + " Validation diagnostic:" + " a" * 200
 _CYRILLIC_GUIDANCE: Final[str] = (
-    "Правила формата ответа: верни только JSON-объект, без Markdown и без тройных обратных кавычек. "
-    "Первый символ ответа — {, последний — }. "
-    # Intentional Russian prose complements the English structured-output contract.
-    "Все человекочитаемые поля сохраняют язык процитированного исходного фрагмента. "  # noqa: RUF001
-    "Если исходный фрагмент на русском, пиши формулировки, вопросы и основания на русском; "
-    "названия технологий и идентификаторы не переводи. "
-    "Поля original_text и normalized_text также должны оставаться на языке источника. "
-    "При нормализации исправляй формулировку, но не меняй язык и смысл. "
-    "Если исходная формулировка уже ясная, можно сохранить её без изменения. "
-    "Поля описания пробелов и противоречий также заполняй на языке источника. "
-    "Перед отправкой проверь все normalized_text: недопустимо заменять русские требования "
-    "английским переводом. В evidence.quote вставляй только дословную непрерывную подстроку "  # noqa: RUF001
-    "text того фрагмента, чей fragment_id указан. Не добавляй точку в конце, не меняй регистр "
-    "букв, пробелы или пунктуацию. fragment_id скопируй без изменения. "
-    "При необходимости цитируй весь text, включая Markdown-разметку."
+    "Return only a complete JSON object, without Markdown fences or surrounding prose. "
+    "Preserve the source language in human-readable fields; do not translate source prose. "
+    "Keep technical names and identifiers unchanged. Copy evidence.quote as an exact, "
+    "contiguous substring of the referenced fragment text, including its punctuation, "
+    "case and whitespace. Copy only supplied fragment labels."
 )
 
 
@@ -68,14 +60,14 @@ def render_messages(
             ),
         )
     corrections: tuple[StructuredMessage, ...] = (
-        StructuredMessage(MessageRole.USER, CORRECTION_PROMPT),
+        StructuredMessage(MessageRole.USER, CORRECTION_RESERVATION),
     ) * reserve_corrections
     language_guidance: tuple[StructuredMessage, ...] = (
         (StructuredMessage(MessageRole.SYSTEM, _CYRILLIC_GUIDANCE),)
         if uses_cyrillic_source_prose(request.messages)
         else ()
     )
-    return (*prefix, *request.messages, *corrections, *language_guidance)
+    return (*prefix, *language_guidance, *request.messages, *corrections)
 
 
 def token_messages(messages: tuple[StructuredMessage, ...]) -> list[MessageView]:

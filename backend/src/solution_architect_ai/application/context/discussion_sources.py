@@ -5,6 +5,10 @@ from solution_architect_ai.application.errors.chat_errors import Missing
 from solution_architect_ai.application.models.discussion_models import DiscussionBinding
 from solution_architect_ai.application.models.extraction_models import SourceRef
 from solution_architect_ai.application.services.discussion_service import DiscussionService
+from solution_architect_ai.application.validation.markdown_structure import (
+    separator_fragment_ids,
+    table_header_fragments,
+)
 from solution_architect_ai.domain.documents import DocumentFragment, ParsedDocument
 
 RELATED_CHARACTERS: Final[int] = 16000
@@ -34,15 +38,23 @@ class DiscussionSourceContextBuilder:
         sources: list[SourceRef] = []
         selected: SourceRef
         for selected in selected_sources:
-            if selected.version_id is None:
-                raise Missing("source_version")
-            exact: SourceRef = await self.discussion_service.source_reference(
-                selected.version_id, UUID(selected.fragment_id)
-            )
-            if exact.sha256 != selected.sha256 or exact.locator != selected.locator:
-                raise Missing("source_changed")
-            sources.append(exact)
+            sources.append(await self.selected_source(selected))
         return sources
+
+    async def selected_source(self, selected: SourceRef) -> SourceRef:
+        if selected.version_id is None:
+            raise Missing("source_version")
+        document: ParsedDocument = (
+            await self.discussion_service.documents_service.get_parsed_document(selected.version_id)
+        )
+        if selected.fragment_id in separator_fragment_ids(document):
+            raise Missing("source_not_semantic")
+        exact: SourceRef = await self.discussion_service.source_reference(
+            selected.version_id, UUID(selected.fragment_id)
+        )
+        if exact.sha256 != selected.sha256 or exact.locator != selected.locator:
+            raise Missing("source_changed")
+        return exact
 
     async def related_sources(
         self, selected: SourceRef, seen: set[str], remaining: int
@@ -58,15 +70,22 @@ class DiscussionSourceContextBuilder:
             if str(fragment.fragment_id) == selected.fragment_id
         )
         sources: list[SourceRef] = []
+        separator_ids: frozenset[str] = separator_fragment_ids(document)
+        seen = set(seen)
+        neighbors: tuple[DocumentFragment, ...] = (
+            *table_header_fragments(document, document.fragments[index]),
+            *document.fragments[max(0, index - 2) : index + 3],
+        )
         fragment: DocumentFragment
         # Nearby fragments preserve same-version context for examples spanning R03/R04.
-        for fragment in document.fragments[max(0, index - 2) : index + 3]:
-            if str(fragment.fragment_id) in seen or len(fragment.text) > remaining:
+        for fragment in neighbors:
+            if str(fragment.fragment_id) in seen | separator_ids or len(fragment.text) > remaining:
                 continue
             sources.append(
                 await self.discussion_service.source_reference(
                     selected.version_id, fragment.fragment_id
                 )
             )
+            seen.add(str(fragment.fragment_id))
             remaining -= len(fragment.text)
         return sources, len(document.fragments)
