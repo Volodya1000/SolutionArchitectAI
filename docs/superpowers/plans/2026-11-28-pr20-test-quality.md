@@ -15,21 +15,21 @@ No intermediate approval or merge. Preserve strict annotations and coverage floo
 
 ## Tasks
 
-- [ ] Record baseline collection, coverage and gate duration. Read the testing
+- [x] Record baseline collection, coverage and gate duration. Read the testing
   notes at `de613d951f73f017f92f93509957b3e82d6ca0e1` and audit the current suites.
-- [ ] Strengthen independent requirement/role/route/SSE expectations, replace path
+- [x] Strengthen independent requirement/role/route/SSE expectations, replace path
   identity with value equality, and run reversible mutations before and after.
-- [ ] Replace SQLAlchemy session mocks with PostgreSQL corruption scenarios;
+- [x] Replace SQLAlchemy session mocks with PostgreSQL corruption scenarios;
   verify fresh reads, isolate database state and exercise reordered collection.
   Replace checkpoint structure assertions with recovery and durable-result checks.
-- [ ] Remove proxy dependence from SDK transport tests and include them once in
+- [x] Remove proxy dependence from SDK transport tests and include them once in
   fast/full. Preserve real SDK serialization, retries, cancellation and no network.
-- [ ] Strengthen equal-sequence frontend regression; replace DOM/cache assertions
+- [x] Strengthen equal-sequence frontend regression; replace DOM/cache assertions
   with user-facing behavior and replace matching business logic with explicit MSW
   scenario responses. Exclude test support from production coverage.
-- [ ] Add product/test import boundaries, targeted Ruff SLF001, a small typed AST
+- [x] Add product/test import boundaries, targeted Ruff SLF001, a small typed AST
   session-mock check and test-specific ESLint rules, including rejection probes.
-- [ ] Document the principles and concrete examples in English, update Unreleased
+- [x] Document the principles and concrete examples in English, update Unreleased
   and the existing checklist, and publish reproducible mutation/audit evidence.
 - [ ] Run all fast/full gates and pre-commit, review the final diff, commit logical
   groups, push the existing branch, update PR description and wait for Actions.
@@ -48,3 +48,6 @@ No intermediate approval or merge. Preserve strict annotations and coverage floo
 
 Commands, outcomes and limitations are recorded in
 `docs/technical/pr20-test-quality.md`; temporary defects must never be committed.
+
+Implementation and local verification completed at `325bd28acd96441298989cc5d895197cf0ad67de`. The final
+publication/Actions task is tracked in PR #20 after this plan snapshot is committed.

@@ -6,6 +6,10 @@ merge belongs to Volodya. This report concerns the approved testing-quality task
 The earlier real-model acceptance remains a separate open criterion in the
 [acceptance checklist](pr20-acceptance-fixes.md).
 
+Implementation code SHA: `325bd28acd96441298989cc5d895197cf0ad67de`. Subsequent reporting-only commits do not change
+the tested application, test or gate implementations. The published head and CI
+receipt are recorded in the PR description.
+
 ## Baseline and method
 
 Reviewed all 24 Markdown files (README and 23 notes) at notes commit
@@ -182,7 +186,7 @@ contention; they are observations, not statistically controlled performance clai
 - **Real models:** no new paid or local real-model requests were made for this
   testing-quality task; previous Qwen evidence remains failed and is not reclassified.
 
-The timing run precedes final assertion-only cleanup; mandatory publication hooks
+The timing run precedes final test-only cleanup with identical production code; mandatory publication hooks
 and Actions recheck the final tree. An additional history-recovery test now uses a
 controlled response gate instead of a 1400 ms delay, asserting that repeated SSE
 failures do not restart an in-flight HTTP read. Changing `cancelRefetch` to true
