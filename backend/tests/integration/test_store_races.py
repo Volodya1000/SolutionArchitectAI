@@ -147,7 +147,7 @@ async def test_pending_fetches_all_runs_in_one_statement(
     with record_selects(engine) as statements:
         async with stores.open() as store:
             pending: list[PendingRun] = await store.queries.pending()
-    assert {run.id for run in created} <= {run.id for run in pending}
+    assert {run.id for run in created} == {run.id for run in pending}
     assert len(statements) == 1
     assert "messages" not in statements[0].lower()
     run: RunView

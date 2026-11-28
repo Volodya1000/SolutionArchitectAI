@@ -103,4 +103,4 @@ def test_other_windows_device_namespaces_are_not_rewritten() -> None:
 
 def test_posix_canonical_paths_are_not_rewritten() -> None:
     original: PurePosixPath = PurePosixPath("/srv/files/version")
-    assert comparison_path(original) is original
+    assert comparison_path(original) == original

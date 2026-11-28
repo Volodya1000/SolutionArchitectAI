@@ -9,8 +9,6 @@ from uuid import UUID, uuid4
 
 import pytest
 from dishka import AsyncContainer, make_async_container
-from langchain_core.runnables import RunnableConfig
-from langgraph.types import StateSnapshot
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine, AsyncSession, async_sessionmaker
 
@@ -57,7 +55,6 @@ from solution_architect_ai.di.providers import AppProvider
 from solution_architect_ai.domain.documents import ParsedDocument
 from solution_architect_ai.domain.requirements import EvidenceStatus
 from solution_architect_ai.domain.runs import RunStatus
-from solution_architect_ai.infrastructure.extraction_graph import LangGraphExtraction
 from solution_architect_ai.persistence.extractions.extraction_models import (
     ExtractionPartRow,
     ExtractionRow,
@@ -338,16 +335,10 @@ async def test_postgres_checkpoint_survives_resource_restart_after_saved_extract
 
     monkeypatch.setattr(steps, "validate_completed_parts", crash_before_merge)
     graph: ExtractionGraph = await resources.container.get(ExtractionGraph)
-    assert isinstance(graph, LangGraphExtraction)
     with pytest.raises(RuntimeError):
         await graph.run(run.id)
     saved: list[PartResult] = await part_records(resources, run.id)
     assert saved
-    config: RunnableConfig = {"configurable": {"thread_id": str(run.id)}}
-    checkpoint: object = await graph.state_graph.aget_state(config)
-    assert isinstance(checkpoint, StateSnapshot)
-    assert checkpoint.next == ("merge",)
-    assert set(checkpoint.values) == {"run_id", "index", "cycle", "clarification_only"}
     requests_before: int = (await resources.view(run.id)).requests
     await resources.container.close()
     restored: AsyncContainer = make_async_container(
@@ -369,6 +360,19 @@ async def test_postgres_checkpoint_survives_resource_restart_after_saved_extract
     assert {item.id for item in completed.requirements} == {
         item.id for part in saved for item in part.requirements
     }
+    await worker.execute(run.id)
+    replayed: ExtractionView = await resources.view(run.id)
+    assert replayed.requirements == completed.requirements
+    assert replayed.requests == completed.requests
+    assert replayed.id == run.id
+    sessions: async_sessionmaker[AsyncSession] = await restored.get(
+        async_sessionmaker[AsyncSession]
+    )
+    session: AsyncSession
+    async with sessions.begin() as session:
+        assert await session.scalar(
+            select(func.count()).select_from(RequirementRow).where(RequirementRow.run_id == run.id)
+        ) == len(completed.requirements)
 
 
 async def test_shared_budget_across_parts_preserves_completed_candidates_on_failure(

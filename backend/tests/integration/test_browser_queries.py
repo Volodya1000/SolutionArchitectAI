@@ -67,7 +67,7 @@ from solution_architect_ai.persistence.documents.document_store import SqlAlchem
 from solution_architect_ai.persistence.extractions.extraction_models import ExtractionRow
 from solution_architect_ai.persistence.extractions.extraction_store import SqlAlchemyExtractionStore
 from solution_architect_ai.persistence.models import ProjectRow, TaskRow
-from solution_architect_ai.presentation.extraction_routes import router
+from solution_architect_ai.presentation.api import create_http_app
 
 pytestmark: Final[list[pytest.MarkDecorator]] = [pytest.mark.anyio, pytest.mark.integration]
 PROFILE: Final[StoredModelProfile] = StoredModelProfile.model_validate(
@@ -100,8 +100,7 @@ async def browser_client_fixture(
     container: AsyncContainer = make_async_container(
         ServiceProvider(), context={RequirementsExtractionService: service}
     )
-    app: FastAPI = FastAPI()
-    app.include_router(router)
+    app: FastAPI = create_http_app()
     app.add_exception_handler(ChatError, chat_error)
     setup_dishka(container, app)
     try:
@@ -263,7 +262,11 @@ async def test_history_and_status_api_return_compact_current_configuration(
 async def test_history_api_rejects_unbounded_pagination(
     browser_client: tuple[httpx.AsyncClient, UUID], query: str
 ) -> None:
-    assert (await browser_client[0].get(f"/api/extractions/history?{query}")).status_code == 422
+    response: httpx.Response = await browser_client[0].get(f"/api/extractions/history?{query}")
+    assert response.status_code == 422
+    assert [item["loc"] for item in response.json()["detail"]] == [
+        ["query", query.split("=", 1)[0]]
+    ]
 
 
 async def test_operation_api_recovers_specific_execution(
@@ -347,6 +350,9 @@ async def test_matching_api_requires_explicit_scope(
         "/api/extractions/matching", params={"version_ids": str(uuid4())}
     )
     assert response.status_code == 422
+    assert [(item["loc"], item["type"]) for item in response.json()["detail"]] == [
+        (["query", "analysis_scope"], "missing")
+    ]
 
 
 @pytest.mark.parametrize("stored_history", ["implicit", "explicit", "legacy"])

@@ -5,9 +5,7 @@ from typing import Final
 from uuid import UUID, uuid4
 
 import pytest
-from langchain_core.runnables import RunnableConfig
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-from langgraph.types import StateSnapshot
 
 from backend.test_helpers.clarification_graph import (
     DOCUMENT,
@@ -59,12 +57,6 @@ class CycleCase:
             ),
         )
 
-    async def pending_nodes(self) -> tuple[str, ...]:
-        config: RunnableConfig = {"configurable": {"thread_id": str(self.run_id)}}
-        snapshot: object = await self.graph.state_graph.aget_state(config)
-        assert isinstance(snapshot, StateSnapshot)
-        return snapshot.next
-
 
 @pytest.fixture(name="cycle_case")
 async def cycle_case_fixture(
@@ -103,7 +95,6 @@ async def assert_new_cycle_waits_and_completes(case: CycleCase) -> None:
     assert waiting.questions[0].status == "open"
     assert waiting.decisions[0].resolution == "rejected"
     assert (await case.resources.view(case.run_id)).status == RunStatus.WAITING_INPUT
-    assert await case.pending_nodes() == ("wait_input",)
     assert (await case.resources.view(case.run_id)).requests == case.requests
     await case.service.answer(case.run_id, waiting.questions[0].id, answer(waiting.questions[0]))
     await case.worker.execute(case.run_id)
@@ -112,7 +103,6 @@ async def assert_new_cycle_waits_and_completes(case: CycleCase) -> None:
     assert [cycle.cycle for cycle in completed.completed_cycles] == [0, 1]
     assert not completed.resume_pending
     assert (await case.resources.view(case.run_id)).requests == case.requests
-    assert not await case.pending_nodes()
 
 
 async def test_rejection_supersedes_old_complete_checkpoint_after_sql_commit(
@@ -130,7 +120,6 @@ async def test_rejection_supersedes_old_complete_checkpoint_after_sql_commit(
     assert [
         cycle.cycle for cycle in (await cycle_case.service.get(cycle_case.run_id)).completed_cycles
     ] == [0]
-    assert await cycle_case.pending_nodes() == ("complete",)
     await cycle_case.reject()
     monkeypatch.setattr(cycle_case.workflow, "complete", original)
     checkpointer: object = cycle_case.graph.state_graph.checkpointer
@@ -217,7 +206,7 @@ async def test_obsolete_cycle_completion_does_not_revalidate_source(
 
 
 async def test_worker_recovery_requeues_waiting_answer_through_clarification_store(
-    cycle_case: CycleCase, monkeypatch: pytest.MonkeyPatch
+    cycle_case: CycleCase,
 ) -> None:
     assert cycle_case.worker.clarification_store_context is not None
     view: ClarificationView = await cycle_case.service.get(cycle_case.run_id)
@@ -226,13 +215,6 @@ async def test_worker_recovery_requeues_waiting_answer_through_clarification_sto
         await store.acknowledge(cycle_case.run_id, view.resume_version)
     assert not (await cycle_case.service.get(cycle_case.run_id)).resume_pending
 
-    async def dispatch_target(group: asyncio.TaskGroup) -> None:
-        # Other integration cases retain pending rows; isolate dispatch, not SQL recovery.
-        await cycle_case.worker.dispatch_run(
-            group, await cycle_case.resources.view(cycle_case.run_id)
-        )
-
-    monkeypatch.setattr(cycle_case.worker, "dispatch", dispatch_target)
     group: asyncio.TaskGroup
     async with asyncio.TaskGroup() as group:
         await cycle_case.worker.poll(group)

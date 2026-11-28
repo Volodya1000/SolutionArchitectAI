@@ -11,6 +11,7 @@ from langchain_core.runnables import Runnable
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel, ConfigDict
 
+from backend.test_helpers.model_http_clients import model_http_clients
 from solution_architect_ai.application.errors.structured_errors import (
     StructuredErrorCode,
     StructuredGenerationFailure,
@@ -98,13 +99,13 @@ async def test_explicit_modes_use_schema_or_json_text_and_never_tools(mode: Stru
         received.append(json.loads(incoming.content))
         return httpx.Response(200, json=completion('{"count":2}'))
 
-    client: httpx.AsyncClient
-    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+    async with model_http_clients(respond) as clients:
         model: ChatOpenAI = ChatOpenAI(
             model="test",
             api_key="local-test",
             base_url="http://local.test/v1",
-            http_async_client=client,
+            http_async_client=clients.asynchronous,
+            http_client=clients.synchronous,
             max_retries=0,
             streaming=False,
             stream_usage=False,
@@ -166,13 +167,13 @@ async def test_cyrillic_source_guidance_reaches_actual_adapter_messages(
         ),
         ModelProfile("test", mode, 4096, 512),
     )
-    client: httpx.AsyncClient
-    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+    async with model_http_clients(respond) as clients:
         model: ChatOpenAI = ChatOpenAI(
             model="test",
             api_key="local-test",
             base_url="http://local.test/v1",
-            http_async_client=client,
+            http_async_client=clients.asynchronous,
+            http_client=clients.synchronous,
             max_retries=0,
             streaming=False,
             stream_usage=False,
@@ -217,13 +218,13 @@ async def test_rate_limit_does_not_retry_in_sdk_and_preserves_server_delay() -> 
             429, headers={"Retry-After": "3"}, json={"error": {"message": "limit"}}
         )
 
-    client: httpx.AsyncClient
-    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+    async with model_http_clients(respond) as clients:
         model: ChatOpenAI = ChatOpenAI(
             model="test",
             api_key="local-test",
             base_url="http://local.test/v1",
-            http_async_client=client,
+            http_async_client=clients.asynchronous,
+            http_client=clients.synchronous,
             max_retries=0,
             streaming=False,
             stream_usage=False,
@@ -253,13 +254,13 @@ async def test_raw_native_and_text_errors_reach_strict_validation(
     def respond(_incoming: httpx.Request) -> httpx.Response:
         return httpx.Response(200, json=completion(text, finish=finish))
 
-    client: httpx.AsyncClient
-    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+    async with model_http_clients(respond) as clients:
         model: ChatOpenAI = ChatOpenAI(
             model="test",
             api_key="local-test",
             base_url="http://local.test/v1",
-            http_async_client=client,
+            http_async_client=clients.asynchronous,
+            http_client=clients.synchronous,
             max_retries=0,
             streaming=False,
             stream_usage=False,
@@ -278,13 +279,13 @@ async def test_langchain_fallback_to_tools_is_rejected_before_network() -> None:
         requests.append(incoming)
         return httpx.Response(200, json=completion('{"count":2}'))
 
-    client: httpx.AsyncClient
-    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+    async with model_http_clients(respond) as clients:
         model: ChatOpenAI = ChatOpenAI(
             model="gpt-4",
             api_key="local-test",
             base_url="http://local.test/v1",
-            http_async_client=client,
+            http_async_client=clients.asynchronous,
+            http_client=clients.synchronous,
             max_retries=0,
             streaming=False,
             stream_usage=False,
@@ -346,13 +347,13 @@ async def test_unrelated_native_warning_does_not_reject_a_supported_request(
         received.append(json.loads(incoming.content))
         return httpx.Response(200, json=completion('{"count":2}'))
 
-    client: httpx.AsyncClient
-    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+    async with model_http_clients(respond) as clients:
         model: ChatOpenAI = ChatOpenAI(
             model="test",
             api_key="local-test",
             base_url="http://local.test/v1",
-            http_async_client=client,
+            http_async_client=clients.asynchronous,
+            http_client=clients.synchronous,
             max_retries=0,
             streaming=False,
             http_socket_options=(),
@@ -386,13 +387,13 @@ async def test_api_errors_have_safe_typed_diagnostics(
     def respond(_incoming: httpx.Request) -> httpx.Response:
         return httpx.Response(status, json={"error": {"message": "secret-prompt-content"}})
 
-    client: httpx.AsyncClient
-    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+    async with model_http_clients(respond) as clients:
         model: ChatOpenAI = ChatOpenAI(
             model="test",
             api_key="local-test",
             base_url="http://local.test/v1",
-            http_async_client=client,
+            http_async_client=clients.asynchronous,
+            http_client=clients.synchronous,
             max_retries=0,
             streaming=False,
             stream_usage=False,
@@ -416,13 +417,13 @@ async def test_transport_failures_are_typed_without_sdk_retries(simulate_timeout
             raise httpx.ReadTimeout("synthetic", request=incoming)
         raise httpx.ConnectError("synthetic", request=incoming)
 
-    client: httpx.AsyncClient
-    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+    async with model_http_clients(respond) as clients:
         model: ChatOpenAI = ChatOpenAI(
             model="test",
             api_key="local-test",
             base_url="http://local.test/v1",
-            http_async_client=client,
+            http_async_client=clients.asynchronous,
+            http_client=clients.synchronous,
             max_retries=0,
             streaming=False,
             stream_usage=False,
@@ -458,13 +459,13 @@ async def test_refusal_never_becomes_an_empty_success(mode: StructuredMode) -> N
             },
         )
 
-    client: httpx.AsyncClient
-    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+    async with model_http_clients(respond) as clients:
         model: ChatOpenAI = ChatOpenAI(
             model="test",
             api_key="local-test",
             base_url="http://local.test/v1",
-            http_async_client=client,
+            http_async_client=clients.asynchronous,
+            http_client=clients.synchronous,
             max_retries=0,
             streaming=False,
             stream_usage=False,
@@ -483,13 +484,13 @@ async def test_profile_mismatch_does_not_silently_change_model() -> None:
         requests.append(incoming)
         return httpx.Response(200, json=completion('{"count":2}'))
 
-    client: httpx.AsyncClient
-    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+    async with model_http_clients(respond) as clients:
         model: ChatOpenAI = ChatOpenAI(
             model="test",
             api_key="local-test",
             base_url="http://local.test/v1",
-            http_async_client=client,
+            http_async_client=clients.asynchronous,
+            http_client=clients.synchronous,
             max_retries=0,
             streaming=False,
             stream_usage=False,
@@ -523,13 +524,13 @@ async def test_corrective_http_requests_never_exceed_the_context_budget() -> Non
         initial, profile=ModelProfile("test", StructuredMode.JSON_TEXT, allowed + 512 + 13, 512, 13)
     )
     execution: ExecutionBudget = ExecutionBudget(3, monotonic() + 5, 2, correction_retries=2)
-    client: httpx.AsyncClient
-    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+    async with model_http_clients(respond) as clients:
         model: ChatOpenAI = ChatOpenAI(
             model="test",
             api_key="local-test",
             base_url="http://local.test/v1",
-            http_async_client=client,
+            http_async_client=clients.asynchronous,
+            http_client=clients.synchronous,
             max_retries=0,
             streaming=False,
             stream_usage=False,

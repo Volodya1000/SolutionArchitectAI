@@ -21,6 +21,15 @@ layers =
     solution_architect_ai.application
     solution_architect_ai.domain
 
+[importlinter:contract:no_test_support_in_app]
+name = Product code does not depend on pytest or test helpers
+type = forbidden
+source_modules =
+    solution_architect_ai
+forbidden_modules =
+    backend.test_helpers
+    pytest
+
 [importlinter:contract:domain]
 name = Domain has no framework dependencies
 type = forbidden

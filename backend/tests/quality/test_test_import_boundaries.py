@@ -18,6 +18,35 @@ def write_module(root: Path, name: str, source: str = "") -> None:
     (package / f"{components[-1]}.py").write_text(source, encoding="utf-8")
 
 
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import pytest\n",
+        "import pytest as testing\n",
+        "from pytest import raises as expect_failure\n",
+        "import backend.test_helpers.shared as support\n",
+        "from backend.test_helpers import shared as support\n",
+        "from backend import test_helpers as support\n",
+    ],
+)
+def test_product_cannot_depend_on_test_infrastructure(import_checkout: Path, source: str) -> None:
+    write_module(import_checkout, "solution_architect_ai.domain.probe", source)
+    result: subprocess.CompletedProcess[str] = lint_imports(import_checkout)
+    assert result.returncode != 0
+    assert "Product code does not depend on pytest or test helpers BROKEN" in result.stdout
+
+
+def test_product_can_use_its_domain_without_test_infrastructure(import_checkout: Path) -> None:
+    write_module(
+        import_checkout,
+        "solution_architect_ai.application.probe",
+        "from solution_architect_ai import domain\n",
+    )
+    result: subprocess.CompletedProcess[str] = lint_imports(import_checkout)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Product code does not depend on pytest or test helpers KEPT" in result.stdout
+
+
 @pytest.fixture(name="import_checkout")
 def import_checkout_fixture(tmp_path: Path) -> Path:
     name: str

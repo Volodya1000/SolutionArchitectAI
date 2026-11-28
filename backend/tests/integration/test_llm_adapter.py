@@ -5,6 +5,7 @@ import httpx
 import pytest
 from langchain_openai import ChatOpenAI
 
+from backend.test_helpers.model_http_clients import model_http_clients
 from solution_architect_ai.application.errors.chat_errors import GenerationFailure
 from solution_architect_ai.application.protocols.chat_protocols import Chunk
 from solution_architect_ai.infrastructure.llm import LangChainLLM
@@ -40,13 +41,13 @@ async def test_interrupted_transport_is_typed_and_closed() -> None:
     def respond(_request: httpx.Request) -> httpx.Response:
         return httpx.Response(200, headers={"Content-Type": "text/event-stream"}, stream=stream)
 
-    client: httpx.AsyncClient
-    async with httpx.AsyncClient(transport=httpx.MockTransport(respond)) as client:
+    async with model_http_clients(respond) as clients:
         model: ChatOpenAI = ChatOpenAI(
             model="test",
             api_key="local-test",
             base_url="http://local.test/v1",
-            http_async_client=client,
+            http_async_client=clients.asynchronous,
+            http_client=clients.synchronous,
             max_retries=0,
             stream_usage=False,
         )
@@ -69,13 +70,13 @@ async def test_sdk_does_not_add_hidden_network_retries() -> None:
             503, headers={"Retry-After": "3"}, json={"error": {"message": "synthetic unavailable"}}
         )
 
-    client: httpx.AsyncClient
-    async with httpx.AsyncClient(transport=httpx.MockTransport(unavailable)) as client:
+    async with model_http_clients(unavailable) as clients:
         model: ChatOpenAI = ChatOpenAI(
             model="test",
             api_key="local-test",
             base_url="http://local.test/v1",
-            http_async_client=client,
+            http_async_client=clients.asynchronous,
+            http_client=clients.synchronous,
             max_retries=0,
             stream_usage=False,
         )

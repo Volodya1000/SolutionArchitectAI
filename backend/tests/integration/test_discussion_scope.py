@@ -54,7 +54,7 @@ from solution_architect_ai.persistence.clarifications.clarification_store import
     SqlAlchemyClarificationStore,
 )
 from solution_architect_ai.persistence.extractions.extraction_models import ExtractionRow
-from solution_architect_ai.presentation.discussion_routes import router
+from solution_architect_ai.presentation.api import create_http_app
 
 pytestmark: Final[list[pytest.MarkDecorator]] = [pytest.mark.anyio, pytest.mark.integration]
 
@@ -173,8 +173,7 @@ async def scope_client_fixture(resources: Resources) -> AsyncIterator[httpx.Asyn
     container: AsyncContainer = make_async_container(
         provider, context={DiscussionService: resources.discussions}
     )
-    app: FastAPI = FastAPI()
-    app.include_router(router)
+    app: FastAPI = create_http_app()
     setup_dishka(container, app)
     try:
         client: httpx.AsyncClient

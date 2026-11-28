@@ -40,7 +40,8 @@ from solution_architect_ai.domain.documents import ParsedDocument
 from solution_architect_ai.infrastructure.parsers.document_parser import DocumentParser
 from solution_architect_ai.infrastructure.storage.local_files_storage import LocalFileStorage
 from solution_architect_ai.persistence.store import SqlAlchemyStore
-from solution_architect_ai.presentation.document_routes import document_error, router
+from solution_architect_ai.presentation.api import create_http_app
+from solution_architect_ai.presentation.document_routes import document_error
 
 pytestmark: Final[list[pytest.MarkDecorator]] = [pytest.mark.anyio, pytest.mark.integration]
 VERSIONS: Final[TypeAdapter[list[DocumentVersionView]]] = TypeAdapter(list[DocumentVersionView])
@@ -72,8 +73,7 @@ async def document_client(tmp_path: Path) -> AsyncIterator[tuple[httpx.AsyncClie
             ServiceProvider(), context={DocumentService: service}
         )
         stack.push_async_callback(container.close)
-        app: FastAPI = FastAPI()
-        app.include_router(router)
+        app: FastAPI = create_http_app()
         app.add_exception_handler(DocumentFailure, document_error)
         app.add_exception_handler(ChatError, chat_error)
         setup_dishka(container, app)

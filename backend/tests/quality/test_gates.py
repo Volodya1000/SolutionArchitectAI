@@ -11,6 +11,18 @@ import pytest
 @pytest.mark.parametrize(
     ("module", "arguments", "source", "diagnostic"),
     [
+        (
+            "ruff",
+            ["check", "--select", "SLF001"],
+            "def read(value):\n    return value._private\n",
+            "SLF001",
+        ),
+        (
+            "ruff",
+            ["check", "--config", str(Path(__file__).parents[2] / "pyproject.toml")],
+            "import pytest\nwith pytest.raises(ValueError):\n    int('invalid')\n    int('also invalid')\n",
+            "PT012",
+        ),
         ("ruff", ["check", "--select", "F821"], "missing_name()\n", "F821"),
         (
             "pylint",

@@ -34,6 +34,7 @@ from solution_architect_ai.infrastructure.context import LangChainTokenCounter
 
 class RequirementPayload(BaseModel):
     id: str
+    original_text: str
     normalized_text: str
     category: str
 
@@ -54,9 +55,11 @@ async def test_adapter_receives_unambiguous_wording_for_same_fragment(reverse: b
         uuid4(), uuid4(), "a" * 64, "test", fragment.text, (fragment,)
     )
     first: RequirementView = referenced_requirement(document, fragment)
-    first.original_text = first.normalized_text = "Хранить отчёты 30 дней."
+    first.original_text = "Хранить отчёты 30 дней."
+    first.normalized_text = "Система сохраняет отчёты в течение 30 дней."
     second: RequirementView = referenced_requirement(document, fragment)
-    second.original_text = second.normalized_text = "Доступ к отчётам требует уточнения."
+    second.original_text = "Доступ к отчётам требует уточнения."
+    second.normalized_text = "Не определены права доступа к отчётам."
     second.category = RequirementCategory.CONSTRAINT
     requirements: list[RequirementView] = [second, first] if reverse else [first, second]
     context: ClarificationContext = ClarificationContextBuilder().build(
@@ -74,10 +77,27 @@ async def test_adapter_receives_unambiguous_wording_for_same_fragment(reverse: b
     )
     await ClarificationAgent(generator).clarify(context, ExecutionBudget(1, monotonic() + 10, 5))
     payload: Payload = Payload.model_validate_json(adapter.requests[0].messages[-1].content)
-    item: RequirementPayload
-    for item in payload.requirements:
-        actual: RequirementView = next(
-            value for value in requirements if str(value.id) == context.requirement_aliases[item.id]
+    expected: dict[str, tuple[str, str, str]] = {
+        str(first.id): (
+            "functional",
+            "Хранить отчёты 30 дней.",
+            "Система сохраняет отчёты в течение 30 дней.",
+        ),
+        str(second.id): (
+            "constraint",
+            "Доступ к отчётам требует уточнения.",
+            "Не определены права доступа к отчётам.",
+        ),
+    }
+    identifiers: list[str] = [context.requirement_aliases[item.id] for item in payload.requirements]
+    assert len(payload.requirements) == 2
+    assert len(set(identifiers)) == 2
+    assert set(identifiers) == set(expected)
+    assert {
+        context.requirement_aliases[item.id]: (
+            item.category,
+            item.original_text,
+            item.normalized_text,
         )
-        assert item.normalized_text == actual.normalized_text
-        assert item.category == actual.category.value
+        for item in payload.requirements
+    } == expected

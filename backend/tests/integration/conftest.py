@@ -15,6 +15,7 @@ from sqlalchemy.ext.asyncio import (
 from backend.test_helpers.clarification_http import HttpCase
 from backend.test_helpers.discussion_resources import Resources
 from backend.test_helpers.extraction_resources import ExtractionResources, upload
+from backend.test_helpers.postgres_isolation import isolated_test_database
 from backend.test_helpers.sql_store_setup import (
     SqlStoreSetup,
     clarification_store_setup,
@@ -73,6 +74,19 @@ from solution_architect_ai.persistence.clarifications.clarification_store import
 )
 from solution_architect_ai.persistence.discussions.store import SqlAlchemyDiscussionStore
 from solution_architect_ai.persistence.queries import DEFAULT_TASK_ID
+
+
+@pytest.fixture(autouse=True)
+async def isolated_postgres(
+    request: pytest.FixtureRequest,
+    monkeypatch: pytest.MonkeyPatch,
+) -> AsyncGenerator[None]:
+    if request.node.get_closest_marker("integration") is None:
+        yield
+        return
+    async with isolated_test_database(bootstrap().database) as database:
+        monkeypatch.setenv("SAA_DATABASE__DATABASE", database)
+        yield
 
 
 @pytest.fixture(name="resources")

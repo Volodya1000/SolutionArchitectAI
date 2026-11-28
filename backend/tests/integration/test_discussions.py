@@ -79,8 +79,7 @@ from solution_architect_ai.persistence.extractions.extraction_models import Extr
 from solution_architect_ai.persistence.models import ChatRow
 from solution_architect_ai.persistence.queries import DEFAULT_TASK_ID
 from solution_architect_ai.persistence.store import SqlAlchemyStore
-from solution_architect_ai.presentation.clarification_routes import router as clarification_router
-from solution_architect_ai.presentation.discussion_routes import router as discussion_router
+from solution_architect_ai.presentation.api import create_http_app
 from solution_architect_ai.presentation.document_routes import document_error
 
 pytestmark: Final[list[pytest.MarkDecorator]] = [pytest.mark.anyio, pytest.mark.integration]
@@ -304,9 +303,7 @@ async def test_http_discussion_roundtrip_and_rejects_forged_author(resources: Re
             ClarificationService: resources.discussions.clarification_service,
         },
     )
-    app: FastAPI = FastAPI()
-    app.include_router(discussion_router)
-    app.include_router(clarification_router)
+    app: FastAPI = create_http_app()
     app.add_exception_handler(ChatError, chat_error)
     app.add_exception_handler(DocumentFailure, document_error)
     setup_dishka(container, app)
@@ -337,6 +334,9 @@ async def test_http_discussion_roundtrip_and_rejects_forged_author(resources: Re
                 },
             )
             assert forged.status_code == 422
+            assert [(item["loc"], item["type"]) for item in forged.json()["detail"]] == [
+                (["body", "author_id"], "extra_forbidden")
+            ]
             answer: httpx.Response = await client.post(
                 f"/api/extractions/{chat.id}/questions/{uuid4()}/answers",
                 json=AnswerClarification(
