@@ -14,6 +14,7 @@ from solution_architect_ai.config.models import (
     DatabaseSettings,
     GitSettings,
     LLMSettings,
+    LocalActorSettings,
     Mode,
     ServerSettings,
     StorageSettings,
@@ -38,6 +39,7 @@ class Settings(BaseSettings):
     llm: LLMSettings = Field(default_factory=LLMSettings)
     git: GitSettings = Field(default_factory=GitSettings)
     storage: StorageSettings = Field(default_factory=StorageSettings)
+    local_actor: LocalActorSettings = Field(default_factory=LocalActorSettings)
 
     @classmethod
     def settings_customise_sources(

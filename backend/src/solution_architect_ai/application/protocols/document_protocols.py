@@ -1,5 +1,4 @@
 from collections.abc import AsyncIterator
-from contextlib import AbstractAsyncContextManager
 from dataclasses import dataclass
 from typing import Protocol
 from uuid import UUID
@@ -50,7 +49,3 @@ class DocumentStore(Protocol):
     async def save_parse(self, parsed: StoredParse) -> StoredParse: ...
     async def attach_document(self, message_id: UUID, version_id: UUID) -> DocumentVersionView: ...
     async def list_attachments(self, message_id: UUID) -> list[DocumentVersionView]: ...
-
-
-class DocumentStoreFactory(Protocol):
-    def open(self) -> AbstractAsyncContextManager[DocumentStore]: ...

@@ -1,0 +1,355 @@
+{
+  "versions": {
+    "python": "3.13.9",
+    "pypdf": "6.21.4",
+    "docling": "2.154.0",
+    "docling_core": "2.108.0",
+    "docling_parse": "7.28.0"
+  },
+  "configuration": {
+    "device": "cpu",
+    "num_threads": 4,
+    "ocr": false,
+    "table_structure": true,
+    "tableformer_mode": "accurate",
+    "offline_models": true,
+    "paid_api_calls": 0,
+    "new_model_downloads": 0
+  },
+  "pypdf": [
+    {
+      "file": "example.pdf",
+      "size": 149002,
+      "sha256": "f7ba1a604f90e66adeac48b56d1205ff554a2ca24978cbf019f8846048117a73",
+      "pages": 13,
+      "seconds": 0.3889007000007041,
+      "fragments": 526,
+      "r04": [
+        {
+          "text": "R-04                                      Аналитик выбирает день в пределах 30-дневного окна хранения и видит",
+          "page": 2,
+          "path": "page/2/line/41",
+          "id": "fdaab787-9950-59ce-8885-3c68ba13daa9"
+        },
+        {
+          "text": "R-04                                               «видит подразделения с          Чтение данных и подсчёт итогов",
+          "page": 6,
+          "path": "page/6/line/30",
+          "id": "d0bd94f0-4930-529b-b1d3-3655836fbe86"
+        }
+      ],
+      "warnings": [
+        "pdf_layout_and_tables_require_manual_review"
+      ],
+      "raw_columns_preserved_as_tables": false
+    },
+    {
+      "file": "brd.pdf",
+      "size": 105052,
+      "sha256": "e37f18407df5af480cace686b2ca46f53547c663dc1cc4d5bcf171e8686ed1e3",
+      "pages": 15,
+      "seconds": 0.5170093999995515,
+      "fragments": 701,
+      "r04": [
+        {
+          "text": "4. FR-04 — Проектирование архитектуры данных.",
+          "page": 3,
+          "path": "page/3/line/11",
+          "id": "f1143ee1-dca1-5436-a9af-7483ce601e62"
+        },
+        {
+          "text": "FR-04. Проектирование архитектуры данных",
+          "page": 4,
+          "path": "page/4/line/8",
+          "id": "65a4e848-bbeb-5831-af09-20232fa29357"
+        },
+        {
+          "text": "данных, FR-04                       потоков; A-03 — Диаграмма                обоснование предлагаемых",
+          "page": 8,
+          "path": "page/8/line/19",
+          "id": "e78e676b-c435-535c-9660-0ffc426679f9"
+        }
+      ],
+      "warnings": [
+        "pdf_layout_and_tables_require_manual_review"
+      ],
+      "raw_columns_preserved_as_tables": false
+    }
+  ],
+  "docling": [
+    {
+      "file": "example.pdf",
+      "status": "success",
+      "seconds": 50.7247712999997,
+      "tables": 16,
+      "peak_rss_bytes": 1965862912
+    },
+    {
+      "file": "brd.pdf",
+      "status": "success",
+      "seconds": 30.49462940000012,
+      "tables": 11,
+      "peak_rss_bytes": 1965862912
+    }
+  ],
+  "example_page2": {
+    "table_rows": 10,
+    "table_cols": 2,
+    "provenance": [
+      {
+        "page_no": 2,
+        "bbox": {
+          "l": 49.351399600137796,
+          "t": 527.3199867125304,
+          "r": 545.5382834620124,
+          "b": 74.89207019071966,
+          "coord_origin": "BOTTOMLEFT"
+        },
+        "charspan": [
+          0,
+          0
+        ]
+      }
+    ],
+    "headers": [
+      {
+        "bbox": {
+          "l": 48.988538016565144,
+          "t": 318.741175763309,
+          "r": 61.752653777599335,
+          "b": 328.7609716877341,
+          "coord_origin": "TOPLEFT"
+        },
+        "row_span": 1,
+        "col_span": 1,
+        "start_row_offset_idx": 0,
+        "end_row_offset_idx": 1,
+        "start_col_offset_idx": 0,
+        "end_col_offset_idx": 1,
+        "text": "ID",
+        "column_header": true,
+        "row_header": false,
+        "row_section": false,
+        "fillable": false
+      },
+      {
+        "bbox": {
+          "l": 179.6568687260151,
+          "t": 318.8938836790621,
+          "r": 234.90820756554604,
+          "b": 329.8471413254738,
+          "coord_origin": "TOPLEFT"
+        },
+        "row_span": 1,
+        "col_span": 1,
+        "start_row_offset_idx": 0,
+        "end_row_offset_idx": 1,
+        "start_col_offset_idx": 1,
+        "end_col_offset_idx": 2,
+        "text": "Требование",
+        "column_header": true,
+        "row_header": false,
+        "row_section": false,
+        "fillable": false
+      }
+    ],
+    "r04": [
+      {
+        "bbox": {
+          "l": 49.00443519465625,
+          "t": 497.65454745292664,
+          "r": 70.49769121408463,
+          "b": 507.62059211730957,
+          "coord_origin": "TOPLEFT"
+        },
+        "row_span": 1,
+        "col_span": 1,
+        "start_row_offset_idx": 4,
+        "end_row_offset_idx": 5,
+        "start_col_offset_idx": 0,
+        "end_col_offset_idx": 1,
+        "text": "R-04",
+        "column_header": false,
+        "row_header": false,
+        "row_section": false,
+        "fillable": false
+      },
+      {
+        "bbox": {
+          "l": 180.3170138001442,
+          "t": 497.4893434047699,
+          "r": 536.288851082325,
+          "b": 540.1306312084198,
+          "coord_origin": "TOPLEFT"
+        },
+        "row_span": 1,
+        "col_span": 1,
+        "start_row_offset_idx": 4,
+        "end_row_offset_idx": 5,
+        "start_col_offset_idx": 1,
+        "end_col_offset_idx": 2,
+        "text": "Аналитик выбирает день в пределах 30-дневного окна хранения и видит подразделения с продажами: наименование, количество продаж и общую сумму. При отсутствии продаж выводится пустая сводка. Запрос даты вне окна отклоняется с сообщением о допустимом диапазоне",
+        "column_header": false,
+        "row_header": false,
+        "row_section": false,
+        "fillable": false
+      }
+    ]
+  },
+  "brd_page8": {
+    "table_rows": 6,
+    "table_cols": 3,
+    "provenance": [
+      {
+        "page_no": 8,
+        "bbox": {
+          "l": 49.82885708136846,
+          "t": 752.0754792232015,
+          "r": 545.06790512597,
+          "b": 552.1227457795857,
+          "coord_origin": "BOTTOMLEFT"
+        },
+        "charspan": [
+          0,
+          0
+        ]
+      }
+    ],
+    "headers": [
+      {
+        "bbox": {
+          "l": 51.024,
+          "t": 97.25153599999999,
+          "r": 74.16627840000001,
+          "b": 106.21793600000001,
+          "coord_origin": "TOPLEFT"
+        },
+        "row_span": 1,
+        "col_span": 1,
+        "start_row_offset_idx": 0,
+        "end_row_offset_idx": 1,
+        "start_col_offset_idx": 0,
+        "end_col_offset_idx": 1,
+        "text": "Этап",
+        "column_header": true,
+        "row_header": false,
+        "row_section": false,
+        "fillable": false
+      },
+      {
+        "bbox": {
+          "l": 206.952,
+          "t": 97.25153599999999,
+          "r": 258.4101696,
+          "b": 106.21793600000001,
+          "coord_origin": "TOPLEFT"
+        },
+        "row_span": 1,
+        "col_span": 1,
+        "start_row_offset_idx": 0,
+        "end_row_offset_idx": 1,
+        "start_col_offset_idx": 1,
+        "end_col_offset_idx": 2,
+        "text": "Создаются",
+        "column_header": true,
+        "row_header": false,
+        "row_section": false,
+        "fillable": false
+      },
+      {
+        "bbox": {
+          "l": 381.976,
+          "t": 97.25153599999999,
+          "r": 446.8210048,
+          "b": 106.21793600000001,
+          "coord_origin": "TOPLEFT"
+        },
+        "row_span": 1,
+        "col_span": 1,
+        "start_row_offset_idx": 0,
+        "end_row_offset_idx": 1,
+        "start_col_offset_idx": 2,
+        "end_col_offset_idx": 3,
+        "text": "Дополняются",
+        "column_header": true,
+        "row_header": false,
+        "row_section": false,
+        "fillable": false
+      }
+    ],
+    "fr04": [
+      {
+        "bbox": {
+          "l": 51.024,
+          "t": 219.78253600000005,
+          "r": 194.5670976,
+          "b": 239.70793600000002,
+          "coord_origin": "TOPLEFT"
+        },
+        "row_span": 1,
+        "col_span": 1,
+        "start_row_offset_idx": 4,
+        "end_row_offset_idx": 5,
+        "start_col_offset_idx": 0,
+        "end_col_offset_idx": 1,
+        "text": "Проектирование архитектуры данных, FR-04",
+        "column_header": false,
+        "row_header": false,
+        "row_section": false,
+        "fillable": false
+      },
+      {
+        "bbox": {
+          "l": 206.952,
+          "t": 219.78253600000005,
+          "r": 370.5619008,
+          "b": 250.66693599999996,
+          "coord_origin": "TOPLEFT"
+        },
+        "row_span": 1,
+        "col_span": 1,
+        "start_row_offset_idx": 4,
+        "end_row_offset_idx": 5,
+        "start_col_offset_idx": 1,
+        "end_col_offset_idx": 2,
+        "text": "A-02 - Каталог данных и матрица потоков; A-03 - Диаграмма потоков данных",
+        "column_header": false,
+        "row_header": false,
+        "row_section": false,
+        "fillable": false
+      },
+      {
+        "bbox": {
+          "l": 381.976,
+          "t": 219.78253600000005,
+          "r": 513.1813312,
+          "b": 250.66693599999996,
+          "coord_origin": "TOPLEFT"
+        },
+        "row_span": 1,
+        "col_span": 1,
+        "start_row_offset_idx": 4,
+        "end_row_offset_idx": 5,
+        "start_col_offset_idx": 2,
+        "end_col_offset_idx": 3,
+        "text": "A-01, A-06, A-07, включая обоснование предлагаемых решений",
+        "column_header": false,
+        "row_header": false,
+        "row_section": false,
+        "fillable": false
+      }
+    ]
+  },
+  "compatibility": {
+    "whitespace_joined_pypdf_r04_equals_docling_cell": true,
+    "docling_r04_cell_exact_in_any_pypdf_fragment": false,
+    "legacy_r04_first_fragment_id": "fdaab787-9950-59ce-8885-3c68ba13daa9"
+  },
+  "isolated_environment_apparent_bytes": 1116117717,
+  "install": {
+    "prepared_download_packages": 64,
+    "installed_packages": 108,
+    "prepare_seconds": 44.0,
+    "install_seconds": 25.71
+  }
+}

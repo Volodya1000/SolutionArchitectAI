@@ -1,21 +1,18 @@
 import { useQuery } from '@tanstack/react-query';
-import { useState } from 'react';
 import { Link, useSearchParams } from 'react-router';
 import { scopeKey } from '../../shared/api/client';
 import {
-  categories,
-  categorySchema,
   extractionActive,
   readExtraction,
-  type Category,
+  type Extraction,
   type ExtractionSummary,
-  type Requirement,
 } from '../../shared/api/extractions';
 import { useExtractionHistory, useExtractionStatus } from '../../shared/api/use-extraction-history';
 import { QueryError } from '../../shared/ui/query-error';
 import { Button } from '../../shared/ui/button';
-import { RequirementTable } from './requirement-table';
 import { RunStatus } from './run-status';
+import { RunResult } from './run-result';
+import { ReviewCoverage } from './review-coverage';
 
 export function Requirements() {
   const [search, setSearch] = useSearchParams();
@@ -29,7 +26,10 @@ export function Requirements() {
           Результаты анализа — кандидаты для проверки. Цитаты сверены с исходным текстом; это не
           подтверждает правильность формулировок и категорий.
         </p>
-        <Link className="text-link" to="/documents">
+        <Link
+          className="text-link"
+          to={selectedId ? `/documents?run=${encodeURIComponent(selectedId)}` : '/documents'}
+        >
           Выбрать документы для нового анализа
         </Link>
       </div>
@@ -110,8 +110,8 @@ function RunPanel({ id, initial }: { id: string; initial: ExtractionSummary | un
   const run = useQuery({
     queryKey: [...scopeKey, 'extraction', id],
     queryFn: () => readExtraction(id),
-    enabled: Boolean(status.data && !extractionActive(status.data)),
-    staleTime: Infinity,
+    enabled: status.data ? !extractionActive(status.data) : false,
+    staleTime: 0,
   });
   return (
     <>
@@ -125,6 +125,7 @@ function RunPanel({ id, initial }: { id: string; initial: ExtractionSummary | un
         />
       )}
       {status.data && <RunStatus run={status.data} coverage={run.data?.coverage} />}
+      {status.data && <ReviewCoverage run={status.data} />}
       {run.isFetching && <p role="status">Загружаем результат…</p>}
       {run.isError && (
         <QueryError
@@ -134,40 +135,11 @@ function RunPanel({ id, initial }: { id: string; initial: ExtractionSummary | un
           }}
         />
       )}
-      {run.data && <ExtractionResult candidates={run.data.requirements} />}
+      {run.data && <RunResult run={withCurrentStatus(run.data, status.data)} />}
     </>
   );
 }
 
-function ExtractionResult({ candidates }: { candidates: Requirement[] }) {
-  const [category, setCategory] = useState<Category | 'all'>('all');
-  const requirements = candidates.filter(
-    (item) => category === 'all' || item.category === category,
-  );
-  return (
-    <>
-      <div className="section-heading">
-        <label className="field-label">
-          Категория требований
-          <select
-            value={category}
-            onChange={(event) =>
-              setCategory(
-                event.target.value === 'all' ? 'all' : categorySchema.parse(event.target.value),
-              )
-            }
-          >
-            <option value="all">Все категории</option>
-            {Object.entries(categories).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <span className="notice">Кандидатов: {requirements.length}</span>
-      </div>
-      <RequirementTable requirements={requirements} />
-    </>
-  );
+function withCurrentStatus(run: Extraction, status: ExtractionSummary | undefined): Extraction {
+  return { ...run, status: status?.status ?? run.status };
 }

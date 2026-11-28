@@ -1,3 +1,8 @@
+import {
+  fixtureId,
+  fixtureHash,
+  storedModelProfileFixture,
+} from '@/shared/api/test-network-fixtures';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -11,26 +16,38 @@ import { mockExtractions } from '../shared/api/extraction-test-fixtures';
 import { sessionStore } from '../shared/ui/session-storage';
 
 const source = {
-  file_id: 'file-1',
-  version_id: 'v1',
-  sha256: 'abc123',
-  fragment_id: 'fragment-1',
+  file_id: fixtureId('file-1'),
+  version_id: fixtureId('v1'),
+  sha256: fixtureHash('abc123'),
+  fragment_id: fixtureId('fragment-1'),
   locator: { kind: 'lines', start: 2, end: 2, section: 'Функции' },
   quote: 'Сохранять отчёты',
   status: 'verified',
   reason: null,
 };
 const run = {
-  id: 'run-1',
+  pipeline_versions: null,
+  current_pipeline_versions: null,
+  version_ids: [],
+  model_profile: storedModelProfileFixture,
+  contract_version: 'requirements-1',
+  prompt_version: 'extract-3',
+
+  id: fixtureId('run-1'),
   status: 'completed',
   progress: { completed_parts: 1, total_parts: 1 },
   error_code: null,
   created_at: '2026-11-26T12:00:00Z',
   model: 'fake-extract',
-  coverage: { complete: true, total_fragments: 2, processed_fragments: 2 },
+  coverage: {
+    warnings: [],
+    complete: true,
+    total_fragments: 2,
+    processed_fragments: 2,
+  },
   requirements: [
     {
-      id: 'req-1',
+      id: fixtureId('req-1'),
       category: 'functional',
       original_text: 'Сохранять отчёты',
       normalized_text: 'Система сохраняет отчёты.',
@@ -38,7 +55,7 @@ const run = {
       status: 'needs_review',
     },
     {
-      id: 'req-2',
+      id: fixtureId('req-2'),
       category: 'gap',
       original_text: 'Срок не указан',
       normalized_text: 'Срок хранения отчётов не определён.',
@@ -77,14 +94,13 @@ function show(path = '/requirements') {
 
 it('shows the original source quote once and keeps technical metadata behind disclosure', async () => {
   show();
-  const row = (await screen.findByText('Система сохраняет отчёты.')).closest('tr');
-  if (!row) throw new Error('Requirement row is missing');
+  const row = await screen.findByRole('row', { name: /Система сохраняет отчёты/ });
   expect(within(row).queryByText('Исходная формулировка')).not.toBeInTheDocument();
   await userEvent.click(within(row).getByText('Цитата из документа'));
   expect(within(row).getAllByText(source.quote)).toHaveLength(1);
-  expect(within(row).getByText('SHA-256: abc123')).not.toBeVisible();
+  expect(within(row).getByText(new RegExp(`SHA-256: ${fixtureHash('abc123')}`))).not.toBeVisible();
   await userEvent.click(within(row).getByText('Технические сведения'));
-  expect(within(row).getByText('SHA-256: abc123')).toBeVisible();
+  expect(within(row).getByText(new RegExp(`SHA-256: ${fixtureHash('abc123')}`))).toBeVisible();
 });
 
 it.each(['', '   '])(
@@ -122,9 +138,12 @@ it('filters candidate requirements and links evidence to an exact source version
   show();
   expect(await screen.findByText('Система сохраняет отчёты.')).toBeVisible();
   expect(screen.getByText('Срок хранения отчётов не определён.')).toBeVisible();
-  expect(screen.queryByText('req-1')).not.toBeInTheDocument();
+  expect(screen.queryByText(fixtureId('req-1'))).not.toBeInTheDocument();
   const evidence = screen.getByRole('link', { name: 'Источник · Строка 2 · Функции' });
-  expect(evidence).toHaveAttribute('href', '/documents?version=v1&fragment=fragment-1');
+  expect(evidence).toHaveAttribute(
+    'href',
+    `/documents?version=${fixtureId('v1')}&fragment=${fixtureId('fragment-1')}&run=${fixtureId('run-1')}`,
+  );
   expect(screen.queryByText('Ссылка технически проверена')).not.toBeInTheDocument();
   expect(screen.getByText('Источник не подтверждён')).toBeVisible();
   await userEvent.selectOptions(
@@ -140,7 +159,12 @@ it('shows unverified sources and incomplete coverage without approving the extra
     ...mockExtractions([
       {
         ...run,
-        coverage: { complete: false, total_fragments: 4, processed_fragments: 2 },
+        coverage: {
+          warnings: [],
+          complete: false,
+          total_fragments: 4,
+          processed_fragments: 2,
+        },
         requirements: [
           {
             ...run.requirements[0],
@@ -184,42 +208,49 @@ it('cancels an active extraction and keeps its saved progress visible', async ()
 it('selects a historical extraction without replacing earlier requirements', async () => {
   const old = {
     ...run,
-    id: 'run-old',
+    id: fixtureId('run-old'),
     created_at: '2026-11-25T12:00:00Z',
     requirements: [{ ...run.requirements[0], normalized_text: 'Старая формулировка сохраняется.' }],
   };
   server.use(
     ...mockExtractions([run, old]),
     http.get('/api/extractions/:id', ({ params }) =>
-      HttpResponse.json(params.id === 'run-old' ? old : run),
+      HttpResponse.json(params.id === fixtureId('run-old') ? old : run),
     ),
   );
   show();
   expect(await screen.findByText('Система сохраняет отчёты.')).toBeVisible();
   await userEvent.selectOptions(
     screen.getByRole('combobox', { name: 'История извлечений' }),
-    'run-old',
+    fixtureId('run-old'),
   );
   expect(await screen.findByText('Старая формулировка сохраняется.')).toBeVisible();
   expect(screen.queryByText('Система сохраняет отчёты.')).not.toBeInTheDocument();
 });
 
 it('loads another page of compact history without fetching the unselected results', async () => {
-  const history = Array.from({ length: 51 }, (_, index) => ({ ...run, id: `run-${index}` }));
+  const history = Array.from({ length: 51 }, (_, index) => ({
+    ...run,
+    id: fixtureId(`run-${index}`),
+  }));
   let details = 0;
   server.use(...mockExtractions(history));
   server.use(
-    http.get('/api/extractions/run-0', () => {
+    http.get(`/api/extractions/${fixtureId('run-0')}`, () => {
       details++;
-      return HttpResponse.json({ ...run, id: 'run-0' });
+      return HttpResponse.json({ ...run, id: fixtureId('run-0') });
     }),
   );
   show();
   await screen.findByText('Система сохраняет отчёты.');
-  expect(screen.getByRole('combobox', { name: 'История извлечений' }).children).toHaveLength(50);
+  expect(
+    within(screen.getByRole('combobox', { name: 'История извлечений' })).getAllByRole('option'),
+  ).toHaveLength(50);
   await userEvent.click(screen.getByRole('button', { name: 'Загрузить ещё анализы' }));
   await waitFor(() =>
-    expect(screen.getByRole('combobox', { name: 'История извлечений' }).children).toHaveLength(51),
+    expect(
+      within(screen.getByRole('combobox', { name: 'История извлечений' })).getAllByRole('option'),
+    ).toHaveLength(51),
   );
   expect(details).toBe(1);
 });
@@ -253,7 +284,7 @@ it('does not invent a document link for a fragment absent from the supplied cont
                 version_id: null,
                 sha256: null,
                 locator: null,
-                fragment_id: 'invented',
+                fragment_id: fixtureId('invented'),
                 status: 'unverified',
                 reason: 'fragment_not_in_context',
               },
@@ -283,7 +314,7 @@ it('refreshes an active extraction until its persisted result is complete', asyn
     http.get('/api/extractions/:id/status', () =>
       HttpResponse.json(++reads < 2 ? { ...run, status: 'running' } : run),
     ),
-    http.get('/api/extractions/run-1', () => {
+    http.get(`/api/extractions/${fixtureId('run-1')}`, () => {
       details++;
       return HttpResponse.json(run);
     }),
@@ -294,4 +325,61 @@ it('refreshes an active extraction until its persisted result is complete', asyn
   expect(await screen.findByText('Система сохраняет отчёты.')).toBeVisible();
   expect(reads).toBeGreaterThanOrEqual(2);
   expect(details).toBe(1);
+});
+
+it('shows effective requirements while another question still blocks the waiting run', async () => {
+  const waiting = { ...run, status: 'waiting_input' };
+  server.use(...mockExtractions([waiting]));
+  server.use(
+    http.get(`/api/extractions/${fixtureId('run-1')}/clarifications`, () =>
+      HttpResponse.json({
+        ...{ conflict_assessments: [] },
+        metadata: null,
+        resume_version: 0,
+
+        run_id: fixtureId('run-1'),
+        history_id: fixtureId('history'),
+        cycle: 0,
+        initialized: true,
+        resume_pending: false,
+        requirements: [
+          {
+            ...run.requirements[0],
+            normalized_text: 'Хранить отчёты 90 дней — ответ архитектора.',
+          },
+        ],
+        questions: [
+          {
+            source_fingerprints: {},
+            requirement_fingerprints: {},
+            requirement_basis_fingerprints: {},
+            previous_sources: [],
+            mandatory_conflict: null,
+
+            id: fixtureId('q2'),
+            gap_key: 'volume',
+            revision: 1,
+            text: 'Каков объём?',
+            basis: 'Объём отсутствует',
+            dependent_decision: 'Размер хранилища',
+            blocking: true,
+            requirement_ids: [fixtureId('req-1')],
+            sources: [source],
+            status: 'open',
+            previous_basis: null,
+          },
+        ],
+        decisions: [],
+        risks: [],
+        completed_cycles: [],
+      }),
+    ),
+  );
+  show(`/requirements?run=${fixtureId('run-1')}&requirement=${fixtureId('req-1')}`);
+  expect(await screen.findByText('Ожидает ответа архитектора')).toBeVisible();
+  expect(await screen.findByText('Хранить отчёты 90 дней — ответ архитектора.')).toBeVisible();
+  await userEvent.click(screen.getByRole('button', { name: 'Открыть блокирующие вопросы' }));
+  expect(screen.getByText('Блокирующих вопросов: 1')).toBeVisible();
+  expect(screen.getByRole('region', { name: 'Каков объём?' })).toBeVisible();
+  expect(screen.getByRole('button', { name: 'Отменить извлечение' })).toBeEnabled();
 });

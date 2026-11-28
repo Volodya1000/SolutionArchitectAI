@@ -47,3 +47,33 @@
 - Retain explicit local annotations, including obvious assignment types; the user
   confirmed this preference during the PR 2 review. Annotate asynchronous generators
   with `AsyncGenerator`, and iterator inputs/contracts with `AsyncIterator` as appropriate.
+
+## Test quality
+
+- Optimize regression protection, refactoring resistance, feedback speed and
+  maintainability. Coverage diagnoses gaps; it does not prove assertions are useful.
+- Test one observable behavior or invariant with clear Arrange-Act-Assert sections.
+  Multiple assertions and state transitions are appropriate for one guarantee.
+- Give external contracts independent expected values. For complete collections,
+  check exact records, cardinality, uniqueness and association with their IDs;
+  use distinct values for fields that must remain distinct.
+- Prefer real domain objects and pure functions. Put doubles at meaningful external
+  boundaries; do not reproduce business algorithms in fixtures or MSW handlers.
+  Test persistence on PostgreSQL and verify durable writes through a fresh session
+  or public API. Preserve independent transactions for concurrency and recovery.
+- Use assembled `create_app()` routes in HTTP tests; never repair production
+  registration inside a test. Validation must fail for the named field or condition.
+- Assert visible frontend behavior and accessible controls, not CSS wrappers or
+  query-cache keys. Verify actual layout requirements in Playwright.
+- Exercise equality, empty/duplicate collections, ordering, retries, cancellation,
+  interrupted work and idempotency where meaningful. Isolate persisted state and
+  ambient configuration; deterministic suites must not contact real model endpoints.
+- Demonstrate a regression test failing for the faulty behavior and passing for the
+  fix. Use reversible targeted mutations for weak assertions; restore all temporary
+  defects before final checks. A targeted experiment is not a repository mutation score.
+- Keep tests and helpers strictly typed and scenario data visible. Do not import
+  another test module or `conftest`. Product code must not import test infrastructure.
+  Do not weaken assertions, lint rules or coverage thresholds to obtain green CI.
+- Consult [the quality plan](docs/technical/quality-and-testing.md) for examples,
+  gate scope, PostgreSQL isolation and justified exceptions. Do not impose mechanical
+  bans on all mocks, loops, SQLAlchemy imports, identity checks or multiple assertions.

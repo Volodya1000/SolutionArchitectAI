@@ -1,6 +1,7 @@
 from pathlib import Path
 from typing import ClassVar, Literal
 from urllib.parse import SplitResult, urlsplit
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, model_validator
 
@@ -14,6 +15,12 @@ class Section(BaseModel):
 class ServerSettings(Section):
     host: str = Field(default="127.0.0.1", min_length=1)
     port: int = Field(default=8000, ge=1, le=65535)
+
+
+class LocalActorSettings(Section):
+    id: UUID = UUID("10000000-0000-4000-8000-000000000003")
+    name: str = Field(default="Локальный архитектор", min_length=1, max_length=120)
+    can_write: bool = True
 
 
 class DatabaseCredentials(Section):

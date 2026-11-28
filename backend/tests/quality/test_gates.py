@@ -11,6 +11,18 @@ import pytest
 @pytest.mark.parametrize(
     ("module", "arguments", "source", "diagnostic"),
     [
+        (
+            "ruff",
+            ["check", "--select", "SLF001"],
+            "def read(value):\n    return value._private\n",
+            "SLF001",
+        ),
+        (
+            "ruff",
+            ["check", "--config", str(Path(__file__).parents[2] / "pyproject.toml")],
+            "import pytest\nwith pytest.raises(ValueError):\n    int('invalid')\n    int('also invalid')\n",
+            "PT012",
+        ),
         ("ruff", ["check", "--select", "F821"], "missing_name()\n", "F821"),
         (
             "pylint",
@@ -50,6 +62,10 @@ def test_tools_reject_the_intended_defect(
 
 
 def test_import_contract_rejects_a_domain_to_persistence_dependency(tmp_path: Path) -> None:
+    probe_directory: Path
+    for probe_directory in (tmp_path / "backend/tests", tmp_path / "backend/test_helpers"):
+        probe_directory.mkdir(parents=True)
+        (probe_directory / "__init__.py").touch()
     package: Path = tmp_path / "solution_architect_ai"
     package.mkdir()
     (package / "__init__.py").touch()
@@ -79,7 +95,7 @@ def test_import_contract_rejects_a_domain_to_persistence_dependency(tmp_path: Pa
             str(config),
         ],
         cwd=tmp_path,
-        env={**os.environ, "PYTHONPATH": str(tmp_path)},
+        env={**os.environ, "PYTHONPATH": os.pathsep.join([str(config.parents[1]), str(tmp_path)])},
         capture_output=True,
         text=True,
         check=False,
@@ -105,7 +121,8 @@ def test_resource_construction_stays_in_composition_and_scoped_factories() -> No
         "di/migrate.py",
         "di/documents.py",
         "di/extraction.py",
-        "persistence/factory.py",
+        "di/clarifications.py",
+        "di/discussions.py",
     }
     constructors: set[str] = {
         "AsyncSession",

@@ -64,49 +64,154 @@ Formatter-конфликтующие правила отступов/кавыч�
 Не отключаем всю категорию безопасности для infrastructure или всех тестов; подавление содержит код правила и конкретную причину.
 Статический анализ не находит весь мёртвый код: F/ARG ловят часть проблем, невызванные публичные функции требуют ревью, а не ложного обещания полного обнаружения.
 
-## Тесты backend и критерии Хорикова
+## Test quality and design
 
-Изучен документ пользователя [maps/docs/test-and-solid-review.md](https://github.com/Volodya1000/maps/blob/4bc0d4b4a822b22c8f6e7ca1fbd8adbbe508a7dd/docs/test-and-solid-review.md), раздел «Критерии Владимира Хорикова».
-Он связывает защиту от регрессий, устойчивость к рефакторингу, скорость обратной связи и сопровождаемость с наблюдаемым результатом, а не числом тестов.
-Также учтены [правила организации тестов maps](https://github.com/Volodya1000/maps/blob/4bc0d4b4a822b22c8f6e7ca1fbd8adbbe508a7dd/docs/testing.md): линейный Arrange/Act/Assert и один понятный сценарий.
-Принципы переносим на Python, а не копируем специфические проверки карты/Android.
+The [Khorikov notes](https://github.com/Volodya1000/unit-testing-principles-notes/tree/de613d951f73f017f92f93509957b3e82d6ca0e1)
+were reviewed in full for PR #20. Optimize four properties together: regression
+protection, resistance to refactoring, fast feedback and maintainability. Coverage
+helps locate unexecuted branches; it cannot establish whether assertions would
+notice an incorrect result. More tests or higher coverage are not success criteria.
 
-| Принцип | Применение к SolutionArchitectAI |
-| --- | --- |
-| Защита от регрессий | Неверная ссылка не заменяет модель; смена HTTPS-правила снимает согласование; поздний proposal не стирает правку |
-| Устойчивость к рефакторингу | Проверяем модель, доступный diff/отчёт и новый снимок, а не private-методы, DI-фабрики или порядок внутренних вызовов |
-| Быстрая обратная связь | Чистые domain/use case тесты с маленькими синтетическими входами; реальный Git/JVM и LLM-evals идут отдельно |
-| Сопровождаемость | Небольшие тесты с предметными именами, локальными fixtures, явными предусловиями и диагностикой |
+Use clear Arrange-Act-Assert sections and the simplest public entry point that
+exposes the behavior. One test owns one behavior or invariant, with as many
+assertions and transitions as that guarantee needs. Name it after the outcome.
+Keep meaningful scenario data and expected outcomes visible; share construction
+and resource management only when that removes incidental complexity.
 
-Unit-тестируется поведение инварианта или use case, а не каждый метод класса. Перемещение логики между внутренними методами не должно ломать тест.
-Fake допустим на внешней границе LLM/часов/ID; не подменяем валидаторы domain их ожидаемым ответом в проверке предметного правила.
-Mock взаимодействия оправдан для внешнего контракта: например, запрет записи агентом или ограничение реальных сетевых попыток.
-Точный счёт вызовов внутренних сервисов или формат внутреннего словаря не считается пользовательским контрактом.
-Integration-тест хранилища использует настоящий временный Git, парсер и файловую систему; иначе не проверит сохранение после рестарта и ref-конфликт.
-Unit может использовать fake repository для ветки конфликта, но это не доказательство атомарности реального Git-адаптера.
+### Independent expectations and completeness
 
-Предварительная организация тестов:
+External contracts need literal expectations independent of the implementation.
+`MessageRole.ASSISTANT` must serialize to `"assistant"`, not merely to `role.value`.
+The frontend independently accepts `system`, `user`, `assistant` and rejects `bot`;
+the existing OpenAPI drift check connects both sides of that contract.
 
-```text
-backend/tests/
-  unit/
-    requirements/          # факты, вопросы, допущения
-    architecture/          # модель и применение изменений
-    verification/          # граф, правила, статусы
-    agents/                # роли и переходы orchestrator
-  integration/
-    documents/             # источники, JSON/schema, локаторы ошибок
-    history/               # Git, ref, сбои, восстановление
-    llm/                   # SDK-адаптер без внешнего API
-    http/                  # FastAPI, DI, ошибки/контракты
-    rendering/             # настоящий PlantUML
-  support/                 # builders, fake ports, небольшая синтетика
+A loop over whatever a model request happens to contain cannot prove completeness:
+
+```python
+# Weak: an empty or truncated collection passes.
+for item in payload.requirements:
+    assert item.normalized_text == expected[item.id]
 ```
 
-[pytest fixtures](https://docs.pytest.org/en/stable/how-to/fixtures.html) имеют минимально необходимый scope; изменяемый проект/temp directory отдельный для каждого теста.
-Общий conftest содержит только общие механизмы; предметные fixtures живут рядом с фичей. Cleanup не скрывает утечки файлов/процессов.
-Async-сценарии выполняются pytest с AnyIO; HTTPX ASGI transport подходит для HTTP integration, отдельный smoke проверяет настоящий сервер.
-Ожидания ограничены timeout, без произвольных sleep; время и ID можно задавать fake-источником, но проверяем итоговый смысл.
+Instead assert the exact expected cardinality, unique IDs and the independently
+specified category/original/normalized tuple for each ID. Use different original
+and normalized texts so accidental substitution is observable. Retain both input
+orders. `test_pr20_requirement_context.py` exercises this at the LLM boundary,
+including two requirements sharing one physical source fragment.
+
+Exercise meaningful boundaries: equality as well as lower/higher sequences, empty
+and duplicate collections, ordering, interrupted work, retries, cancellation and
+idempotency. Identity assertions are appropriate for exception propagation or an
+explicit ownership contract; value objects such as canonical paths require equality.
+
+### Dependencies, persistence and isolation
+
+Prefer real domain values and pure functions. Keep parsing, transformation and
+error classification in fast tests. Do not mock SQLAlchemy session methods to
+simulate a store: use real PostgreSQL and prepare corrupt persisted records when
+that is the scenario. Read the result through a new session or public API, outside
+the arrange/action transaction, so an identity map cannot conceal a missing write.
+
+`test_persisted_data_classification.py` replaces five ORM session mocks while
+preserving distinctions between corrupt stored data, invalid incoming DTOs and DB
+unavailability. The existing transaction/error-mapping tests cover availability.
+A corrupted status must leave its row/budget unchanged after rollback.
+
+Each PostgreSQL integration case clones the migrated dedicated `_test` database
+into a randomly named test database and drops only that database at teardown.
+The guard rejects non-test templates. Production and browser-runtime databases are
+never templates for cleanup. Create fixtures after this autouse boundary; close
+connections before teardown. A worker restart within a test retains that test's
+DB and all its real commits. Tests therefore keep independent concurrent sessions,
+locks, cancellation and recovery semantics. Random names also avoid future worker
+collisions; running every test concurrently in CI is not enabled or claimed.
+The template must remain unused by application sessions; migrations seed it once.
+The dedicated test role needs `CREATEDB` permission, as provided by the local
+quality PostgreSQL container. Missing permissions fail setup rather than skipping
+persistence checks.
+
+Use controlled doubles at external boundaries (for example model HTTP transports).
+Interaction counts are meaningful when they protect a real cost or side effect,
+such as avoiding a repeated LLM call. They are not a reason to pin internal SQL
+method calls or graph node names. Graph recovery tests assert completion, stable
+requirement IDs, no duplicate results and no repeated completed generation after
+closing/recreating resources. Internal checkpoint key sets and pending node names
+are not that behavior. This does not promise arbitrary checkpoint compatibility
+between application versions; any such migration needs a separate stored fixture.
+
+### Assembled HTTP, streams and frontend behavior
+
+Application HTTP tests must use `create_app()` without manually including routers.
+Provide valid values for other required fields, invalidate only the target field,
+and check the validation location and error type as well as HTTP status. A generic
+422 for an empty body cannot prove that `subject` is required.
+
+For SSE, drive an active snapshot, an unchanged sequence and a later terminal
+snapshot. Assert the first frame, intervening heartbeats, no repeated snapshot,
+delivery of the new frame and normal exhaustion. Control time/state explicitly;
+no long sleeps or fragile elapsed-time assertions. Preserve existing concurrency,
+lost-response replay and cancellation scenarios.
+
+Frontend tests assert what users see, enter, submit, save and recover. Prefer roles,
+accessible names, visibility, input values and enabled controls over CSS classes,
+DOM ancestors or TanStack Query keys. The HTTP/SSE race test checks the public hook
+result after a delayed older HTTP response. A real browser checks the subject
+panel beside the composer through their screen bounds, rather than assuming that
+shared DOM parents imply layout. The answer form has an accessible name for users
+and semantic form submission tests, including stale-draft protection.
+
+MSW models the HTTP boundary with explicit scenario responses. Its matching handler
+accepts the server outcome specified by the test; it must not filter histories or
+reimplement server eligibility. The real backend matching suite checks exact
+version sets, history selection, configuration revisions and prior runs beyond the
+first page. Paging fixture data or looking up a specified response by ID is transport
+plumbing, not evidence that the backend algorithm works. Test fixtures/helpers are
+excluded from production coverage; do not lower coverage floors to compensate.
+
+### Automated boundaries and gates
+
+Run `uv run --locked --project backend python -m tools.quality setup` once to install
+hooks. Both hooks and CI use the existing `fast`/`full` runner. `full` includes `fast`;
+SDK adapters run in fast and are excluded from the PostgreSQL phase, and fast
+quality probes are deselected from the remaining full probes. Both SDK HTTP clients
+use `trust_env=False` and controlled transports; the unused synchronous transport
+fails explicitly if invoked. Tests run with pytest-socket network protection.
+Developer proxy variables must not alter deterministic tests.
+
+- Import-linter preserves architectural layers, test-module independence and the
+  explicit `conftest` import ban. Its additional forbidden contract prevents product
+  code from importing `backend.test_helpers` or `pytest`, including aliases.
+- Ruff retains `PT`, including `PT012`. The runner additionally selects `SLF001`
+  for tests/helpers only; no production-wide ignore is needed.
+- `tools.check_sqlalchemy_mocks` rejects `Mock`, `MagicMock`, `AsyncMock` specs or
+  spec sets referencing imported SQLAlchemy `Session`/`AsyncSession`, including
+  import aliases, module-qualified names, instances and positional specs. This is
+  deliberately a small AST check, not general data-flow analysis of dynamic Python.
+  It permits real ORM imports and doubles for external adapters. There are no
+  session-mock exemptions. Diagnostic inventory found five mocks, all removed;
+  the check is now blocking. Its own examples are source strings, not real mocks.
+- ESLint scopes Vitest `valid-expect`/`no-focused-tests` to Vitest tests, Testing
+  Library side-effect/node-access rules to UI tests, and Playwright await/timeout/
+  focus rules to E2E files. Node access started as warnings: eleven findings were
+  reviewed and removed, with no remaining false positives, then promoted to errors.
+  Product modules cannot import test support, MSW, Vitest or Testing Library.
+  The existing frontend contract probes verify both allowed and forbidden examples.
+
+Do not import one test module from another. Preserve explicit annotations throughout
+Python tests/helpers/tools. Avoid arbitrary length limits, one-assert rules, blanket
+mock/monkeypatch/SQLAlchemy/identity/loop bans or full snapshots of internal state.
+The notes' stronger shorthand recommendations are design advice, not mechanical
+requirements that override the project's concurrency and lifecycle guarantees.
+
+### Regression experiments
+
+For a regression, demonstrate RED for the faulty behavior and GREEN for the fix.
+For insufficient assertions, apply a small reversible production mutation, run the
+old and improved targeted tests separately, and restore the source in `finally`.
+Keep exact mutations, commands and outcomes in the PR evidence. Also try harmless
+value/DOM/checkpoint refactoring; behavioral tests should still pass. Do not commit
+temporary defects, duplicate a complete mutation framework or present these probes
+as a global mutation score. See [PR20 evidence](pr20-test-quality.md).
 
 ## Обязательные сценарии и связь с BRD
 
@@ -193,6 +298,18 @@ SOLID применяется к реальным границам, KISS/YAGNI о
 Правила import-linter ниже включаются в CI сразу после появления соответствующих пакетов; без фиктивных missing-module исключений.
 
 ## Архитектурные импорты
+
+Тесты проверяет собственный контракт import-linter: `tools/test_import_contract.py`.
+Он находит Python-файлы в репозитории и запрещает импорты тестовых модулей из других
+файлов, включая хелперы и инструменты. Проверяются относительные импорты,
+`TYPE_CHECKING`, имена `backend.tests`, `tests` и короткие имена модулей pytest.
+Проверка файлов нужна дополнительно к графу пакетов: pytest собирает также каталоги
+без `__init__.py`. Контракт работает из корня и из `backend`.
+Общие pytest-фикстуры находятся в ближайшем `conftest.py` и подключаются через
+обнаружение pytest; импортировать `conftest.py` вручную не нужно. Переиспользуемые
+данные, конструкторы, ресурсы и подставные модели находятся в `backend/test_helpers`.
+Новые модули и вложенные наборы тестов автоматически попадают под контракт.
+Отрицательные проверки самого правила — `backend/tests/quality/test_test_import_boundaries.py`.
 
 [import-linter](https://import-linter.readthedocs.io/en/stable/contract_types/) дополняет Ruff/Mypy: проверяет граф импортов, а не форматирование/типы. Конфигурация — `backend/.importlinter`, команда CI `uv run --locked lint-imports .importlinter` из `backend` с установленным backend package.
 

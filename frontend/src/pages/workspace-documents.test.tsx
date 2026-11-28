@@ -1,3 +1,8 @@
+import {
+  fixtureId,
+  fixtureHash,
+  storedModelProfileFixture,
+} from '@/shared/api/test-network-fixtures';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -11,16 +16,20 @@ import { mockExtractions } from '../shared/api/extraction-test-fixtures';
 import { sessionStore } from '../shared/ui/session-storage';
 
 const document = {
-  file_id: 'file-1',
-  task_id: 'task',
+  latest_version: null,
+
+  file_id: fixtureId('file-1'),
+  task_id: fixtureId('task'),
   name: 'BRD.md',
   created_at: '2026-11-26T12:00:00Z',
 };
 const version = {
-  file_id: 'file-1',
-  task_id: 'task',
-  version_id: 'v1',
-  sha256: 'abc123',
+  storage_key: 'fixture-key',
+
+  file_id: fixtureId('file-1'),
+  task_id: fixtureId('task'),
+  version_id: fixtureId('v1'),
+  sha256: fixtureHash('abc123'),
   mime_type: 'text/markdown',
   size: 100,
   original_name: 'BRD.md',
@@ -28,12 +37,14 @@ const version = {
 };
 const locator = { kind: 'lines', start: 3, end: 4, section: 'Требования' };
 const parsed = {
-  file_id: 'file-1',
-  version_id: 'v1',
-  sha256: 'abc123',
+  file_id: fixtureId('file-1'),
+  version_id: fixtureId('v1'),
+  sha256: fixtureHash('abc123'),
   parser_version: 'text-v1',
   text: 'Система должна сохранять отчёты.',
-  fragments: [{ fragment_id: 'fragment-1', text: 'Система должна сохранять отчёты.', locator }],
+  fragments: [
+    { fragment_id: fixtureId('fragment-1'), text: 'Система должна сохранять отчёты.', locator },
+  ],
   warnings: [],
 };
 const server = setupServer(
@@ -71,33 +82,50 @@ function show(path = '/documents') {
 }
 
 const completedRun = {
-  id: 'completed-run',
+  pipeline_versions: null,
+  current_pipeline_versions: null,
+  model_profile: storedModelProfileFixture,
+  contract_version: 'requirements-1',
+  prompt_version: 'extract-3',
+
+  id: fixtureId('completed-run'),
   status: 'completed',
   progress: { completed_parts: 1, total_parts: 1 },
   error_code: null,
   created_at: '2026-11-26T12:00:00Z',
   model: 'fake',
-  coverage: { complete: true, total_fragments: 1, processed_fragments: 1 },
+  coverage: {
+    warnings: [],
+    complete: true,
+    total_fragments: 1,
+    processed_fragments: 1,
+  },
   requirements: [],
-  version_ids: ['v1'],
+  version_ids: [fixtureId('v1')],
   analysis_scope: '',
   configuration_current: true,
 };
 
 async function selectVersion() {
   await userEvent.click(await screen.findByRole('button', { name: 'История версий BRD.md' }));
-  await userEvent.click(await screen.findByRole('checkbox', { name: 'Анализировать BRD.md · v1' }));
+  await userEvent.click(
+    await screen.findByRole('checkbox', {
+      name: `Анализировать BRD.md · ${fixtureId('v1')}`,
+    }),
+  );
 }
 
 it('selects the latest version directly without opening history or entering model instructions', async () => {
   let command: unknown;
   server.use(
     http.get('/api/documents', () =>
-      HttpResponse.json([{ ...document, latest_version: { ...version, version_id: 'v2' } }]),
+      HttpResponse.json([
+        { ...document, latest_version: { ...version, version_id: fixtureId('v2') } },
+      ]),
     ),
     http.get('/api/documents/:id/versions', () =>
       HttpResponse.json([
-        { ...version, version_id: 'v2', uploaded_at: '2026-11-27T12:00:00Z' },
+        { ...version, version_id: fixtureId('v2'), uploaded_at: '2026-11-27T12:00:00Z' },
         version,
       ]),
     ),
@@ -105,9 +133,9 @@ it('selects the latest version directly without opening history or entering mode
       command = await request.json();
       return HttpResponse.json({
         ...completedRun,
-        id: 'latest-run',
+        id: fixtureId('latest-run'),
         status: 'queued',
-        version_ids: ['v2'],
+        version_ids: [fixtureId('v2')],
       });
     }),
   );
@@ -135,13 +163,16 @@ it('selects the latest version directly without opening history or entering mode
   expect(screen.getByLabelText('На что обратить внимание (необязательно)')).not.toBeVisible();
   await userEvent.click(start);
   expect(await screen.findByRole('heading', { name: 'Требования', level: 1 })).toBeVisible();
-  expect(command).toMatchObject({ version_ids: ['v2'], analysis_scope: '' });
+  expect(command).toMatchObject({ version_ids: [fixtureId('v2')], analysis_scope: '' });
 });
 
 it('opens an existing result without generating another extraction', async () => {
   let requests = 0;
   server.use(
-    ...mockExtractions([completedRun]),
+    ...mockExtractions([completedRun], {
+      current_completed: completedRun,
+      latest_completed: completedRun,
+    }),
     http.get('/api/extractions/:id', () => HttpResponse.json(completedRun)),
     http.post('/api/extractions', () => {
       requests += 1;
@@ -161,10 +192,13 @@ it('opens an existing result without generating another extraction', async () =>
 it('explicitly repeats analysis and preserves the previous result', async () => {
   let command: unknown;
   server.use(
-    ...mockExtractions([completedRun]),
+    ...mockExtractions([completedRun], {
+      current_completed: completedRun,
+      latest_completed: completedRun,
+    }),
     http.post('/api/extractions', async ({ request }) => {
       command = await request.json();
-      const repeated = { ...completedRun, id: 'repeat-run', status: 'queued' };
+      const repeated = { ...completedRun, id: fixtureId('repeat-run'), status: 'queued' };
       server.use(...mockExtractions([repeated, completedRun]));
       return HttpResponse.json(repeated);
     }),
@@ -173,14 +207,20 @@ it('explicitly repeats analysis and preserves the previous result', async () => 
   await selectVersion();
   await userEvent.click(await screen.findByRole('button', { name: 'Повторить анализ' }));
   expect(await screen.findByRole('heading', { name: 'Требования', level: 1 })).toBeVisible();
-  expect(command).toMatchObject({ version_ids: ['v1'], analysis_scope: '' });
+  expect(command).toMatchObject({ version_ids: [fixtureId('v1')], analysis_scope: '' });
   await waitFor(() =>
-    expect(screen.getByRole('combobox', { name: 'История извлечений' }).children).toHaveLength(2),
+    expect(
+      within(screen.getByRole('combobox', { name: 'История извлечений' })).getAllByRole('option'),
+    ).toHaveLength(2),
   );
 });
 
 it('starts a new analysis for a changed scope or server configuration', async () => {
-  server.use(...mockExtractions([{ ...completedRun, configuration_current: false }]));
+  server.use(
+    ...mockExtractions([{ ...completedRun, configuration_current: false }], {
+      latest_completed: { ...completedRun, configuration_current: false },
+    }),
+  );
   show();
   await selectVersion();
   expect(
@@ -191,15 +231,27 @@ it('starts a new analysis for a changed scope or server configuration', async ()
     screen.queryByText('Документы, область анализа и настройки не изменились.'),
   ).not.toBeInTheDocument();
   await userEvent.click(screen.getByText('Уточнить анализ'));
+  let requestedScope: string | null = null;
+  server.use(
+    http.get('/api/extractions/matching', ({ request }) => {
+      requestedScope = new URL(request.url).searchParams.get('analysis_scope');
+      return HttpResponse.json({ active: null, current_completed: null, latest_completed: null });
+    }),
+  );
   await userEvent.type(
     screen.getByRole('textbox', { name: 'На что обратить внимание (необязательно)' }),
     'Данные',
   );
+  await waitFor(() => expect(requestedScope).toBe('Данные'));
   expect(screen.queryByRole('link', { name: 'Открыть результат' })).not.toBeInTheDocument();
 });
 
 it('opens a matching active analysis without offering a duplicate launch', async () => {
-  server.use(...mockExtractions([{ ...completedRun, status: 'running' }]));
+  server.use(
+    ...mockExtractions([{ ...completedRun, status: 'running' }], {
+      active: { ...completedRun, status: 'running' },
+    }),
+  );
   show();
   await selectVersion();
   expect(await screen.findByRole('link', { name: 'Открыть анализ' })).toBeVisible();
@@ -252,17 +304,21 @@ it('shows version history, opens an immutable source and uploads an explicit rev
   server.use(
     http.post('/api/documents/:id/versions', ({ params }) => {
       target = String(params.id);
-      return HttpResponse.json({ ...version, version_id: 'v2', original_name: 'BRD-2.md' });
+      return HttpResponse.json({
+        ...version,
+        version_id: fixtureId('v2'),
+        original_name: 'BRD-2.md',
+      });
     }),
   );
-  show('/documents?version=v1&fragment=fragment-1');
+  show(`/documents?version=${fixtureId('v1')}&fragment=${fixtureId('fragment-1')}`);
   expect(await screen.findByText('Система должна сохранять отчёты.')).toBeVisible();
   expect(screen.getByText('Строки 3–4 · Требования')).toBeVisible();
   expect(screen.getByRole('link', { name: 'Скачать оригинал' })).toHaveAttribute(
     'href',
-    '/api/document-versions/v1/content',
+    `/api/document-versions/${fixtureId('v1')}/content`,
   );
-  expect(screen.getByText('SHA-256: abc123')).toBeVisible();
+  expect(screen.getByText(new RegExp(`SHA-256: ${fixtureHash('abc123')}`))).toBeVisible();
   await userEvent.click(await screen.findByRole('button', { name: 'История версий BRD.md' }));
   expect(await screen.findByText('100 Б')).toBeVisible();
   await userEvent.upload(
@@ -273,7 +329,7 @@ it('shows version history, opens an immutable source and uploads an explicit rev
   expect(
     await screen.findByText('Версия сохранена. Ранее загруженные версии доступны в истории.'),
   ).toBeVisible();
-  expect(target).toBe('file-1');
+  expect(target).toBe(fixtureId('file-1'));
 });
 
 it('selects an exact version and starts extraction without a chat', async () => {
@@ -282,20 +338,36 @@ it('selects an exact version and starts extraction without a chat', async () => 
     http.post('/api/extractions', async ({ request }) => {
       command = await request.json();
       return HttpResponse.json({
-        id: 'run-1',
+        pipeline_versions: null,
+        current_pipeline_versions: null,
+        version_ids: [],
+        model_profile: storedModelProfileFixture,
+        contract_version: 'requirements-1',
+        prompt_version: 'extract-3',
+
+        id: fixtureId('run-1'),
         status: 'queued',
         progress: { completed_parts: 0, total_parts: 1 },
         error_code: null,
         created_at: '2026-11-26T12:00:00Z',
         model: 'fake',
-        coverage: { complete: false, total_fragments: 1, processed_fragments: 0 },
+        coverage: {
+          warnings: [],
+          complete: false,
+          total_fragments: 1,
+          processed_fragments: 0,
+        },
         requirements: [],
       });
     }),
   );
   show();
   await userEvent.click(await screen.findByRole('button', { name: 'История версий BRD.md' }));
-  await userEvent.click(await screen.findByRole('checkbox', { name: 'Анализировать BRD.md · v1' }));
+  await userEvent.click(
+    await screen.findByRole('checkbox', {
+      name: `Анализировать BRD.md · ${fixtureId('v1')}`,
+    }),
+  );
   await userEvent.click(screen.getByText('Уточнить анализ'));
   await userEvent.type(
     screen.getByRole('textbox', { name: 'На что обратить внимание (необязательно)' }),
@@ -304,7 +376,7 @@ it('selects an exact version and starts extraction without a chat', async () => 
   await userEvent.click(screen.getByRole('button', { name: 'Извлечь требования' }));
   expect(await screen.findByRole('heading', { name: 'Требования', level: 1 })).toBeVisible();
   expect(command).toMatchObject({
-    version_ids: ['v1'],
+    version_ids: [fixtureId('v1')],
     analysis_scope: 'Сервис отчётности',
   });
   expect(command).toHaveProperty('operation_id', expect.stringMatching(/^[\da-f-]{36}$/));
@@ -316,10 +388,10 @@ it('reports corrupt and unavailable source versions instead of showing a replace
       HttpResponse.json({ code: 'file_corrupted' }, { status: 409 }),
     ),
   );
-  show('/documents?version=v1&fragment=fragment-1');
+  show(`/documents?version=${fixtureId('v1')}&fragment=${fixtureId('fragment-1')}`);
   expect(await screen.findByRole('alert')).toHaveTextContent('Контрольная сумма');
   expect(screen.queryByText('Система должна сохранять отчёты.')).not.toBeInTheDocument();
-  expect(screen.getByText('Версия v1')).toBeVisible();
+  expect(screen.getByText(`Версия ${fixtureId('v1')}`)).toBeVisible();
 });
 
 it('renders document and version load errors with retry controls', async () => {
@@ -347,7 +419,7 @@ it('preserves parser warnings and renders untrusted document markup as plain sou
       }),
     ),
   );
-  show('/documents?version=v1&fragment=fragment-1');
+  show(`/documents?version=${fixtureId('v1')}&fragment=${fixtureId('fragment-1')}`);
   expect(await screen.findByText(injection)).toBeVisible();
   expect(
     screen.getByText('PDF: порядок текста и таблицы требуют ручной проверки по оригиналу.'),
@@ -359,13 +431,13 @@ it('preserves parser warnings and renders untrusted document markup as plain sou
 });
 
 it('reports an unavailable fragment and keeps the exact requested version', async () => {
-  show('/documents?version=v1&fragment=invented');
+  show(`/documents?version=${fixtureId('v1')}&fragment=${fixtureId('invented')}`);
   expect(
     await screen.findByText(
       'Указанный фрагмент отсутствует в этой версии. Другой источник не подставляется.',
     ),
   ).toBeVisible();
-  expect(screen.getByText('Версия v1')).toBeVisible();
+  expect(screen.getByText(`Версия ${fixtureId('v1')}`)).toBeVisible();
 });
 
 it('retries the same extraction operation after a lost response', async () => {
@@ -378,7 +450,11 @@ it('retries the same extraction operation after a lost response', async () => {
   );
   show();
   await userEvent.click(await screen.findByRole('button', { name: 'История версий BRD.md' }));
-  await userEvent.click(await screen.findByRole('checkbox', { name: 'Анализировать BRD.md · v1' }));
+  await userEvent.click(
+    await screen.findByRole('checkbox', {
+      name: `Анализировать BRD.md · ${fixtureId('v1')}`,
+    }),
+  );
   await userEvent.click(screen.getByRole('button', { name: 'Извлечь требования' }));
   expect(await screen.findByRole('alert')).toHaveTextContent('Повтор не создаст дубликат запуска.');
   await userEvent.click(screen.getByRole('button', { name: 'Повторить запуск' }));

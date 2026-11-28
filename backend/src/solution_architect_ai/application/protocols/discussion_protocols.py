@@ -1,0 +1,23 @@
+from typing import Protocol
+from uuid import UUID
+
+from solution_architect_ai.application.models.chat_dto import ChatView
+from solution_architect_ai.application.models.discussion_input_models import PreparedDiscussion
+from solution_architect_ai.application.models.discussion_models import (
+    CreateDiscussion,
+    DiscussionBinding,
+)
+from solution_architect_ai.application.models.extraction_models import ExtractionView
+
+
+class DiscussionStore(Protocol):
+    async def analysis(self, run_id: UUID) -> ExtractionView: ...
+    async def check_version(self, version_id: UUID) -> None: ...
+    async def create(self, command: CreateDiscussion, binding: DiscussionBinding) -> ChatView: ...
+    async def replay(self, command: CreateDiscussion) -> ChatView | None: ...
+    async def operation(self, operation_id: UUID) -> ChatView: ...
+    async def get(self, chat_id: UUID) -> DiscussionBinding | None: ...
+
+
+class DiscussionContext(Protocol):
+    async def prepare(self, chat_id: UUID) -> PreparedDiscussion | None: ...

@@ -35,11 +35,15 @@ def assemble_context(
 
 
 def select_context(
-    messages: list[MessageView], input_budget: int, tokens: TokenCounter
+    messages: list[MessageView],
+    input_budget: int,
+    tokens: TokenCounter,
+    prefix: list[MessageView] | None = None,
 ) -> list[MessageView]:
+    required: list[MessageView] = [] if prefix is None else prefix
     latest: int = pending_question_index(messages)
     question: MessageView = messages[latest]
-    if tokens.count([question]) > input_budget:
+    if tokens.count([*required, question]) > input_budget:
         raise GenerationFailure(RunErrorCode.CONTEXT_TOO_LARGE)
     turns: list[tuple[MessageView, MessageView]] = []
     index: int
@@ -51,7 +55,7 @@ def select_context(
         turns.append((previous, answer))
 
     def estimated_size(count: int) -> int:
-        return tokens.count(assemble_context(turns, count, question))
+        return tokens.count([*required, *assemble_context(turns, count, question)])
 
     count: int = bisect_right(range(len(turns) + 1), input_budget, key=estimated_size) - 1
-    return assemble_context(turns, count, question)
+    return [*required, *assemble_context(turns, count, question)]

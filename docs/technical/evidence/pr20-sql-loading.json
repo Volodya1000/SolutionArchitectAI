@@ -1,0 +1,66 @@
+{
+  "database": "PostgreSQL 17, isolated tmpfs test project",
+  "before": {
+    "save_after_10_parts": {
+      "queries": 5,
+      "selected_records": 13,
+      "bulk_part_payload_queries": 1
+    },
+    "replay_after_2_parts": {
+      "queries": 5,
+      "selected_records": 5,
+      "bulk_part_payload_queries": 1
+    },
+    "clarification_1_questions": {
+      "queries": 8,
+      "selected_records": 8,
+      "bulk_part_payload_queries": 0
+    },
+    "clarification_20_questions": {
+      "queries": 84,
+      "selected_records": 103,
+      "bulk_part_payload_queries": 0
+    }
+  },
+  "after": {
+    "save_after_10_parts": {
+      "queries": 4,
+      "selected_records": 2,
+      "bulk_part_payload_queries": 0
+    },
+    "replay_after_2_parts": {
+      "queries": 3,
+      "selected_records": 2,
+      "bulk_part_payload_queries": 0
+    },
+    "lookup_after_10_parts": {
+      "queries": 2,
+      "selected_records": 2,
+      "bulk_part_payload_queries": 0
+    },
+    "clarification_1_questions": {
+      "queries": 6,
+      "selected_records": 6,
+      "bulk_part_payload_queries": 0
+    },
+    "clarification_20_questions": {
+      "queries": 6,
+      "selected_records": 63,
+      "bulk_part_payload_queries": 0
+    },
+    "legacy_lookup_all_10_parts": {
+      "queries": 2,
+      "selected_records": 11,
+      "bulk_part_payload_queries": 1
+    },
+    "clarification_0_questions": {
+      "queries": 4,
+      "selected_records": 3,
+      "bulk_part_payload_queries": 0
+    }
+  },
+  "measurement": "SQLAlchemy after_cursor_execute; queries include all statements within operation; selected_records sums nonnegative cursor.rowcount for SELECT statements",
+  "fixture": "10 prior parts with 20,000 total original/normalized requirement text characters per part; shared fragment identifiers; 0/1/20 linked questions with one decision and risk each",
+  "legacy_lookup_note": "Legacy parts() lookup is unchanged by the patch and was measured in the same comparison test alongside keyed get_part().",
+  "remaining_cost": "PostgreSQL still reads/parses stored part JSON to aggregate fragment identifiers; no whole prior part payloads are sent back for progress updates."
+}

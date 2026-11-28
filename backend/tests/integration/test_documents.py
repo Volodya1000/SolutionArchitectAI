@@ -10,6 +10,7 @@ from dishka import AsyncContainer, make_async_container
 from sqlalchemy import update
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
+from backend.test_helpers.sql_store_setup import document_store_setup
 from solution_architect_ai.application.errors.chat_errors import (
     Conflict,
     Missing,
@@ -25,11 +26,8 @@ from solution_architect_ai.application.models.document_dto import (
     UploadOperationView,
     UploadStage,
 )
-from solution_architect_ai.application.protocols.document_protocols import (
-    DocumentStore,
-    DocumentStoreFactory,
-    StagedFile,
-)
+from solution_architect_ai.application.protocols.document_protocols import DocumentStore, StagedFile
+from solution_architect_ai.application.protocols.store_context_protocols import StoreContext
 from solution_architect_ai.application.services.document_service import DocumentService
 from solution_architect_ai.config.settings import Settings
 from solution_architect_ai.di.main import bootstrap
@@ -37,9 +35,6 @@ from solution_architect_ai.di.providers import AppProvider
 from solution_architect_ai.domain.documents import ParsedDocument
 from solution_architect_ai.infrastructure.parsers.document_parser import DocumentParser
 from solution_architect_ai.infrastructure.storage.local_files_storage import LocalFileStorage
-from solution_architect_ai.persistence.documents.document_factory import (
-    SqlAlchemyDocumentStoreFactory,
-)
 from solution_architect_ai.persistence.documents.document_models import (
     DocumentUploadRow,
     ParsedDocumentRow,
@@ -64,7 +59,7 @@ async def document_resources(
         sessions: async_sessionmaker[AsyncSession] = async_sessionmaker[AsyncSession](
             engine, expire_on_commit=False
         )
-        factory: DocumentStoreFactory = SqlAlchemyDocumentStoreFactory(sessions)
+        factory: StoreContext[DocumentStore] = document_store_setup(sessions)
         yield (
             DocumentService(factory, LocalFileStorage(tmp_path, max_bytes=4096), DocumentParser()),
             engine,
@@ -152,7 +147,7 @@ async def test_missing_corrupt_and_wrong_scope_sources_never_substitute_latest(
     sessions: async_sessionmaker[AsyncSession] = async_sessionmaker[AsyncSession](
         resources[1], expire_on_commit=False
     )
-    alien: DocumentStoreFactory = SqlAlchemyDocumentStoreFactory(sessions, task_id=uuid4())
+    alien: StoreContext[DocumentStore] = document_store_setup(sessions, task_id=uuid4())
     store: DocumentStore
     async with alien.open() as store:
         with pytest.raises(Missing):

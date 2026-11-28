@@ -31,7 +31,11 @@ from solution_architect_ai.application.validation.structured_response_validator 
 from solution_architect_ai.domain.messages import MessageRole
 
 _CORRECTABLE: Final[frozenset[StructuredErrorCode]] = frozenset(
-    {StructuredErrorCode.JSON_INVALID, StructuredErrorCode.SCHEMA_INVALID}
+    {
+        StructuredErrorCode.JSON_INVALID,
+        StructuredErrorCode.SCHEMA_INVALID,
+        StructuredErrorCode.EVIDENCE_INVALID,
+    }
 )
 
 
@@ -53,17 +57,20 @@ async def cancellable[T](operation: Awaitable[T], cancellation: asyncio.Event | 
 
 class StructuredOutputGenerator:
     def __init__(
-        self, adapter: StructuredModel, policy: GenerationPolicy, tokens: TokenCounter
+        self,
+        structured_model: StructuredModel,
+        generation_policy: GenerationPolicy,
+        token_counter: TokenCounter,
     ) -> None:
-        self.adapter: StructuredModel = adapter
-        self.policy: GenerationPolicy = policy
-        self.tokens: TokenCounter = tokens
+        self.structured_model: StructuredModel = structured_model
+        self.generation_policy: GenerationPolicy = generation_policy
+        self.token_counter: TokenCounter = token_counter
 
     async def check_context(self, request: StructuredRequest, schema: type[BaseModel]) -> None:
         rendered: tuple[StructuredMessage, ...] = render_messages(
             request, schema, include_native_schema=True
         )
-        estimate: int = await asyncio.to_thread(self.tokens.count, token_messages(rendered))
+        estimate: int = await asyncio.to_thread(self.token_counter.count, token_messages(rendered))
         available: int = (
             request.profile.context_window
             - request.profile.output_limit
@@ -82,12 +89,14 @@ class StructuredOutputGenerator:
     ) -> T:
         budget.check()
         messages: list[StructuredMessage] = list(request.messages)
-        policy: GenerationPolicy = replace(
-            self.policy,
+        generation_policy: GenerationPolicy = replace(
+            self.generation_policy,
             retries=budget.network_retries + budget.correction_retries,
             requests=budget.max_total_requests,
         )
-        retries: AsyncRetrying = policy.retrying(partial(self.can_retry, budget, messages))
+        retries: AsyncRetrying = generation_policy.retrying(
+            partial(self.can_retry, budget, messages)
+        )
 
         try:
             async with asyncio.timeout_at(budget.deadline):
@@ -115,7 +124,7 @@ class StructuredOutputGenerator:
         response: StructuredResponse[T]
         try:
             async with asyncio.timeout(budget.request_timeout):
-                response = await self.adapter.invoke(current, schema)
+                response = await self.structured_model.invoke(current, schema)
         except TimeoutError:
             raise StructuredGenerationFailure(StructuredErrorCode.TIMEOUT, retryable=True) from None
         budget.check()
@@ -139,7 +148,10 @@ class StructuredOutputGenerator:
             raise StructuredGenerationFailure(StructuredErrorCode.BUDGET_EXHAUSTED) from None
         if correctable:
             budget.corrections += 1
-            messages.append(StructuredMessage(MessageRole.USER, CORRECTION_PROMPT))
+            feedback: str = CORRECTION_PROMPT
+            if error.diagnostic is not None:
+                feedback += " Validation diagnostic: " + error.diagnostic
+            messages.append(StructuredMessage(MessageRole.USER, feedback))
         else:
             budget.network_failures += 1
         await budget.observe()

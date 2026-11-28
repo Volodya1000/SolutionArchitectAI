@@ -10,6 +10,7 @@ import { Button } from '../../shared/ui/button';
 import { AssistantMessage, UserMessage } from './messages';
 import { Composer } from './composer';
 import { useChat } from './use-chat';
+import { DiscussionHeader } from '../clarifications';
 
 type ChatState = ReturnType<typeof useChat>;
 
@@ -92,25 +93,28 @@ function Welcome() {
 function Conversation({ state, chatId }: { state: ChatState; chatId: string }) {
   const data = state.query.data;
   return (
-    <ThreadPrimitive.Root className="thread">
-      {state.query.isError && (
-        <div className="notice error-text" role="alert">
-          Не удалось обновить историю. Показана последняя загруженная переписка.
-          <Button
-            variant="ghost"
-            onClick={() => {
-              void state.query.refetch();
-            }}
-          >
-            Повторить
-          </Button>
-        </div>
-      )}
-      <ThreadPrimitive.Viewport className="thread-viewport">
-        {data?.messages.length === 0 && <Welcome />}
-        <ThreadPrimitive.Messages components={{ UserMessage, AssistantMessage }} />
-      </ThreadPrimitive.Viewport>
-      <Composer state={state} chatId={chatId} />
-    </ThreadPrimitive.Root>
+    <div className="discussion-workspace">
+      <DiscussionHeader chatId={chatId} />
+      <ThreadPrimitive.Root className="thread">
+        {state.query.isError && (
+          <div className="notice error-text" role="alert">
+            Не удалось обновить историю. Показана последняя загруженная переписка.
+            <Button
+              variant="ghost"
+              onClick={() => {
+                void state.query.refetch();
+              }}
+            >
+              Повторить
+            </Button>
+          </div>
+        )}
+        <ThreadPrimitive.Viewport className="thread-viewport">
+          {data?.messages.length === 0 && <Welcome />}
+          <ThreadPrimitive.Messages components={{ UserMessage, AssistantMessage }} />
+        </ThreadPrimitive.Viewport>
+        <Composer state={state} chatId={chatId} />
+      </ThreadPrimitive.Root>
+    </div>
   );
 }

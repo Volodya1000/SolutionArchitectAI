@@ -23,6 +23,22 @@ from solution_architect_ai.application.services.document_service import Document
 from solution_architect_ai.domain.documents import ParsedDocument
 
 router: APIRouter = APIRouter(prefix="/api", route_class=DishkaRoute)
+_DOCUMENT_MEDIA_TYPES: Final[tuple[str, ...]] = (
+    "text/plain",
+    "text/markdown",
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/octet-stream",
+)
+_UPLOAD_BODY: Final[dict[str, object]] = {
+    "requestBody": {
+        "required": True,
+        "content": {
+            mime: {"schema": {"type": "string", "format": "binary"}}
+            for mime in _DOCUMENT_MEDIA_TYPES
+        },
+    },
+}
 _ERROR_STATUSES: Final[dict[DocumentErrorCode, HTTPStatus]] = {
     DocumentErrorCode.UNSUPPORTED_FORMAT: HTTPStatus.UNSUPPORTED_MEDIA_TYPE,
     DocumentErrorCode.INVALID_MIME: HTTPStatus.UNSUPPORTED_MEDIA_TYPE,
@@ -49,7 +65,7 @@ async def documents(service: FromDishka[DocumentService]) -> list[DocumentView]:
     return await service.list_documents()
 
 
-@router.post("/documents", status_code=201)
+@router.post("/documents", status_code=201, openapi_extra=_UPLOAD_BODY)
 async def upload(
     request: Request,
     operation_id: UUID,
@@ -64,7 +80,7 @@ async def upload(
     return await service.upload(command, request.stream())
 
 
-@router.post("/documents/{file_id}/versions", status_code=201)
+@router.post("/documents/{file_id}/versions", status_code=201, openapi_extra=_UPLOAD_BODY)
 async def upload_version(
     file_id: UUID,
     request: Request,
@@ -95,7 +111,23 @@ async def get_version(
     return await service.get_version(version_id)
 
 
-@router.get("/document-versions/{version_id}/content")
+@router.get(
+    "/document-versions/{version_id}/content",
+    response_class=Response,
+    responses={
+        200: {
+            "content": {
+                mime: {"schema": {"type": "string", "format": "binary"}}
+                for mime in _DOCUMENT_MEDIA_TYPES
+            },
+            "headers": {
+                "Content-Disposition": {"schema": {"type": "string"}},
+                "ETag": {"schema": {"type": "string"}},
+                "X-Content-Type-Options": {"schema": {"type": "string", "const": "nosniff"}},
+            },
+        }
+    },
+)
 async def content(version_id: UUID, service: FromDishka[DocumentService]) -> Response:
     metadata: DocumentVersionView = await service.get_version(version_id)
     data: bytes = await service.read(version_id)

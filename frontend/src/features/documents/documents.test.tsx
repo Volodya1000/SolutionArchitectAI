@@ -1,3 +1,8 @@
+import {
+  fixtureId,
+  fixtureHash,
+  storedModelProfileFixture,
+} from '@/shared/api/test-network-fixtures';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -9,34 +14,47 @@ import { sessionStore } from '../../shared/ui/session-storage';
 import { Documents } from './documents';
 
 const version = {
-  file_id: 'file',
-  task_id: 'task',
-  version_id: 'v1',
-  sha256: 'abc',
+  storage_key: 'fixture-key',
+
+  file_id: fixtureId('file'),
+  task_id: fixtureId('task'),
+  version_id: fixtureId('v1'),
+  sha256: fixtureHash('abc'),
   mime_type: 'text/markdown',
   size: 3,
   original_name: 'BRD.md',
   uploaded_at: '2026-11-27T12:00:00Z',
 };
 const run = {
-  id: 'run',
+  pipeline_versions: null,
+  current_pipeline_versions: null,
+  model_profile: storedModelProfileFixture,
+  contract_version: 'requirements-1',
+  prompt_version: 'extract-3',
+
+  id: fixtureId('run'),
   status: 'completed',
   progress: { completed_parts: 1, total_parts: 1 },
   error_code: null,
   created_at: '2026-11-27T12:00:00Z',
   model: 'fake',
-  version_ids: ['v1'],
+  version_ids: [fixtureId('v1')],
   analysis_scope: '',
   configuration_current: true,
-  coverage: { complete: true, total_fragments: 1, processed_fragments: 1 },
+  coverage: {
+    warnings: [],
+    complete: true,
+    total_fragments: 1,
+    processed_fragments: 1,
+  },
   requirements: [],
 };
 const server = setupServer(
   http.get('/api/documents', () =>
     HttpResponse.json([
       {
-        file_id: 'file',
-        task_id: 'task',
+        file_id: fixtureId('file'),
+        task_id: fixtureId('task'),
         name: 'BRD.md',
         created_at: version.uploaded_at,
         latest_version: version,
@@ -58,14 +76,14 @@ afterEach(() => {
   sessionStore.clear();
 });
 
-function show() {
+function show(path = '/documents') {
   return render(
     <QueryClientProvider
       client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}
     >
-      <MemoryRouter initialEntries={['/documents']}>
+      <MemoryRouter initialEntries={[path]}>
         <Link to="/documents">К документам</Link>
-        <Link to="/other">Другой раздел</Link>
+        <Link to={`/${fixtureId('other')}`}>Другой раздел</Link>
         <Routes>
           <Route path="/documents" element={<Documents />} />
           <Route path="*" element={<div>Другой экран</div>} />
@@ -87,13 +105,17 @@ it('keeps selected versions and analysis instructions after navigation and a fre
   );
   await userEvent.click(screen.getByText('Другой раздел'));
   await userEvent.click(screen.getByText('К документам'));
-  expect(await screen.findByRole('checkbox')).toBeChecked();
+  expect(
+    await screen.findByRole('checkbox', { name: 'Выбрать последнюю версию BRD.md' }),
+  ).toBeChecked();
   expect(screen.getByLabelText('На что обратить внимание (необязательно)')).toHaveValue(
     'Безопасность',
   );
   view.unmount();
   show();
-  expect(await screen.findByRole('checkbox')).toBeChecked();
+  expect(
+    await screen.findByRole('checkbox', { name: 'Выбрать последнюю версию BRD.md' }),
+  ).toBeChecked();
   expect(screen.getByLabelText('На что обратить внимание (необязательно)')).toHaveValue(
     'Безопасность',
   );
@@ -111,8 +133,76 @@ it('loads version history only after its card is expanded', async () => {
   await screen.findByRole('checkbox', { name: 'Выбрать последнюю версию BRD.md' });
   expect(reads).toBe(0);
   await userEvent.click(screen.getByRole('button', { name: 'История версий BRD.md' }));
-  await screen.findByRole('checkbox', { name: 'Анализировать BRD.md · v1' });
+  await screen.findByRole('checkbox', {
+    name: `Анализировать BRD.md · ${fixtureId('v1')}`,
+  });
   expect(reads).toBe(1);
+});
+
+it('starts a fresh clarification history without opening a previously completed analysis', async () => {
+  const payloads: unknown[] = [];
+  server.use(
+    http.get('/api/extractions/matching', () =>
+      HttpResponse.json({ active: null, current_completed: run, latest_completed: run }),
+    ),
+    http.post('/api/extractions', async ({ request }) => {
+      payloads.push(await request.json());
+      return HttpResponse.json(run);
+    }),
+  );
+  show();
+  await userEvent.click(
+    await screen.findByRole('checkbox', { name: 'Выбрать последнюю версию BRD.md' }),
+  );
+  await screen.findByRole('link', { name: /Открыть/ });
+  await userEvent.click(
+    screen.getByRole('checkbox', { name: 'Начать с новой историей уточнений' }),
+  );
+  await userEvent.click(await screen.findByRole('button', { name: 'Извлечь требования' }));
+  await waitFor(() => expect(payloads).toHaveLength(1));
+  expect(payloads[0]).toMatchObject({
+    answer_history_mode: 'new',
+    answer_history_id: null,
+    version_ids: [fixtureId('v1')],
+  });
+});
+
+it('reuses the explicitly selected analysis history for a new analysis', async () => {
+  const payloads: unknown[] = [];
+  server.use(
+    http.get(`/api/extractions/${fixtureId('context')}/clarifications`, () =>
+      HttpResponse.json({
+        ...{ conflict_assessments: [] },
+        metadata: null,
+        resume_version: 0,
+
+        run_id: fixtureId('context'),
+        history_id: fixtureId('history-b'),
+        cycle: 0,
+        initialized: true,
+        resume_pending: false,
+        requirements: [],
+        questions: [],
+        decisions: [],
+        risks: [],
+        completed_cycles: [],
+      }),
+    ),
+    http.post('/api/extractions', async ({ request }) => {
+      payloads.push(await request.json());
+      return HttpResponse.json(run);
+    }),
+  );
+  show(`/documents?run=${fixtureId('context')}`);
+  await userEvent.click(
+    await screen.findByRole('checkbox', { name: 'Выбрать последнюю версию BRD.md' }),
+  );
+  await userEvent.click(await screen.findByRole('button', { name: 'Извлечь требования' }));
+  await waitFor(() => expect(payloads).toHaveLength(1));
+  expect(payloads[0]).toMatchObject({
+    answer_history_mode: 'reuse',
+    answer_history_id: fixtureId('history-b'),
+  });
 });
 
 it('recovers an accepted upload after reopening without uploading the bytes again', async () => {
@@ -133,7 +223,13 @@ it('recovers an accepted upload after reopening without uploading the bytes agai
   server.use(
     http.get('/api/document-uploads/:id', ({ params }) => {
       expect(params.id).toBe(operation);
-      return HttpResponse.json({ operation_id: operation, stage: 'completed', version });
+      return HttpResponse.json({
+        diagnostic: null,
+        payload_digest: 'test-digest',
+        operation_id: operation,
+        stage: 'completed',
+        version,
+      });
     }),
   );
   show();
@@ -194,8 +290,11 @@ it('recovers the exact extraction operation after reopening even when history ha
   show();
   expect(
     await screen.findByRole('link', { name: 'Открыть восстановленный анализ' }),
-  ).toHaveAttribute('href', '/requirements?run=run');
+  ).toHaveAttribute('href', `/requirements?run=${fixtureId('run')}`);
   expect(starts).toBe(1);
+  await waitFor(() =>
+    expect(screen.getByLabelText('Начать с новой историей уточнений')).toBeEnabled(),
+  );
 });
 
 it('retries the saved analysis independently of a changed draft after reopening', async () => {
@@ -224,5 +323,8 @@ it('retries the saved analysis independently of a changed draft after reopening'
   await userEvent.click(retry);
   await waitFor(() => expect(commands).toHaveLength(2));
   expect(commands[1]).toEqual(commands[0]);
-  expect(commands[1]).toMatchObject({ version_ids: ['v1'], analysis_scope: 'Безопасность' });
+  expect(commands[1]).toMatchObject({
+    version_ids: [fixtureId('v1')],
+    analysis_scope: 'Безопасность',
+  });
 });

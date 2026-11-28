@@ -1,8 +1,24 @@
-import { z } from 'zod';
+import type { z } from 'zod';
+import { zApiFailure } from './generated/zod.gen';
 import { sendRequest } from './client';
 import { ApiError } from './api-error';
 
 const messages: Readonly<Record<string, string>> = {
+  source_versions_changed:
+    'Источники вопроса изменились. Черновик сохранён; проверьте актуальную ревизию.',
+  stale_assumption_revision:
+    'Допущение уже изменилось. Причина решения сохранена; проверьте актуальную ревизию.',
+  operation_payload_changed:
+    'Сохранённая команда содержит другое содержимое. Проверьте результат исходной операции.',
+  extraction_not_resumable: 'Анализ отменён или завершился ошибкой; продолжение недоступно.',
+  stale_question_revision:
+    'Ревизия вопроса изменилась. Черновик сохранён; проверьте новое основание перед отправкой.',
+  stale_revision: 'Ревизия изменилась. Черновик сохранён; проверьте актуальное состояние.',
+  source_versions_mismatch: 'Набор источников изменился. Обновите вопрос перед отправкой.',
+  question_already_decided: 'По этой ревизии уже сохранено решение. Черновик сохранён.',
+  operation_conflict: 'Идентификатор команды уже использован для другого содержимого.',
+  run_not_resumable: 'Этот анализ нельзя продолжить в текущем состоянии.',
+  blocking_questions_open: 'Остались открытые блокирующие вопросы.',
   not_found: 'Источник недоступен в этой задаче. Указанная версия не заменяется новой.',
   conflict: 'Операция с этим идентификатором уже использована для других данных.',
   access_denied: 'Источник не принадлежит этой задаче.',
@@ -60,7 +76,7 @@ export async function resourceRequest<T>(
   const response = await sendRequest(path, init);
   if (!response.ok) {
     const body: unknown = await response.json().catch(() => null);
-    const error = z.object({ code: z.string() }).safeParse(body);
+    const error = zApiFailure.safeParse(body);
     throw new ApiError(
       response.status,
       error.success ? error.data.code : null,

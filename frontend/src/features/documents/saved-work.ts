@@ -8,6 +8,8 @@ const extractionCommandSchema = z.object({
   operation_id: z.uuid(),
   version_ids: z.array(z.string()),
   analysis_scope: z.string(),
+  answer_history_mode: z.enum(['reuse', 'new']).optional(),
+  answer_history_id: z.string().nullable().optional(),
 });
 const uploadDescriptionSchema = z.object({
   operationId: z.uuid(),

@@ -6,7 +6,11 @@ from uuid import UUID
 from sqlalchemy import Nullable, Result, Row, ScalarResult, Select, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from solution_architect_ai.application.errors.chat_errors import Missing, StorageUnavailable
+from solution_architect_ai.application.errors.chat_errors import (
+    Missing,
+    StorageUnavailable,
+    StoredDataCorrupt,
+)
 from solution_architect_ai.application.models.chat_dto import (
     ChatSnapshot,
     ChatView,
@@ -18,23 +22,28 @@ from solution_architect_ai.application.models.chat_dto import (
 from solution_architect_ai.domain.runs import ACTIVE_STATUSES
 from solution_architect_ai.persistence.models import ChatRow, MessageRow, PreferenceRow, RunRow
 from solution_architect_ai.persistence.schema import migration_heads
+from solution_architect_ai.persistence.stored_data import read_stored_model
 
 DEFAULT_TASK_ID: Final[UUID] = UUID("10000000-0000-4000-8000-000000000002")
 
 
 def run_view(row: RunRow, message: MessageRow) -> RunView:
-    return RunView(
-        id=row.id,
-        chat_id=row.chat_id,
-        assistant_message_id=message.id,
-        status=row.status,
-        sequence=row.sequence,
-        content=message.content,
-        incomplete=row.incomplete,
-        error_code=row.error_code,
-        model=row.model,
-        config_digest=row.config_digest,
-        created_at=row.created_at,
+    return read_stored_model(
+        RunView,
+        {
+            "id": row.id,
+            "chat_id": row.chat_id,
+            "assistant_message_id": message.id,
+            "status": row.status,
+            "sequence": row.sequence,
+            "content": message.content,
+            "incomplete": row.incomplete,
+            "error_code": row.error_code,
+            "model": row.model,
+            "config_digest": row.config_digest,
+            "created_at": row.created_at,
+        },
+        failure=StoredDataCorrupt("stored_data_corrupt"),
     )
 
 
@@ -49,7 +58,10 @@ class Queries:
             .where(ChatRow.task_id == self.task_id)
             .order_by(ChatRow.created_at.desc())
         )
-        return [ChatView.model_validate(row) for row in rows]
+        return [
+            read_stored_model(ChatView, row, failure=StoredDataCorrupt("stored_data_corrupt"))
+            for row in rows
+        ]
 
     async def chat_row(self, chat_id: UUID, *, lock: bool = False) -> ChatRow:
         """Load a persistence entity; writers lock the chat before allocating positions."""
@@ -85,8 +97,15 @@ class Queries:
         )
         pairs: Sequence[Row[MessageRow, RunRow | None]] = result.all()
         return ChatSnapshot(
-            chat=ChatView.model_validate(chat),
-            messages=[MessageView.model_validate(message) for message, _ in pairs],
+            chat=read_stored_model(
+                ChatView, chat, failure=StoredDataCorrupt("stored_data_corrupt")
+            ),
+            messages=[
+                read_stored_model(
+                    MessageView, message, failure=StoredDataCorrupt("stored_data_corrupt")
+                )
+                for message, _ in pairs
+            ],
             runs=[run_view(run, message) for message, run in pairs if run is not None],
         )
 
@@ -97,13 +116,16 @@ class Queries:
             .where(RunRow.status.in_(ACTIVE_STATUSES), ChatRow.task_id == self.task_id)
             .order_by(RunRow.created_at, RunRow.id)
         )
-        return [PendingRun.model_validate(row) for row in result]
+        return [
+            read_stored_model(PendingRun, row, failure=StoredDataCorrupt("stored_data_corrupt"))
+            for row in result
+        ]
 
     async def preferences(self) -> Preferences:
         row: PreferenceRow | None = await self.session.get(PreferenceRow, 1)
         if row is None:
             raise Missing("preferences")
-        return Preferences(theme=row.theme)
+        return read_stored_model(Preferences, row, failure=StoredDataCorrupt("stored_data_corrupt"))
 
     async def ready(self) -> None:
         versions: ScalarResult[str] = await self.session.scalars(

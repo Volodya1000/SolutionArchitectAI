@@ -1,6 +1,7 @@
 import { Link } from 'react-router';
 import { extractionActive, type ExtractionSummary } from '../../shared/api/extractions';
 import { Button } from '../../shared/ui/button';
+import { PipelineChanges } from '../../shared/ui/pipeline-changes';
 
 export function AnalysisActions({
   previous,
@@ -13,7 +14,8 @@ export function AnalysisActions({
   failed: boolean;
   disabled: boolean;
 }) {
-  const active = previous !== undefined && extractionActive(previous);
+  const active =
+    previous !== undefined && (extractionActive(previous) || previous.status === 'waiting_input');
   let label = 'Извлечь требования';
   if (previous?.configuration_current) label = 'Повторить анализ';
   if (failed) label = 'Повторить запуск';
@@ -31,16 +33,19 @@ export function AnalysisActions({
 }
 
 function PreviousAnalysis({ run }: { run: ExtractionSummary }) {
-  const active = extractionActive(run);
+  const active = extractionActive(run) || run.status === 'waiting_input';
   return (
     <div>
       <p className="notice">
-        {active
-          ? 'Эти документы уже анализируются.'
-          : run.configuration_current
-            ? 'Документы, область анализа и настройки не изменились.'
-            : 'Настройки анализа изменились. Можно получить новый результат.'}
+        {run.status === 'waiting_input'
+          ? 'Анализ ожидает ответа архитектора. Откройте вопросы, чтобы продолжить.'
+          : active
+            ? 'Эти документы уже анализируются.'
+            : run.configuration_current
+              ? 'Документы, область анализа и настройки не изменились.'
+              : 'Настройки анализа изменились. Можно получить новый результат.'}
       </p>
+      <PipelineChanges run={run} />
       <Button asChild>
         <Link to={`/requirements?run=${encodeURIComponent(run.id)}`}>
           {active ? 'Открыть анализ' : 'Открыть результат'}

@@ -8,6 +8,8 @@ import {
   readVersion,
   type ParsedDocument,
 } from '../../shared/api/documents';
+import { useSearchParams } from 'react-router';
+import { DiscussButton } from '../clarifications';
 import { QueryError } from '../../shared/ui/query-error';
 
 export function VersionViewer({
@@ -73,8 +75,10 @@ function SourceFragments({
   parsed: ParsedDocument;
   fragmentId: string | null;
 }) {
+  const [search] = useSearchParams();
   const selected = useRef<HTMLElement>(null);
   const hasFragment = parsed.fragments.some((fragment) => fragment.fragment_id === fragmentId);
+  const separatorLines = new Set(parsed.structure?.tables.map((table) => table.delimiter_line));
   useEffect(() => {
     if (fragmentId) {
       selected.current?.scrollIntoView({ block: 'center' });
@@ -98,22 +102,44 @@ function SourceFragments({
         </p>
       )}
       <div className="source-fragments">
-        {parsed.fragments.map((fragment) => (
-          <article
-            key={fragment.fragment_id}
-            ref={fragment.fragment_id === fragmentId ? selected : undefined}
-            tabIndex={-1}
-            className={
-              fragment.fragment_id === fragmentId
-                ? 'source-fragment selected-fragment'
-                : 'source-fragment'
-            }
-            aria-label={locatorText(fragment.locator)}
-          >
-            <div className="fragment-locator">{locatorText(fragment.locator)}</div>
-            <p>{fragment.text}</p>
-          </article>
-        ))}
+        {parsed.fragments.map((fragment) => {
+          if (fragment.locator.kind === 'lines' && separatorLines.has(fragment.locator.start)) {
+            return fragment.fragment_id === fragmentId ? (
+              <section
+                key={fragment.fragment_id}
+                ref={selected}
+                tabIndex={-1}
+                aria-label={locatorText(fragment.locator)}
+              >
+                <pre>{fragment.text}</pre>
+              </section>
+            ) : null;
+          }
+          return (
+            <article
+              key={fragment.fragment_id}
+              ref={fragment.fragment_id === fragmentId ? selected : undefined}
+              tabIndex={-1}
+              className={
+                fragment.fragment_id === fragmentId
+                  ? 'source-fragment selected-fragment'
+                  : 'source-fragment'
+              }
+              aria-label={locatorText(fragment.locator)}
+            >
+              <div className="fragment-locator">{locatorText(fragment.locator)}</div>
+              <p>{fragment.text}</p>
+              <DiscussButton
+                subject={{
+                  kind: 'source',
+                  version_id: parsed.version_id,
+                  fragment_id: fragment.fragment_id,
+                  analysis_id: search.get('run'),
+                }}
+              />
+            </article>
+          );
+        })}
       </div>
     </>
   );

@@ -1,3 +1,4 @@
+import { fixtureId } from '@/shared/api/test-network-fixtures';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
@@ -6,15 +7,16 @@ import { afterAll, afterEach, beforeAll, expect, it } from 'vitest';
 import { App } from './app';
 
 const original = {
-  id: 'saved-chat',
-  task_id: 'task',
+  id: fixtureId('saved-chat'),
+  task_id: fixtureId('task'),
   title: 'Сохранённый диалог',
   created_at: '2026-11-26T00:00:00Z',
 };
-const created = { ...original, id: 'new-chat', title: 'Диалог 2' };
+const created = { ...original, id: fixtureId('new-chat'), title: 'Диалог 2' };
 const server = setupServer(
   http.get('/api/preferences', () => HttpResponse.json({ theme: 'system' })),
   http.get('/api/model', () => HttpResponse.json({ model: 'fake-chat', available: true })),
+  http.get('/api/chats/:id/discussion', () => HttpResponse.json(null)),
 );
 
 beforeAll(() => server.listen({ onUnhandledFrame: 'error' }));
@@ -43,7 +45,7 @@ it('opens a saved chat by URL and navigates to a newly created conversation', as
           chat.id === original.id
             ? [
                 {
-                  id: 'saved-message',
+                  id: fixtureId('saved-message'),
                   role: 'user',
                   content: 'Согласуем границы сервиса',
                   position: 1,
@@ -60,7 +62,7 @@ it('opens a saved chat by URL and navigates to a newly created conversation', as
       return HttpResponse.json(created, { status: 201 });
     }),
   );
-  window.history.replaceState(null, '', '/chats/saved-chat');
+  window.history.replaceState(null, '', `/chats/${fixtureId('saved-chat')}`);
 
   render(<App />);
 
@@ -78,14 +80,19 @@ it('opens a saved chat by URL and navigates to a newly created conversation', as
   expect(screen.getByRole('button', { name: 'Новый чат' })).toBeDisabled();
   completeCreation();
 
-  expect(await screen.findByRole('heading', { name: created.title })).toBeVisible();
+  expect(await screen.findByRole('heading', { name: 'Рабочий чат' })).toBeVisible();
   expect(submitted).toEqual({ title: created.title });
-  expect(window.location.pathname).toBe('/chats/new-chat');
-  expect(screen.getByRole('link', { name: created.title })).toHaveAttribute('aria-current', 'page');
+  await waitFor(() =>
+    expect(screen.getByRole('link', { name: created.title })).toHaveAttribute(
+      'aria-current',
+      'page',
+    ),
+  );
+  expect(window.location.pathname).toBe(`/chats/${fixtureId('new-chat')}`);
   expect(await screen.findByRole('textbox', { name: 'Сообщение' })).toBeVisible();
   expect(screen.queryByText('Согласуем границы сервиса')).not.toBeInTheDocument();
 
   await userEvent.click(screen.getByRole('link', { name: original.title }));
   expect(await screen.findByText('Согласуем границы сервиса')).toBeVisible();
-  expect(window.location.pathname).toBe('/chats/saved-chat');
+  expect(window.location.pathname).toBe(`/chats/${fixtureId('saved-chat')}`);
 });

@@ -6,6 +6,7 @@ import { runSchema, terminal } from '../../shared/api/client';
 const statuses = {
   queued: 'В очереди',
   running: 'Формируется ответ…',
+  waiting_input: 'Ожидает ответа архитектора',
   cancelling: 'Останавливаем генерацию…',
   cancelled: 'Генерация отменена. Частичный ответ сохранён.',
   failed: 'Ответ не завершён. Можно отправить новый запрос.',

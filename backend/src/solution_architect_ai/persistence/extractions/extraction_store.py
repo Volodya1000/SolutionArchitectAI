@@ -5,8 +5,8 @@ from hashlib import sha256
 from typing import Final
 from uuid import UUID, uuid4
 
-from pydantic import ValidationError
-from sqlalchemy import ScalarResult, Select, select, text
+from pydantic import TypeAdapter, ValidationError
+from sqlalchemy import ScalarResult, Select, and_, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from solution_architect_ai.application.agents.extraction_result_merger import (
@@ -16,6 +16,7 @@ from solution_architect_ai.application.errors.chat_errors import Conflict, Missi
 from solution_architect_ai.application.errors.document_errors import DocumentErrorCode
 from solution_architect_ai.application.errors.extraction_errors import StoredExtractionCorrupt
 from solution_architect_ai.application.models.extraction_models import (
+    AnswerHistorySelection,
     CoverageView,
     ExtractionProgress,
     ExtractionStart,
@@ -28,6 +29,9 @@ from solution_architect_ai.application.models.extraction_models import (
     StoredModelProfile,
 )
 from solution_architect_ai.application.models.structured_models import BudgetUsage
+from solution_architect_ai.application.prompts.extraction_pipeline import (
+    current_extraction_pipeline_versions,
+)
 from solution_architect_ai.application.prompts.extraction_prompt import (
     CONTRACT_VERSION,
     PROMPT_VERSION,
@@ -39,25 +43,48 @@ from solution_architect_ai.domain.runs import (
     confirm_cancellation,
     resolve_transition,
 )
+from solution_architect_ai.persistence.clarifications.clarification_execution import active_elapsed
+from solution_architect_ai.persistence.clarifications.clarification_models import (
+    ClarificationRunRow,
+)
 from solution_architect_ai.persistence.extractions.extraction_models import (
     ExtractionPartRow,
     ExtractionRow,
     ExtractionSourceRow,
     RequirementRow,
 )
+from solution_architect_ai.persistence.extractions.extraction_progress_queries import (
+    read_part_progress,
+)
+from solution_architect_ai.persistence.extractions.extraction_question_guards import (
+    blocked_question_runs,
+)
 from solution_architect_ai.persistence.extractions.extraction_summary_queries import (
     extraction_summary_query,
     get_matching_extractions,
 )
 from solution_architect_ai.persistence.queries import DEFAULT_TASK_ID
+from solution_architect_ai.persistence.stored_data import (
+    read_stored_json,
+    read_stored_model,
+    read_stored_value,
+)
 
 logger: logging.Logger = logging.getLogger(__name__)
 _DOCUMENT_ERRORS: Final[frozenset[str]] = frozenset(code.value for code in DocumentErrorCode)
 
 
 def extraction_view(row: ExtractionRow) -> ExtractionView:
-    view: ExtractionView = ExtractionView.model_validate_json(row.snapshot_json)
-    command: ExtractionStart = ExtractionStart.model_validate_json(row.command_json)
+    view: ExtractionView = read_stored_json(
+        ExtractionView,
+        row.snapshot_json,
+        failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+    )
+    command: ExtractionStart = read_stored_json(
+        ExtractionStart,
+        row.command_json,
+        failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+    )
     view.version_ids = command.version_ids
     view.analysis_scope = command.analysis_scope
     view.requests = row.requests
@@ -85,7 +112,12 @@ class SqlAlchemyExtractionStore:
     async def start(
         self, command: ExtractionStart, profile: StoredModelProfile, config_digest: str
     ) -> ExtractionView:
-        payload: str = command.model_dump_json()
+        default_history: bool = (
+            command.answer_history_mode == "reuse" and command.answer_history_id is None
+        )
+        payload: str = command.model_dump_json(
+            exclude={"answer_history_mode", "answer_history_id"} if default_history else set()
+        )
         digest: str = sha256(payload.encode()).hexdigest()
         await self.session.execute(
             text("SELECT pg_advisory_xact_lock(hashtextextended(:key, 0))"),
@@ -101,6 +133,7 @@ class SqlAlchemyExtractionStore:
             if existing.payload_digest != digest:
                 raise Conflict("operation_payload_changed")
             return extraction_view(existing)
+        await self._validate_answer_history(command)
         created: datetime = datetime.now(UTC)
         view: ExtractionView = ExtractionView(
             id=uuid4(),
@@ -116,6 +149,7 @@ class SqlAlchemyExtractionStore:
             prompt_version=PROMPT_VERSION,
             version_ids=command.version_ids,
             analysis_scope=command.analysis_scope,
+            pipeline_versions=current_extraction_pipeline_versions(),
         )
         self.session.add(
             ExtractionRow(
@@ -138,8 +172,38 @@ class SqlAlchemyExtractionStore:
         )
         return view
 
+    async def _validate_answer_history(self, command: ExtractionStart) -> None:
+        if command.answer_history_id is None:
+            return
+        if command.answer_history_mode == "new":
+            raise Conflict("answer_history_selection_conflict")
+        if command.answer_history_id == self.task_id:
+            return
+        owner: UUID | None = await self.session.scalar(
+            select(ClarificationRunRow.run_id)
+            .join(ExtractionRow, ExtractionRow.id == ClarificationRunRow.run_id)
+            .where(
+                ClarificationRunRow.history_id == command.answer_history_id,
+                ExtractionRow.task_id == self.task_id,
+            )
+            .limit(1)
+        )
+        if owner is None:
+            raise Missing("answer_history")
+
+    async def _describe_extraction(self, row: ExtractionRow) -> ExtractionView:
+        view: ExtractionView = extraction_view(row)
+        budget: ClarificationRunRow | None = await self.session.get(ClarificationRunRow, row.id)
+        if view.pipeline_versions is None or (
+            budget is not None and budget.metadata_json is not None
+        ):
+            view.pipeline_versions = (await self.get_status(row.id)).pipeline_versions
+        if budget is not None:
+            view.elapsed_seconds = max(view.elapsed_seconds, active_elapsed(budget))
+        return view
+
     async def get(self, run_id: UUID) -> ExtractionView:
-        return extraction_view(await self._get_extraction_row(run_id))
+        return await self._describe_extraction(await self._get_extraction_row(run_id))
 
     async def get_operation(self, operation_id: UUID) -> ExtractionView:
         row: ExtractionRow | None = await self.session.scalar(
@@ -150,7 +214,7 @@ class SqlAlchemyExtractionStore:
         )
         if row is None:
             raise Missing("extraction_operation")
-        return extraction_view(row)
+        return await self._describe_extraction(row)
 
     async def get_status(self, run_id: UUID) -> StoredExtractionSummary:
         metadata: object = await self.session.scalar(
@@ -160,13 +224,21 @@ class SqlAlchemyExtractionStore:
         )
         if metadata is None:
             raise Missing("extraction")
-        return StoredExtractionSummary.model_validate(metadata)
+        return read_stored_model(
+            StoredExtractionSummary,
+            metadata,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+        )
 
     async def get_matching(
-        self, version_ids: list[UUID], analysis_scope: str, profile: StoredModelProfile
+        self,
+        version_ids: list[UUID],
+        analysis_scope: str,
+        profile: StoredModelProfile,
+        history: AnswerHistorySelection | None = None,
     ) -> StoredExtractionMatches:
         return await get_matching_extractions(
-            self.session, self.task_id, version_ids, analysis_scope, profile
+            self.session, self.task_id, version_ids, analysis_scope, profile, history
         )
 
     async def list_history(self, *, limit: int, offset: int) -> list[StoredExtractionSummary]:
@@ -179,11 +251,20 @@ class SqlAlchemyExtractionStore:
             .limit(limit + 1)
             .offset(offset)
         )
-        return [StoredExtractionSummary.model_validate(row) for row in rows]
+        return [
+            read_stored_model(
+                StoredExtractionSummary,
+                row,
+                failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+            )
+            for row in rows
+        ]
 
     async def command(self, run_id: UUID) -> ExtractionStart:
-        return ExtractionStart.model_validate_json(
-            (await self._get_extraction_row(run_id)).command_json
+        return read_stored_json(
+            ExtractionStart,
+            (await self._get_extraction_row(run_id)).command_json,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
         )
 
     async def config_digest(self, run_id: UUID) -> str:
@@ -203,15 +284,35 @@ class SqlAlchemyExtractionStore:
     async def pending(self) -> list[ExtractionView]:
         rows: ScalarResult[ExtractionRow] = await self.session.scalars(
             select(ExtractionRow)
-            .where(ExtractionRow.task_id == self.task_id, ExtractionRow.status.in_(ACTIVE_STATUSES))
+            .outerjoin(ClarificationRunRow, ClarificationRunRow.run_id == ExtractionRow.id)
+            .where(
+                ExtractionRow.task_id == self.task_id,
+                or_(
+                    ExtractionRow.status.in_(ACTIVE_STATUSES),
+                    (
+                        ClarificationRunRow.resume_pending.is_(True)
+                        & ExtractionRow.status.in_((RunStatus.WAITING_INPUT, RunStatus.COMPLETED))
+                    ),
+                    and_(
+                        ExtractionRow.status == RunStatus.WAITING_INPUT,
+                        ClarificationRunRow.initialized.is_(True),
+                    ),
+                ),
+            )
             .order_by(ExtractionRow.created_at)
+        )
+        candidates: list[ExtractionRow] = list(rows)
+        blocked: set[UUID] = await blocked_question_runs(
+            self.session, [row.id for row in candidates if row.status not in ACTIVE_STATUSES]
         )
         pending: list[ExtractionView] = []
         row: ExtractionRow
-        for row in rows:
+        for row in candidates:
+            if row.id in blocked:
+                continue
             try:
                 pending.append(extraction_view(row))
-            except ValidationError:
+            except StoredExtractionCorrupt:
                 logger.error("extraction_snapshot_corrupt run_id=%s", row.id)
         return pending
 
@@ -219,7 +320,11 @@ class SqlAlchemyExtractionStore:
         self, run_id: UUID, status: RunStatus, error: str | None = None
     ) -> ExtractionView:
         row: ExtractionRow = await self._get_extraction_row(run_id, lock=True)
-        view: ExtractionView = ExtractionView.model_validate_json(row.snapshot_json)
+        view: ExtractionView = read_stored_json(
+            ExtractionView,
+            row.snapshot_json,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+        )
         if view.status == RunStatus.CANCELLING and status in {RunStatus.FAILED, RunStatus.RUNNING}:
             status, error = RunStatus.CANCELLED, None
         target: RunStatus = (
@@ -232,16 +337,24 @@ class SqlAlchemyExtractionStore:
             view.error_code = error
             if target.terminal:
                 view = await self._terminal_result(row, view)
-                view.elapsed_seconds = max(0, (datetime.now(UTC) - row.created_at).total_seconds())
+                await self._finish_active_budget(run_id, view)
             row.status = target.value
             row.snapshot_json = view.model_dump_json()
         return view
+
+    async def _finish_active_budget(self, run_id: UUID, view: ExtractionView) -> None:
+        budget: ClarificationRunRow | None = await self.session.get(ClarificationRunRow, run_id)
+        if budget is None:
+            return
+        view.elapsed_seconds = max(view.elapsed_seconds, active_elapsed(budget))
+        if view.status in {RunStatus.FAILED, RunStatus.CANCELLED}:
+            budget.resume_pending = False
 
     async def _terminal_result(self, row: ExtractionRow, view: ExtractionView) -> ExtractionView:
         try:
             view.requirements = merge_extraction_results(await self.parts(row.id))
         except StoredExtractionCorrupt:
-            parts: list[PartResult] = await self.read_parts(row.id, strict=False)
+            parts: list[PartResult] = await self._read_parts(row.id, strict=False)
             view.requirements = merge_extraction_results(parts)
             view.progress.completed_parts = len(parts)
             view.coverage.processed_fragments = len(
@@ -270,7 +383,11 @@ class SqlAlchemyExtractionStore:
         row: ExtractionRow = await self._get_extraction_row(run_id, lock=True)
         if row.context_digest is not None and row.context_digest != digest:
             raise Conflict("context_changed")
-        view: ExtractionView = ExtractionView.model_validate_json(row.snapshot_json)
+        view: ExtractionView = read_stored_json(
+            ExtractionView,
+            row.snapshot_json,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+        )
         view.progress.total_parts = total_parts
         view.coverage.total_fragments = total_fragments
         view.coverage.warnings = list(warnings)
@@ -279,35 +396,57 @@ class SqlAlchemyExtractionStore:
 
     async def save_part(self, run_id: UUID, part: PartResult) -> None:
         row: ExtractionRow = await self._get_extraction_row(run_id, lock=True)
-        if RunStatus(row.status) != RunStatus.RUNNING:
+        if (
+            read_stored_value(
+                TypeAdapter(RunStatus),
+                row.status,
+                strict=False,
+                failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+            )
+            != RunStatus.RUNNING
+        ):
             raise Conflict("extraction_not_running")
-        existing: ExtractionPartRow | None = await self.session.scalar(
-            select(ExtractionPartRow).where(
-                ExtractionPartRow.run_id == run_id, ExtractionPartRow.part_id == part.part_id
+        view: ExtractionView = read_stored_json(
+            ExtractionView,
+            row.snapshot_json,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+        )
+        if await self._read_part(run_id, part.part_id) is not None:
+            return
+        self.session.add(
+            ExtractionPartRow(
+                id=uuid4(), run_id=run_id, part_id=part.part_id, result_json=part.model_dump_json()
             )
         )
-        if existing is None:
-            self.session.add(
-                ExtractionPartRow(
-                    id=uuid4(),
-                    run_id=run_id,
-                    part_id=part.part_id,
-                    result_json=part.model_dump_json(),
-                )
-            )
-            await self.session.flush()
-        parts: list[PartResult] = await self.parts(run_id)
-        view: ExtractionView = ExtractionView.model_validate_json(row.snapshot_json)
-        view.progress.completed_parts = len(parts)
-        view.coverage.processed_fragments = len(
-            {fragment_id for result in parts for fragment_id in result.fragment_ids}
+        await self.session.flush()
+        view.progress.completed_parts, view.coverage.processed_fragments = await read_part_progress(
+            self.session, run_id
         )
         row.snapshot_json = view.model_dump_json()
 
-    async def parts(self, run_id: UUID) -> list[PartResult]:
-        return await self.read_parts(run_id, strict=True)
+    async def get_part(self, run_id: UUID, part_id: str) -> PartResult | None:
+        await self._get_extraction_row(run_id)
+        return await self._read_part(run_id, part_id)
 
-    async def read_parts(self, run_id: UUID, *, strict: bool) -> list[PartResult]:
+    async def _read_part(self, run_id: UUID, part_id: str) -> PartResult | None:
+        payload: str | None = await self.session.scalar(
+            select(ExtractionPartRow.result_json).where(
+                ExtractionPartRow.run_id == run_id, ExtractionPartRow.part_id == part_id
+            )
+        )
+        if payload is None:
+            return None
+        part: PartResult = read_stored_json(
+            PartResult, payload, failure=StoredExtractionCorrupt("stored_result_corrupt")
+        )
+        if part.part_id != part_id:
+            raise StoredExtractionCorrupt("stored_result_corrupt")
+        return part
+
+    async def parts(self, run_id: UUID) -> list[PartResult]:
+        return await self._read_parts(run_id, strict=True)
+
+    async def _read_parts(self, run_id: UUID, *, strict: bool) -> list[PartResult]:
         await self._get_extraction_row(run_id)
         rows: ScalarResult[ExtractionPartRow] = await self.session.scalars(
             select(ExtractionPartRow)
@@ -327,10 +466,26 @@ class SqlAlchemyExtractionStore:
 
     async def reverify_part(self, run_id: UUID, part: PartResult) -> None:
         row: ExtractionRow = await self._get_extraction_row(run_id, lock=True)
-        if RunStatus(row.status) == RunStatus.COMPLETED:
+        if (
+            read_stored_value(
+                TypeAdapter(RunStatus),
+                row.status,
+                strict=False,
+                failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+            )
+            == RunStatus.COMPLETED
+        ):
             # A concurrent finalizer already committed the immutable result.
             return
-        if RunStatus(row.status) != RunStatus.RUNNING:
+        if (
+            read_stored_value(
+                TypeAdapter(RunStatus),
+                row.status,
+                strict=False,
+                failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+            )
+            != RunStatus.RUNNING
+        ):
             raise Conflict("extraction_not_running")
         stored: ExtractionPartRow | None = await self.session.scalar(
             select(ExtractionPartRow).where(
@@ -339,7 +494,11 @@ class SqlAlchemyExtractionStore:
         )
         if stored is None:
             raise Missing("extraction_part")
-        previous: PartResult = PartResult.model_validate_json(stored.result_json)
+        previous: PartResult = read_stored_json(
+            PartResult,
+            stored.result_json,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+        )
         if [item.id for item in previous.requirements] != [item.id for item in part.requirements]:
             raise Conflict("requirement_identity_changed")
         stored.result_json = part.model_dump_json()
@@ -350,7 +509,15 @@ class SqlAlchemyExtractionStore:
 
     async def reserve(self, run_id: UUID, usage: BudgetUsage, expected_requests: int) -> None:
         row: ExtractionRow = await self._get_extraction_row(run_id, lock=True)
-        if RunStatus(row.status) != RunStatus.RUNNING:
+        if (
+            read_stored_value(
+                TypeAdapter(RunStatus),
+                row.status,
+                strict=False,
+                failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+            )
+            != RunStatus.RUNNING
+        ):
             raise Conflict("extraction_not_running")
         if (
             expected_requests != row.requests
@@ -363,18 +530,28 @@ class SqlAlchemyExtractionStore:
             usage.network_failures,
             usage.corrections,
         )
-        view: ExtractionView = ExtractionView.model_validate_json(row.snapshot_json)
+        view: ExtractionView = read_stored_json(
+            ExtractionView,
+            row.snapshot_json,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+        )
         view.requests = usage.requests
         view.network_failures = usage.network_failures
         view.corrections = usage.corrections
         row.snapshot_json = view.model_dump_json()
 
     async def complete(
-        self, run_id: UUID, result: list[PartResult], elapsed: float
+        self, run_id: UUID, result: list[PartResult], elapsed: float, *, finalize: bool = True
     ) -> ExtractionView:
         row: ExtractionRow = await self._get_extraction_row(run_id, lock=True)
-        view: ExtractionView = ExtractionView.model_validate_json(row.snapshot_json)
+        view: ExtractionView = read_stored_json(
+            ExtractionView,
+            row.snapshot_json,
+            failure=StoredExtractionCorrupt("stored_extraction_corrupt"),
+        )
         if view.status.terminal or view.status == RunStatus.CANCELLING:
+            return view
+        if view.candidates_saved:
             return view
         if view.status != RunStatus.RUNNING:
             raise Conflict("extraction_not_running")
@@ -396,7 +573,8 @@ class SqlAlchemyExtractionStore:
             for item in requirements
         )
         view.requirements = requirements
-        view.status = RunStatus.COMPLETED
+        view.candidates_saved = True
+        view.status = RunStatus.COMPLETED if finalize else RunStatus.RUNNING
         view.coverage.processed_fragments = view.coverage.total_fragments
         view.coverage.complete = all(
             item == CoverageWarning.CROSS_PART_REVIEW.value for item in view.coverage.warnings

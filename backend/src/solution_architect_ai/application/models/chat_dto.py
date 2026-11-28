@@ -12,7 +12,11 @@ type Text = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1
 
 
 class DTO(BaseModel):
-    model_config: ClassVar[ConfigDict] = ConfigDict(extra="forbid", from_attributes=True)
+    model_config: ClassVar[ConfigDict] = ConfigDict(
+        extra="forbid",
+        from_attributes=True,
+        json_schema_serialization_defaults_required=True,
+    )
 
 
 class ChatCreate(DTO):

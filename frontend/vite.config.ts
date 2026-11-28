@@ -15,7 +15,12 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       include: ['src/**/*.{ts,tsx}'],
-      exclude: ['src/**/*.test.{ts,tsx}', 'src/test/**'],
+      exclude: [
+        'src/**/*.test.{ts,tsx}',
+        'src/test/**',
+        'src/**/*test-fixtures.ts',
+        'src/**/*test-network-fixtures.ts',
+      ],
       reportsDirectory: '../.build/frontend-coverage',
       reporter: ['text', 'html'],
       thresholds: { lines: 80, statements: 80, functions: 80, branches: 70 },

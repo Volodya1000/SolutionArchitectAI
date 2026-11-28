@@ -120,6 +120,9 @@ async def test_unknown_chat_and_invalid_input_are_rejected(client: httpx.AsyncCl
         f"/api/chats/{chat}/runs", json={"command_id": str(uuid4()), "content": " "}
     )
     assert response.status_code == 422
+    assert [(item["loc"], item["type"]) for item in response.json()["detail"]] == [
+        (["body", "content"], "string_too_short")
+    ]
 
 
 async def test_theme_is_stored_in_postgres(client: httpx.AsyncClient) -> None:

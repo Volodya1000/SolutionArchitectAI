@@ -83,11 +83,31 @@ async def test_terminal_sse_frame_preserves_unicode_and_embedded_newlines() -> N
 
 
 @pytest.mark.anyio
-async def test_unchanged_active_snapshot_emits_a_heartbeat() -> None:
+async def test_heartbeats_keep_unchanged_stream_alive_until_terminal_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     run: RunView = run_view().model_copy(update={"status": RunStatus.RUNNING})
     lookup: SnapshotLookup = SnapshotLookup(run)
     request: ConnectedRequest = ConnectedRequest()
+
+    async def immediate_sleep(_seconds: float) -> None:
+        return None
+
+    monkeypatch.setattr("solution_architect_ai.presentation.routes.asyncio.sleep", immediate_sleep)
     stream: AsyncGenerator[str] = events(run.id, lookup, request)
-    await anext(stream)
+    first: str = await anext(stream)
+    assert first.startswith("id: 3\ndata: ")
     assert await anext(stream) == ": heartbeat\n\n"
-    await stream.aclose()
+    assert await anext(stream) == ": heartbeat\n\n"
+    lookup.snapshot = run.model_copy(
+        update={"sequence": 4, "status": RunStatus.COMPLETED, "content": "Готово"}
+    )
+    terminal: str = await anext(stream)
+    payload: RunSnapshotEvent = RunSnapshotEvent.model_validate_json(
+        terminal.split("data: ", 1)[1], strict=True
+    )
+    assert payload.sequence == 4
+    assert payload.payload.content == "Готово"
+    assert payload.payload.status == RunStatus.COMPLETED
+    with pytest.raises(StopAsyncIteration):
+        await anext(stream)

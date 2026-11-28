@@ -10,7 +10,9 @@ from solution_architect_ai.application.errors.document_errors import (
 )
 from solution_architect_ai.domain.documents import (
     DocumentFragment,
+    DocumentStructure,
     LocatorKind,
+    MarkdownTable,
     ParsedDocument,
     SourceLocator,
 )
@@ -32,7 +34,7 @@ from solution_architect_ai.infrastructure.parsers.pdf_parser import parse_pdf
 class DocumentParser:
     def __init__(self) -> None:
         self.validator: DocumentValidator = DocumentValidator()
-        self.markdown_parser: MarkdownIt = MarkdownIt()
+        self.markdown_parser: MarkdownIt = MarkdownIt().enable("table")
 
     def validate(self, content: bytes, filename: str, mime_type: str) -> str:
         return self.validator.validate(content, filename, mime_type).mime_type
@@ -63,7 +65,24 @@ class DocumentParser:
                     )
                 )
         return ParsedDocument(
-            file_id, version_id, sha256(content).hexdigest(), PARSER_VERSION, text, tuple(fragments)
+            file_id,
+            version_id,
+            sha256(content).hexdigest(),
+            PARSER_VERSION,
+            text,
+            tuple(fragments),
+            structure=self.structure(text) if mime == MARKDOWN_MIME else DocumentStructure(),
+        )
+
+    def structure(self, text: str) -> DocumentStructure:
+        tokens: list[Token] = self.markdown_parser.parse(text)
+        lines: list[str] = text.splitlines()
+        return DocumentStructure(
+            tuple(
+                MarkdownTable(token.map[0] + 1, token.map[0] + 2, token.map[1], lines[token.map[0]])
+                for token in tokens
+                if token.type == "table_open" and token.map is not None
+            )
         )
 
     def headings(self, text: str) -> dict[int, str]:

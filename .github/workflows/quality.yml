@@ -33,6 +33,8 @@ jobs:
           pnpm --dir frontend install --frozen-lockfile
       - name: Install pinned repository tools
         run: uv run --locked --project backend python -m tools.install_quality_tools
+      - name: Check generated HTTP contracts
+        run: pnpm --dir frontend api:check
       - name: Full local and CI quality gates
         run: uv run --locked --project backend python -m tools.quality full
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

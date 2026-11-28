@@ -15,5 +15,8 @@ FROM base AS test
 USER 0
 RUN uv sync --locked
 COPY backend/tests ./tests
+COPY backend/test_helpers ./test_helpers
 COPY backend/.importlinter backend/.flake8 ./
+COPY tools /app/tools
+WORKDIR /app
 USER 10001:0

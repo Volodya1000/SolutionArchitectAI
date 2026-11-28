@@ -1,6 +1,16 @@
 [importlinter]
-root_package = solution_architect_ai
+root_packages =
+    solution_architect_ai
+    backend.tests
+    backend.test_helpers
 include_external_packages = True
+exclude_type_checking_imports = False
+contract_types =
+    test_independence: tools.test_import_contract.TestIndependenceContract
+
+[importlinter:contract:tests]
+name = Test modules are independent
+type = test_independence
 
 [importlinter:contract:layers]
 name = Application boundaries
@@ -10,6 +20,15 @@ layers =
     solution_architect_ai.presentation | solution_architect_ai.infrastructure | solution_architect_ai.persistence | solution_architect_ai.config
     solution_architect_ai.application
     solution_architect_ai.domain
+
+[importlinter:contract:no_test_support_in_app]
+name = Product code does not depend on pytest or test helpers
+type = forbidden
+source_modules =
+    solution_architect_ai
+forbidden_modules =
+    backend.test_helpers
+    pytest
 
 [importlinter:contract:domain]
 name = Domain has no framework dependencies

@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from uuid import UUID
 
 from solution_architect_ai.application.agents.requirements_extraction_agent import (
@@ -8,9 +9,8 @@ from solution_architect_ai.application.context.extraction_context_builder import
     ExtractionContextBuilder,
 )
 from solution_architect_ai.application.models.extraction_policy import ExtractionPolicy
-from solution_architect_ai.application.protocols.extraction_protocols import (
-    ExtractionStoreFactory,
-)
+from solution_architect_ai.application.protocols.extraction_protocols import ExtractionStore
+from solution_architect_ai.application.protocols.store_context_protocols import StoreContext
 from solution_architect_ai.application.services.document_service import DocumentService
 from solution_architect_ai.application.workflows.extraction_context_assembler import (
     ExtractionContextAssembler,
@@ -21,70 +21,57 @@ from solution_architect_ai.application.workflows.extraction_part_extractor impor
 )
 
 
+@dataclass
 class ExtractionSteps:
-    """Expose the graph's checkpoint-compatible phases through focused collaborators."""
+    """Expose graph phases using collaborators assembled by dependency injection."""
 
-    def __init__(
-        self,
-        stores: ExtractionStoreFactory,
-        documents: DocumentService,
-        builder: ExtractionContextBuilder,
-        requirements_extraction_agent: RequirementsExtractionAgent,
-        policy: ExtractionPolicy,
-    ) -> None:
-        self.context_assembler: ExtractionContextAssembler = ExtractionContextAssembler(
-            stores, documents, builder, policy
-        )
-        self.part_extractor: ExtractionPartExtractor = ExtractionPartExtractor(
-            stores, self.context_assembler, requirements_extraction_agent, policy
-        )
-        self.finalizer: ExtractionFinalizer = ExtractionFinalizer(stores, self.context_assembler)
+    extraction_context_assembler: ExtractionContextAssembler
+    extraction_part_extractor: ExtractionPartExtractor
+    extraction_finalizer: ExtractionFinalizer
 
     @property
-    def stores(self) -> ExtractionStoreFactory:
-        return self.context_assembler.stores
+    def extraction_store_context(self) -> StoreContext[ExtractionStore]:
+        return self.extraction_context_assembler.extraction_store_context
 
     @property
-    def documents(self) -> DocumentService:
-        return self.context_assembler.documents
+    def documents_service(self) -> DocumentService:
+        return self.extraction_context_assembler.documents_service
 
     @property
-    def builder(self) -> ExtractionContextBuilder:
-        return self.context_assembler.builder
+    def extraction_context_builder(self) -> ExtractionContextBuilder:
+        return self.extraction_context_assembler.extraction_context_builder
 
     @property
     def requirements_extraction_agent(self) -> RequirementsExtractionAgent:
-        return self.part_extractor.requirements_extraction_agent
+        return self.extraction_part_extractor.requirements_extraction_agent
 
     @property
-    def policy(self) -> ExtractionPolicy:
-        return self.context_assembler.policy
-
-    @policy.setter
-    def policy(self, policy: ExtractionPolicy) -> None:
-        self.context_assembler.policy = policy
-        self.part_extractor.policy = policy
+    def extraction_policy(self) -> ExtractionPolicy:
+        return self.extraction_context_assembler.extraction_policy
 
     def release_context(self, run_id: UUID) -> None:
-        self.context_assembler.release_context(run_id)
+        self.extraction_context_assembler.release_context(run_id)
 
     async def context(self, run_id: UUID) -> ContextPack:
-        return await self.context_assembler.context(run_id)
+        return await self.extraction_context_assembler.context(run_id)
 
     async def prepare(self, run_id: UUID) -> None:
-        await self.context_assembler.prepare(run_id)
+        await self.extraction_context_assembler.prepare(run_id)
 
     async def extract(self, run_id: UUID, index: int) -> int:
-        return await self.part_extractor.extract(run_id, index)
+        return await self.extraction_part_extractor.extract(run_id, index)
 
     async def has_more(self, run_id: UUID, index: int) -> bool:
-        return await self.part_extractor.has_more(run_id, index)
+        return await self.extraction_part_extractor.has_more(run_id, index)
 
     async def validate_completed_parts(self, run_id: UUID) -> None:
-        await self.finalizer.validate_completed_parts(run_id)
+        await self.extraction_finalizer.validate_completed_parts(run_id)
 
     async def verify(self, run_id: UUID) -> None:
-        await self.finalizer.verify(run_id)
+        await self.extraction_finalizer.verify(run_id)
 
     async def save(self, run_id: UUID) -> None:
-        await self.finalizer.save(run_id)
+        await self.extraction_finalizer.save(run_id)
+
+    async def save_candidates(self, run_id: UUID) -> None:
+        await self.extraction_finalizer.save(run_id, defer_completion=True)

@@ -12,14 +12,24 @@ import { extractionCommand } from './saved-work';
 
 export function useAnalysisCommand(onSuccess: (run: Extraction) => Promise<void>) {
   const [pending, setPending] = useState(extractionCommand.read);
+  const [recoveredRun, setRecoveredRun] = useState<Extraction | null>(null);
   const recovery = useQuery({
     queryKey: [...scopeKey, 'extraction-operation', pending?.operation_id],
     enabled: pending !== null,
     retry: false,
-    queryFn: () =>
-      pending ? readExtractionOperation(pending.operation_id) : Promise.resolve(null),
+    queryFn: async () => {
+      if (!pending) return null;
+      const run = await readExtractionOperation(pending.operation_id);
+      if (run) {
+        extractionCommand.clear(pending.operation_id);
+        setRecoveredRun(run);
+        setPending(null);
+      }
+      return run;
+    },
   });
   const start = useMutation({
+    retry: false,
     mutationFn: async (command: ExtractionCommand) => {
       const saved = extractionCommand.read();
       if (saved?.operation_id === command.operation_id) {
@@ -43,15 +53,23 @@ export function useAnalysisCommand(onSuccess: (run: Extraction) => Promise<void>
       await onSuccess(run);
     },
   });
-  function submit(selected: ReadonlySet<string>, scope: string) {
+  function submit(
+    selected: ReadonlySet<string>,
+    scope: string,
+    newHistory = false,
+    historyId: string | null = null,
+  ) {
+    setRecoveredRun(null);
     const saved = recovery.data ? null : pending;
     const command = saved ?? {
       operation_id: crypto.randomUUID(),
       version_ids: [...selected].sort(),
       analysis_scope: scope.trim(),
+      answer_history_mode: newHistory ? ('new' as const) : ('reuse' as const),
+      answer_history_id: newHistory ? null : historyId,
     };
     setPending(command);
     start.mutate(command);
   }
-  return { pending, recovery, start, submit };
+  return { pending, recovery: { ...recovery, data: recovery.data ?? recoveredRun }, start, submit };
 }

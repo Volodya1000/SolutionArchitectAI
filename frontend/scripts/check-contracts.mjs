@@ -21,9 +21,62 @@ async function lint(relative, source, expected) {
   const rules = results.flatMap((result) => result.messages.map((message) => message.ruleId));
   if (expected)
     assert.ok(rules.includes(expected), `${relative}: expected ${expected}; got ${rules}`);
-  else assert.ok(!rules.includes('boundaries/dependencies'), `${relative}: legal import rejected`);
+  else {
+    assert.ok(!rules.includes('boundaries/dependencies'), `${relative}: legal import rejected`);
+    assert.ok(!rules.includes('no-restricted-imports'), `${relative}: legal test imports rejected`);
+  }
 }
 try {
+  await lint(
+    'src/shared/ui/test-import-probe.ts',
+    "export { fixtureId } from '../api/test-network-fixtures';",
+    'no-restricted-imports',
+  );
+  await lint(
+    'src/shared/ui/pytest-import-probe.ts',
+    "export { expect } from 'vitest';",
+    'no-restricted-imports',
+  );
+  await lint(
+    'src/shared/api/allowed-probe.test.ts',
+    "import { it, expect } from 'vitest'; it('works', () => { expect(true).toBe(true); });",
+    null,
+  );
+  await lint(
+    'src/shared/api/expect-probe.test.ts',
+    "import { it, expect } from 'vitest'; it('works', () => { expect(true); });",
+    'vitest/valid-expect',
+  );
+  await lint(
+    'src/shared/api/focus-probe.test.ts',
+    "import { it, expect } from 'vitest'; it.only('works', () => { expect(true).toBe(true); });",
+    'vitest/no-focused-tests',
+  );
+  await lint(
+    'src/shared/api/effects-probe.test.tsx',
+    "import { it } from 'vitest'; import { fireEvent, screen, waitFor } from '@testing-library/react'; it('works', async () => { await waitFor(() => fireEvent.click(screen.getByRole('button'))); });",
+    'testing-library/no-wait-for-side-effects',
+  );
+  await lint(
+    'src/shared/api/node-probe.test.tsx',
+    "import { it } from 'vitest'; import { screen } from '@testing-library/react'; it('works', () => { screen.getByRole('button').parentElement; });",
+    'testing-library/no-node-access',
+  );
+  await lint(
+    'e2e/await-probe.spec.ts',
+    "import { test } from '@playwright/test'; test('works', async ({page}) => { page.goto('/'); });",
+    'playwright/missing-playwright-await',
+  );
+  await lint(
+    'e2e/timeout-probe.spec.ts',
+    "import { test } from '@playwright/test'; test('works', async ({page}) => { await page.waitForTimeout(100); });",
+    'playwright/no-wait-for-timeout',
+  );
+  await lint(
+    'e2e/focus-probe.spec.ts',
+    "import { test } from '@playwright/test'; test.only('works', async ({page}) => { await page.goto('/'); });",
+    'playwright/no-focused-test',
+  );
   await lint('src/pages/allowed-probe.ts', "export { Button } from '../shared/ui/button';", null);
   await lint(
     'src/shared/ui/forbidden-probe.ts',

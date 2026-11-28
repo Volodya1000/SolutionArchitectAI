@@ -19,10 +19,9 @@ def evidence_context(evidence: list[Evidence], part: ContextPart) -> str:
     texts: list[str] = []
     item: Evidence
     for item in evidence:
+        identifier: str = part.resolve_source_label(item.fragment_id)
         fragments: list[str] = [
-            fragment.text
-            for fragment in part.fragments
-            if str(fragment.fragment_id) == item.fragment_id
+            fragment.text for fragment in part.fragments if str(fragment.fragment_id) == identifier
         ]
         if fragments:
             texts.append(
@@ -75,7 +74,12 @@ def issue_view(
 
 def verify_result(result: RequirementsExtraction, part: ContextPart) -> PartResult:
     requirements: list[RequirementView] = [
-        requirement_view(item, part) for item in result.requirements
+        requirement_view(item, part)
+        for item in result.requirements
+        if not all(
+            part.resolve_source_label(evidence.fragment_id) in part.structural_fragment_ids
+            for evidence in item.evidence
+        )
     ]
     requirements.extend(issue_view(item, part) for item in result.gaps)
     requirements.extend(issue_view(item, part) for item in result.contradictions)

@@ -6,6 +6,7 @@
 @import './features/chat/styles.css';
 @import './features/documents/styles.css';
 @import './features/requirements/styles.css';
+@import './features/clarifications/styles.css';
 /* Feedback colors follow feature text defaults. */
 @import './shared/ui/feedback.css';
 @custom-variant dark (&:where(.dark, .dark *));
